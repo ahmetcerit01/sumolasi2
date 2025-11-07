@@ -1,9 +1,10 @@
 import React, { useEffect } from 'react';
 import 'react-native-gesture-handler';
-import { NavigationContainer } from '@react-navigation/native';
-import BottomTabs from './src/navigation/BottomTabs';
-import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import { NavigationContainer } from '@react-navigation/native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import * as Notifications from 'expo-notifications';
+import BottomTabs from './src/navigation/BottomTabs';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -15,6 +16,14 @@ Notifications.setNotificationHandler({
 
 export default function App() {
   useEffect(() => {
+    // iOS izin
+    (async () => {
+      if (Platform.OS === 'ios') {
+        await Notifications.requestPermissionsAsync();
+      }
+    })();
+
+    // Android kanal
     if (Platform.OS === 'android') {
       Notifications.setNotificationChannelAsync('water-reminders', {
         name: 'Water Reminders',
@@ -25,9 +34,12 @@ export default function App() {
       }).catch(() => {});
     }
   }, []);
+
   return (
-    <NavigationContainer>
-      <BottomTabs />
-    </NavigationContainer>
+    <SafeAreaProvider>
+      <NavigationContainer>
+        <BottomTabs />
+      </NavigationContainer>
+    </SafeAreaProvider>
   );
 }
