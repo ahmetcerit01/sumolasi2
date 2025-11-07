@@ -51,7 +51,8 @@ async function hydrate() {
       };
       if (normalized.lastDate !== today) {
         // new day: reset daily totals; streak if yesterday had intake
-        const newStreak = normalized.totalMl > 0 ? (normalized.streakDays ?? 0) + 1 : 0;
+        const metGoalYesterday = (normalized.totalMl ?? 0) >= (normalized.goalMl ?? store.goalMl);
+        const newStreak = metGoalYesterday ? (normalized.streakDays ?? 0) + 1 : 0;
         store = {
           ...store,
           totalMl: 0,
@@ -98,8 +99,10 @@ export function useHydrationStore(selector) {
     const id = setInterval(async () => {
       const today = new Date().toDateString();
       if (today !== store.lastDate) {
-        const newStreak = store.totalMl > 0 ? (store.streakDays ?? 0) + 1 : 0;
+        const metGoalYesterday = (store.totalMl ?? 0) >= (store.goalMl ?? 0);
+        const newStreak = metGoalYesterday ? (store.streakDays ?? 0) + 1 : 0;
         store = { ...store, totalMl: 0, lastDate: today, todayGlasses: 0, lastAddAt: null, streakDays: newStreak };
+
         await persist();
         emit();
       }
