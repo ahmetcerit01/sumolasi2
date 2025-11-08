@@ -24,7 +24,6 @@ export default function BadgesScreen() {
     }
 
     const prev = prevBadgesRef.current || {};
-
     Object.keys(badgesState || {}).forEach((id) => {
       const was = !!prev[id];
       const now = !!badgesState[id];
@@ -34,7 +33,6 @@ export default function BadgesScreen() {
         Alert.alert('🎉 Tebrikler!', `${title} rozetini kazandın!`);
       }
     });
-
     prevBadgesRef.current = badgesState || {};
   }, [badgesState]);
 
@@ -93,9 +91,9 @@ export default function BadgesScreen() {
         />
       )}
 
-      {/* Modal for selected badge */}
+      {/* Seçilen rozet için bilgi modalı */}
       <Modal
-        transparent={true}
+        transparent
         visible={!!selectedBadge}
         animationType="fade"
         onRequestClose={() => setSelectedBadge(null)}
@@ -106,9 +104,22 @@ export default function BadgesScreen() {
               <>
                 <BadgeIcon name={selectedBadge.id} size={140} />
                 <Text style={styles.modalTitle}>{selectedBadge.title}</Text>
-                <Text style={styles.modalDesc}>
-                  {selectedBadge.description || 'Bu rozet, belirli bir hedefe ulaştığında kazanılır.'}
-                </Text>
+
+                {/* Kısa açıklama (varsa) */}
+                {selectedBadge.description || selectedBadge.desc ? (
+                  <Text style={styles.modalDesc}>
+                    {selectedBadge.description || selectedBadge.desc}
+                  </Text>
+                ) : null}
+
+                {/* YENİ: Nasıl kazanılır? (howToEarn alanını göster) */}
+                <View style={styles.howBlock}>
+                  <Text style={styles.howLabel}>Nasıl kazanılır?</Text>
+                  <Text style={styles.howText}>
+                    {selectedBadge.howToEarn || 'Bu rozetin koşulu yakında eklenecek.'}
+                  </Text>
+                </View>
+
                 <TouchableOpacity style={styles.modalClose} onPress={() => setSelectedBadge(null)}>
                   <Text style={styles.modalCloseText}>Kapat</Text>
                 </TouchableOpacity>
@@ -156,19 +167,11 @@ const styles = StyleSheet.create({
   },
   lockOverlay: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    inset: 0,
     backgroundColor: 'rgba(255,255,255,0.65)',
     borderRadius: 45,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  lockText: {
-    color: '#94A3B8',
-    fontWeight: '600',
-    fontSize: 13,
   },
   label: {
     fontSize: 13,
@@ -228,7 +231,26 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#4E6480',
     textAlign: 'center',
+    marginBottom: 12,
+  },
+  howBlock: {
+    width: '100%',
+    marginTop: 8,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#EEF2FF',
     marginBottom: 16,
+  },
+  howLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#4C8CFF',
+    marginBottom: 6,
+  },
+  howText: {
+    fontSize: 14,
+    color: '#384152',
+    textAlign: 'center',
   },
   modalClose: {
     backgroundColor: '#4C8CFF',
