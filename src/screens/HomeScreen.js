@@ -9,17 +9,20 @@ import {
   Animated,
   Easing,
   Alert,
+  Image,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import WaterGlass from "../components/WaterGlass";
-// import PrimaryButton from "../components/PrimaryButton"; // kaldırıldı
 import { useHydrationStore } from "../storage/useHydrationStore";
 import { COLORS } from "../theme/colors";
 import { S } from "../theme/spacing";
 import { Ionicons } from "@expo/vector-icons";
 import { Audio } from "expo-av";
 import * as Notifications from "expo-notifications";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import subardagi from "../../assets/subardagi.png";
+import susisesi from "../../assets/susisesi.png";
 
 const HEADER_H = 120;
 
@@ -146,9 +149,36 @@ export default function HomeScreen({ navigation }) {
     }
   };
 
+  // --- Quick Add basış animasyonu (scale) ---
+  const scaleCup    = React.useRef(new Animated.Value(1)).current;   // Bardak
+  const scaleMug    = React.useRef(new Animated.Value(1)).current;   // Fincan
+  const scaleBottle = React.useRef(new Animated.Value(1)).current;   // Şişe
+
+  const pressIn = (val) => {
+    Animated.spring(val, {
+      toValue: 0.96,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const pressOut = (val) => {
+    Animated.spring(val, {
+      toValue: 1,
+      useNativeDriver: true,
+    }).start();
+  };
+
   const quickAdd = async (ml) => {
+    // Store + ses
     add(ml);
     playWaterSound();
+    // Gün geçmişi sistemi için bugünkü değeri AsyncStorage'a yaz
+    try {
+      const newVal = totalMl + ml; // store'daki güncel değeri baz alıyoruz
+      await AsyncStorage.setItem("TODAY_CONSUMED_ML", String(newVal));
+    } catch (e) {
+      console.warn("Günlük miktar kaydedilemedi", e);
+    }
   };
 
   const askNotifAndTest = async () => {
@@ -172,8 +202,12 @@ export default function HomeScreen({ navigation }) {
   };
 
   const hour = new Date().getHours();
-  const greeting = hour >= 5 && hour < 12 ? "Günaydın" : hour >= 12 && hour < 21 ? "İyi günler" : "İyi geceler";
-  const greetingIcon = hour >= 5 && hour < 12 ? "sunny-outline" : hour >= 12 && hour < 21 ? "partly-sunny-outline" : "moon-outline";
+  const greeting =
+    hour >= 5 && hour < 12 ? "Günaydın" :
+    hour >= 12 && hour < 21 ? "İyi günler" : "İyi geceler";
+  const greetingIcon =
+    hour >= 5 && hour < 12 ? "sunny-outline" :
+    hour >= 12 && hour < 21 ? "partly-sunny-outline" : "moon-outline";
 
   return (
     <View style={styles.container}>
@@ -265,7 +299,7 @@ export default function HomeScreen({ navigation }) {
             </Animated.View>
           </View>
 
-          {/* Günlük hedef % | Seri (iki kutu) */}
+          {/* Günlük hedef % | Seri */}
           <View style={styles.rowBoxes}>
             <View style={styles.goalBox}>
               <Text style={styles.boxTitle}>Günlük hedefin</Text>
@@ -282,27 +316,66 @@ export default function HomeScreen({ navigation }) {
           </View>
         </View>
 
-        {/* Hızlı Ekle: Bardak (200 ml) ve 0.5 L Şişe (500 ml) */}
+        {/* Hızlı Ekle */}
         <View style={styles.quickAddWrap}>
-          <TouchableOpacity activeOpacity={0.9} onPress={() => quickAdd(200)} style={{ flex: 1 }}>
-            <LinearGradient colors={[COLORS.primaryStart, COLORS.primaryEnd]} style={styles.quickBtn}>
-              <Ionicons name="cup-outline" size={18} color="#fff" />
-              <View style={{ marginLeft: 8 }}>
-                <Text style={styles.quickBtnText}>Bardak</Text>
-                <Text style={styles.quickBtnSub}>200 ml</Text>
-              </View>
-            </LinearGradient>
+
+          {/* Bardak */}
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPressIn={() => pressIn(scaleCup)}
+            onPressOut={() => pressOut(scaleCup)}
+            onPress={() => quickAdd(200)}
+            style={{ flex: 1 }}
+          >
+            <Animated.View style={{ transform: [{ scale: scaleCup }] }}>
+              <LinearGradient colors={["#6ED6B6", "#5081E5"]} style={styles.quickBtn}>
+                <Image source={subardagi} style={{ width: 22, height: 22, resizeMode: "contain" }} />
+                <View style={{ marginLeft: 8 }}>
+                  <Text style={styles.quickBtnText}>Bardak</Text>
+                  <Text style={styles.quickBtnSub}>200 ml</Text>
+                </View>
+              </LinearGradient>
+            </Animated.View>
           </TouchableOpacity>
 
-          <TouchableOpacity activeOpacity={0.9} onPress={() => quickAdd(500)} style={{ flex: 1 }}>
-            <LinearGradient colors={["#7AD7F0", "#5081E5"]} style={styles.quickBtn}>
-              <Ionicons name="water-outline" size={18} color="#fff" />
-              <View style={{ marginLeft: 8 }}>
-                <Text style={styles.quickBtnText}>0.5 L Şişe</Text>
-                <Text style={styles.quickBtnSub}>500 ml</Text>
-              </View>
-            </LinearGradient>
+          {/* Fincan */}
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPressIn={() => pressIn(scaleMug)}
+            onPressOut={() => pressOut(scaleMug)}
+            onPress={() => quickAdd(300)}
+            style={{ flex: 1 }}
+          >
+            <Animated.View style={{ transform: [{ scale: scaleMug }] }}>
+              <LinearGradient colors={["#6ED6B6", "#5081E5"]} style={styles.quickBtn}>
+                <Ionicons name="cafe-outline" size={18} color="#fff" />
+                <View style={{ marginLeft: 8 }}>
+                  <Text style={styles.quickBtnText}>Fincan</Text>
+                  <Text style={styles.quickBtnSub}>300 ml</Text>
+                </View>
+              </LinearGradient>
+            </Animated.View>
           </TouchableOpacity>
+
+          {/* Şişe */}
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPressIn={() => pressIn(scaleBottle)}
+            onPressOut={() => pressOut(scaleBottle)}
+            onPress={() => quickAdd(500)}
+            style={{ flex: 1 }}
+          >
+            <Animated.View style={{ transform: [{ scale: scaleBottle }] }}>
+              <LinearGradient colors={["#6ED6B6", "#5081E5"]} style={styles.quickBtn}>
+                <Image source={susisesi} style={{ width: 22, height: 22, resizeMode: "contain" }} />
+                <View style={{ marginLeft: 8 }}>
+                  <Text style={styles.quickBtnText}>0.5 L Şişe</Text>
+                  <Text style={styles.quickBtnSub}>500 ml</Text>
+                </View>
+              </LinearGradient>
+            </Animated.View>
+          </TouchableOpacity>
+
         </View>
 
         {/* Motivasyon */}
