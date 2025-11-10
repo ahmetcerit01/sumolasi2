@@ -23,6 +23,7 @@ import * as Notifications from "expo-notifications";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import subardagi from "../../assets/subardagi.png";
 import susisesi from "../../assets/susisesi.png";
+import fincan from "../../assets/fincan.png";
 
 const HEADER_H = 120;
 
@@ -348,7 +349,7 @@ export default function HomeScreen({ navigation }) {
           >
             <Animated.View style={{ transform: [{ scale: scaleMug }] }}>
               <LinearGradient colors={["#6ED6B6", "#5081E5"]} style={styles.quickBtn}>
-                <Ionicons name="cafe-outline" size={18} color="#fff" />
+                <Image source={fincan} style={{ width: 22, height: 22, resizeMode: "contain" }} />
                 <View style={{ marginLeft: 8 }}>
                   <Text style={styles.quickBtnText}>Fincan</Text>
                   <Text style={styles.quickBtnSub}>300 ml</Text>

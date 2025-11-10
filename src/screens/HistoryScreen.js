@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -29,6 +29,9 @@ const S = THEME?.S ?? { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 };
 // Store
 import { useHydrationStore } from "../storage/useHydrationStore";
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
+
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const CHART_WIDTH = SCREEN_WIDTH - 80;
 const BAR_WIDTH = (CHART_WIDTH - 40) / 5;
@@ -48,6 +51,13 @@ const infoValueFontWeight = "700";
 
 const WEEKDAY_LABELS = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"];
 
+// --- Tarih yardımcıları ---
+const pad2 = (n) => (n < 10 ? `0${n}` : String(n));
+const yyyymmdd = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const addDays = (d, delta) => { const x = new Date(d); x.setDate(x.getDate() + delta); return x; };
+
+const HISTORY_KEY = (dateStr) => `HISTORY:${dateStr}`; // ör: HISTORY:2025-11-10
+
 export default function HistoryScreen() {
   const { totalMl, goalMl } = useHydrationStore((s) => ({
     totalMl: s.totalMl,
@@ -55,35 +65,51 @@ export default function HistoryScreen() {
   }));
   const insets = useSafeAreaInsets();
 
-  // Şimdilik sadece bugünün değeri mevcut: geçmiş 4 güne 0 veriyoruz.
-  const getLast5Days = () => {
-    const today = new Date();
-    const last5 = [];
-    for (let i = 4; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(today.getDate() - i);
-      const isToday = i === 0;
-      const dow = d.getDay(); // 0 Pazar…6 Cumartesi
-      // Haftanın Türkçe kısaltmaları pazartesiden başlasın diye map’liyoruz:
-      const mapIndex = ((dow - 1 + 7) % 7); // Pazartesi=0
-      last5.push({
-        label: WEEKDAY_LABELS[mapIndex] || "?",
-        value: isToday ? totalMl : 0,
-        goal: goalMl,
-        isToday,
-      });
-    }
-    return last5;
-  };
+  const [history5, setHistory5] = useState([]); // [{label, value, goal, isToday, date}]
 
-  const chartData = getLast5Days();
-  const maxValue = Math.max(
-    ...chartData.map((d) => Math.max(d.value, d.goal)),
-    1
+  const loadLast5 = useCallback(async () => {
+    const today = new Date();
+    const items = [];
+    for (let i = 4; i >= 0; i--) {
+      const d = addDays(today, -i);
+      const dateStr = yyyymmdd(d);
+      const isToday = i === 0;
+      // Haftanın Türkçe kısaltmaları pazartesiden başlasın
+      const dow = d.getDay(); // 0 Pazar … 6 Cumartesi
+      const mapIndex = ((dow - 1 + 7) % 7);
+      const label = WEEKDAY_LABELS[mapIndex] || "?";
+
+      let stored = 0;
+      try {
+        const raw = await AsyncStorage.getItem(HISTORY_KEY(dateStr));
+        stored = raw ? Number(raw) : 0;
+      } catch {}
+
+      const value = isToday ? totalMl : stored; // bugünse store içeriğini canlı değerden ez
+      items.push({ label, value: Math.max(0, value), goal: goalMl, isToday, date: dateStr });
+    }
+    setHistory5(items);
+  }, [totalMl, goalMl]);
+
+  // Bugünün değeri değiştikçe kalıcılaştır (gece 00:00 sonrası geçmişte kalacak)
+  useEffect(() => {
+    const todayStr = yyyymmdd(new Date());
+    AsyncStorage.setItem(HISTORY_KEY(todayStr), String(totalMl)).catch(() => {});
+  }, [totalMl]);
+
+  // Ekran odağa geldiğinde ve her dakika bir kez yenile (gün dönüşünü yakalamak için)
+  useFocusEffect(
+    useCallback(() => {
+      let mounted = true;
+      (async () => { if (mounted) await loadLast5(); })();
+      const iv = setInterval(() => { loadLast5(); }, 60 * 1000);
+      return () => { mounted = false; clearInterval(iv); };
+    }, [loadLast5])
   );
-  const average = Math.round(
-    chartData.reduce((sum, d) => sum + d.value, 0) / chartData.length
-  );
+
+  const chartData = history5.length ? history5 : [];
+  const maxValue = useMemo(() => Math.max(...(chartData.length ? chartData.map(d => Math.max(d.value, d.goal)) : [1]), 1), [chartData]);
+  const average = useMemo(() => chartData.length ? Math.round(chartData.reduce((s, d) => s + d.value, 0) / chartData.length) : 0, [chartData]);
 
   return (
     <LinearGradient

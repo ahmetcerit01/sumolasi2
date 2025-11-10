@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Switch, KeyboardAvoidingView, Platform, ScrollView, Alert, Modal } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Switch, KeyboardAvoidingView, Platform, ScrollView, Alert, Modal, DeviceEventEmitter } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -8,11 +8,16 @@ import { COLORS } from '../theme/colors';
 import { S } from '../theme/spacing';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Constants from 'expo-constants';
 
 // ------- helpers -------
 
 // RemindersScreen.js (üst kısma ekle)
 const REMINDER_IDS_KEY = 'SUMOLASI_REMINDER_IDS_V1';
+const REMINDER_ENABLED_KEY = 'REMINDER_ENABLED';
+const REMINDER_INTERVAL_HOURS_KEY = 'REMINDER_INTERVAL_HOURS';
+const LAST_SCHEDULED_DATE_KEY = 'REMINDER_LAST_SCHEDULED_DATE';
+const IS_EXPO_GO = Constants?.appOwnership === 'expo';
 
 async function ensureAndroidChannel() {
   if (Platform.OS !== 'android') return;
@@ -39,8 +44,13 @@ async function cancelExistingReminders() {
 }
 
 async function scheduleOneDailyCalendar({ hour, minute }) {
-  // second:5 -> “Kaydet” anında aynı dakikaya denk gelse bile hemen çalmaz
-  const trigger = { hour, minute, second: 5, repeats: true, ...(Platform.OS === 'android' ? { channelId: 'hydration-daily' } : {}) };
+  // second:5 kaldırıldı, sadece saat/dakika ve repeats ile tetiklenir
+  const trigger = {
+    hour,
+    minute,
+    repeats: true,
+    ...(Platform.OS === 'android' ? { channelId: 'hydration-daily' } : {}),
+  };
 
   const id = await Notifications.scheduleNotificationAsync({
     content: {
@@ -51,6 +61,22 @@ async function scheduleOneDailyCalendar({ hour, minute }) {
       data: { type: 'WATER_REMINDER' },
     },
     trigger,
+  });
+  return id;
+}
+
+// Expo Go fallback: schedule one-off notification for an exact Date
+async function scheduleOneExactDate(dateObj) {
+  const id = await Notifications.scheduleNotificationAsync({
+    content: {
+      title: 'Su Molası',
+      body: 'Bir bardak su içme zamanı!',
+      sound: 'default',
+      priority: Notifications.AndroidNotificationPriority.HIGH,
+      data: { type: 'WATER_REMINDER' },
+    },
+    // Updated API: pass trigger as an object with type 'date'
+    trigger: { type: 'date', date: dateObj },
   });
   return id;
 }
@@ -73,9 +99,25 @@ async function scheduleDailyRemindersCalendar(times /* [{hour, minute}] */) {
     .sort((a, b) => (a.hour - b.hour) || (a.minute - b.minute));
 
   const ids = [];
-  for (const t of normalized) {
-    const id = await scheduleOneDailyCalendar(t);
-    ids.push(id);
+  if (IS_EXPO_GO) {
+    // Expo Go fallback: schedule exact-date one-offs for *today* (no repeats),
+    // and push any slot that is in the past or too close to "now" to *tomorrow*.
+    const now = Date.now();
+    for (const t of normalized) {
+      let d = todayAt(t.hour, t.minute);
+      // if scheduled time is within the next 15 seconds or already past, move to next day
+      if (d.getTime() <= now + 15000) {
+        d = new Date(d.getTime() + 24 * 60 * 60 * 1000);
+      }
+      const id = await scheduleOneExactDate(d);
+      ids.push(id);
+    }
+  } else {
+    // Real build/dev-client: use reliable repeating calendar triggers
+    for (const t of normalized) {
+      const id = await scheduleOneDailyCalendar(t);
+      ids.push(id);
+    }
   }
   await AsyncStorage.setItem(REMINDER_IDS_KEY, JSON.stringify(ids));
   return ids.length;
@@ -99,6 +141,10 @@ const todayAt = (h, m) => {
 const todayKey = () => {
   const d = new Date();
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+};
+
+const setLastScheduledToday = async () => {
+  try { await AsyncStorage.setItem(LAST_SCHEDULED_DATE_KEY, todayKey()); } catch {}
 };
 
 // Store + Storage birleştirerek bugünkü tüketimi olabilecek en doğru şekilde bul
@@ -162,6 +208,59 @@ export default function RemindersScreen() {
 
   useEffect(() => { setGoal(Number(goalMl || 2000)); }, [goalMl]);
 
+  // Load persisted settings on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const kv = await AsyncStorage.multiGet([REMINDER_ENABLED_KEY, REMINDER_INTERVAL_HOURS_KEY]);
+        const enabledStr = kv.find(k => k[0] === REMINDER_ENABLED_KEY)?.[1];
+        const intervalStr = kv.find(k => k[0] === REMINDER_INTERVAL_HOURS_KEY)?.[1];
+        if (enabledStr !== null && enabledStr !== undefined) {
+          setEnabled(enabledStr === '1' || enabledStr === 'true');
+        }
+        const parsedInterval = Number(intervalStr);
+        if (Number.isFinite(parsedInterval) && parsedInterval > 0) {
+          setIntervalHours(parsedInterval);
+        }
+      } catch {}
+    })();
+  }, []);
+
+  // Ensure auto scheduling on launch
+  const ensureAutoScheduleForToday = async () => {
+    try {
+      const hasPerm = await ensurePermission();
+      if (!hasPerm) return;
+      await ensureAndroidChannel();
+      // read enabled + interval + existing ids + last scheduled date
+      const [[, enabledStr], [, intervalStr], [, lastDate], [, rawIds]] =
+        await AsyncStorage.multiGet([REMINDER_ENABLED_KEY, REMINDER_INTERVAL_HOURS_KEY, LAST_SCHEDULED_DATE_KEY, REMINDER_IDS_KEY]);
+      const persistedEnabled = (enabledStr === '1' || enabledStr === 'true');
+      const interval = Number(intervalStr);
+      const ids = rawIds ? JSON.parse(rawIds) : [];
+      if (!persistedEnabled || !Number.isFinite(interval) || interval <= 0) return;
+      const dates = generateTimesFixedInterval(interval);
+      const times = dates.map(d => ({ hour: d.getHours(), minute: d.getMinutes() }));
+      if (IS_EXPO_GO) {
+        // expo go: every day we need fresh one-offs
+        if (lastDate !== todayKey()) {
+          await cancelExistingReminders();
+          await scheduleDailyRemindersCalendar(times);
+          await setLastScheduledToday();
+        }
+      } else {
+        // dev/prod: repeats daily; schedule once if none exist
+        if (!ids || ids.length === 0) {
+          await scheduleDailyRemindersCalendar(times);
+        }
+      }
+    } catch {}
+  };
+
+  useEffect(() => {
+    ensureAutoScheduleForToday();
+  }, []);
+
   // Android heads-up kanalı
   useEffect(() => {
     (async () => {
@@ -204,9 +303,9 @@ export default function RemindersScreen() {
     const start = todayAt(AWAKE_START_H, AWAKE_START_M);
     const end   = todayAt(AWAKE_END_H,   AWAKE_END_M);
 
-    // Şimdiden sonraki en yakın slot (en az +60sn)
+    // Şimdiden sonraki en yakın slot (en az +90sn)
     const now = new Date();
-    let t = new Date(Math.max(start.getTime(), now.getTime() + 60 * 1000));
+    let t = new Date(Math.max(start.getTime(), now.getTime() + 90 * 1000));
 
     // t'yi ızgaraya oturt
     const minutesSinceStart = Math.max(0, Math.floor((t - start) / 60000));
@@ -221,6 +320,43 @@ export default function RemindersScreen() {
       t = new Date(t.getTime() + intervalMinutes * 60000);
     }
     return out;
+  };
+
+  // --- YARDIMCI FONKSİYONLAR ---
+
+  // YYYY-MM-DD HH:MM formatında string döndürür
+  function formatForConsole(d) {
+    if (!d || !(d instanceof Date)) return '';
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  // Sıradaki planlanan zamanı hesapla
+  function computeNextPlannedTime() {
+    const now = new Date();
+    const slots = generateTimesFixedInterval(intervalHours);
+    // Şimdiden sonraki ilk slotu bul
+    const next = slots.find(d => d.getTime() > now.getTime());
+    if (next) return next;
+    // Bugün bitti, yarın sabah ilk slotu döndür
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(AWAKE_START_H, AWAKE_START_M, 0, 0);
+    return tomorrow;
+  }
+
+  // Sıradaki bildirimi konsola yaz ve alert göster
+  const onLogNextNotificationTime = async () => {
+    try {
+      const next = computeNextPlannedTime();
+      if (next && next instanceof Date && !isNaN(next.getTime())) {
+        console.log('[SuMolası] Next reminder at:', formatForConsole(next));
+        Alert.alert('Bilgi', 'Sıradaki bildirim: ' + formatForConsole(next));
+      } else {
+        Alert.alert('Bilgi', 'Bugün/yarın için uygun zaman bulunamadı.');
+      }
+    } catch (e) {
+      Alert.alert('Hata', e?.message || 'Hesaplanamadı');
+    }
   };
 
   const onSave = async () => {
@@ -265,6 +401,8 @@ export default function RemindersScreen() {
         ['REMINDER_AWAKE_START', `${pad(AWAKE_START_H)}:${pad(AWAKE_START_M)}`],
         ['REMINDER_AWAKE_END', `${pad(AWAKE_END_H)}:${pad(AWAKE_END_M)}`],
         ['REMINDER_GOAL_ML', String(newGoal)],
+        [REMINDER_ENABLED_KEY, enabled ? '1' : '0'],
+        ...(IS_EXPO_GO ? [[LAST_SCHEDULED_DATE_KEY, todayKey()]] : []),
       ]);
     } catch {}
 
@@ -277,6 +415,23 @@ export default function RemindersScreen() {
 
   // Sıklık alanı: off iken küçült & kilitle
   const frequencyDisabled = !enabled;
+
+  // 1 Dakika Sonra Test Et butonu handler'ı
+  const onTestInOneMinute = async () => {
+    try {
+      const hasPerm = await ensurePermission();
+      if (!hasPerm) {
+        Alert.alert('İzin gerekli', 'Bildirim izni verilmedi.');
+        return;
+      }
+      await ensureAndroidChannel();
+      const inOneMinute = new Date(Date.now() + 60 * 1000);
+      await scheduleOneExactDate(inOneMinute);
+      Alert.alert('Planlandı', '1 dakika sonra tek seferlik test bildirimi gelecek.');
+    } catch (e) {
+      Alert.alert('Hata', e?.message || 'Planlanamadı');
+    }
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#f7f7f7' }} edges={['top']}>
@@ -396,7 +551,7 @@ export default function RemindersScreen() {
               </View>
               {!frequencyDisabled && (
                 <Text style={[styles.hint, { marginTop: 8 }]}>
-                  “Kaydet” ile bugün için tüm bildirimler planlanır.
+                  “Kaydet” ile bir sonraki uygun zamandan itibaren bugünkü hatırlatıcılar planlanır.
                 </Text>
               )}
             </View>
@@ -410,6 +565,24 @@ export default function RemindersScreen() {
 
           <TouchableOpacity style={styles.save} onPress={onSave}>
             <Text style={styles.saveTxt}>Kaydet</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={[styles.save, { backgroundColor: '#0ea5e9' }]} onPress={onTestInOneMinute}>
+            <Text style={styles.saveTxt}>1 Dakika Sonra Test Et</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.save, { backgroundColor: '#374151' }]}
+            onPress={() => DeviceEventEmitter.emit('OPEN_ONBOARD')}
+          >
+            <Text style={styles.saveTxt}>Onboard Test</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.save, { backgroundColor: '#111827' }]}
+            onPress={onLogNextNotificationTime}
+          >
+            <Text style={styles.saveTxt}>Sıradaki Zamanı Konsola Yaz</Text>
           </TouchableOpacity>
 
           <TouchableOpacity

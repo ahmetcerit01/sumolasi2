@@ -65,6 +65,10 @@ export default function ProfileScreen() {
   });
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [onboardProfile, setOnboardProfile] = useState(null);
+  const [onboardGoal, setOnboardGoal] = useState(null);
+  const [goalEditMl, setGoalEditMl] = useState(() => (typeof goalMl === 'number' && !Number.isNaN(goalMl) ? goalMl : 2000));
+  const [showGoalPicker, setShowGoalPicker] = useState(false);
 
   // Rozetler: store içinde farklı anahtar adlarını destekle
   const unlockedBadgesArr = useHydrationStore(s => s.unlockedBadges || s.unlockedBadgeIds || []);
@@ -106,6 +110,24 @@ export default function ProfileScreen() {
     })();
   }, []);
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const [[, p], [, g]] = await AsyncStorage.multiGet(['ONBOARD_PROFILE', 'DAILY_GOAL_ML']);
+        const profile = p ? JSON.parse(p) : null;
+        const goal = g ? Number(g) : null;
+        setOnboardProfile(profile);
+        if (typeof goal === 'number' && !Number.isNaN(goal)) {
+          setOnboardGoal(goal);
+          // Eğer store'da bir hedef yoksa veya 0'sa, düzenlenebilir hedefi onboard değeriyle başlat
+          if (!(typeof goalMl === 'number' && !Number.isNaN(goalMl) && goalMl > 0)) {
+            setGoalEditMl(goal);
+          }
+        }
+      } catch {}
+    })();
+  }, []);
+
   const saveSettings = async () => {
     try {
       await AsyncStorage.setItem(
@@ -114,6 +136,10 @@ export default function ProfileScreen() {
       );
       await AsyncStorage.setItem(STORAGE_KEYS.notifications, notificationsEnabled ? '1' : '0');
       await AsyncStorage.setItem(STORAGE_KEYS.sound, soundEnabled ? '1' : '0');
+
+      // Günlük hedefi kaydet
+      await AsyncStorage.setItem('DAILY_GOAL_ML', String(goalEditMl));
+      setGoalMl(goalEditMl);
 
       // Günlük tek bildirim (Expo Go kısıtlı; dev build'te tam)
       if (notificationsEnabled) {
@@ -162,31 +188,34 @@ export default function ProfileScreen() {
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Günlük Ayarlar</Text>
 
-          <View style={[styles.itemRow, { opacity: 0.7 }]}>
+          {/* Önerilen hedef (readonly) */}
+          <View style={[styles.itemRow, { opacity: 0.9 }]}> 
+            <View style={styles.itemLeft}>
+              <Ionicons name="sparkles-outline" size={20} color={COLORS.subtext} />
+              <Text style={styles.itemLabel}>Önerilen hedef</Text>
+            </View>
+            <View style={styles.valuePill}>
+              <Text style={styles.valuePillTxt}>{onboardGoal != null ? `${onboardGoal} ml` : '—'}</Text>
+            </View>
+          </View>
+
+          {/* Günlük hedef (kullanıcı ayarlanabilir) */}
+          <View style={styles.itemRow}>
             <View style={styles.itemLeft}>
               <Ionicons name="trophy-outline" size={20} color={COLORS.subtext} />
               <Text style={styles.itemLabel}>Günlük hedef</Text>
             </View>
-            <View style={styles.valuePill}>
-              <Text style={styles.valuePillTxt}>{goalMl} ml</Text>
-            </View>
-            <Ionicons name="lock-closed-outline" size={18} color={COLORS.subtext} style={{ marginLeft: 8 }} />
+            <TouchableOpacity
+  style={[styles.valuePill, { flexDirection: 'row', alignItems: 'center' }]}
+  activeOpacity={0.8}
+  onPress={() => setShowGoalPicker(true)}
+>
+  <Text style={styles.valuePillTxt}>{goalEditMl} ml</Text>
+  <Ionicons name="chevron-down-outline" size={18} color={COLORS.subtext} style={{ marginLeft: 4 }} />
+</TouchableOpacity>
           </View>
 
-          <View style={[styles.itemRow, { opacity: 0.7 }]}>
-            <View style={styles.itemLeft}>
-              <Ionicons name="time-outline" size={20} color={COLORS.subtext} />
-              <Text style={styles.itemLabel}>Hatırlatma saati</Text>
-            </View>
-            <View style={styles.valuePill}>
-              <Text style={styles.valuePillTxt}>
-                {`${String(reminderTime.getHours()).padStart(2, '0')}:${String(reminderTime.getMinutes()).padStart(2, '0')}`}
-              </Text>
-            </View>
-            <Ionicons name="lock-closed-outline" size={18} color={COLORS.subtext} style={{ marginLeft: 8 }} />
-          </View>
-
-          <Text style={styles.readonlyHint}>Bu alandan değiştirilemez. Hedef ve saat ayarı için Hatırlatıcılar sayfasını kullan.</Text>
+          <Text style={styles.readonlyHint}>Önerilen hedef, kiloya göre otomatik hesaplanır. Günlük hedefi kendine göre ayarlayabilirsin.</Text>
 
           {/* Switches */}
           <View style={styles.itemRow}>
@@ -220,6 +249,67 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Profil Bilgileri</Text>
+          {onboardProfile ? (
+            <>
+              <View style={styles.itemRow}>
+                <View style={styles.itemLeft}>
+                  <Ionicons name="person-outline" size={20} color={COLORS.subtext} />
+                  <Text style={styles.itemLabel}>Cinsiyet</Text>
+                </View>
+                <View style={styles.valuePill}><Text style={styles.valuePillTxt}>{onboardProfile.gender === 'male' ? 'Erkek' : 'Kadın'}</Text></View>
+              </View>
+              <View style={styles.itemRow}>
+                <View style={styles.itemLeft}>
+                  <Ionicons name="fitness-outline" size={20} color={COLORS.subtext} />
+                  <Text style={styles.itemLabel}>Ağırlık</Text>
+                </View>
+                <View style={styles.valuePill}><Text style={styles.valuePillTxt}>{onboardProfile.weightKg} kg</Text></View>
+              </View>
+              <View style={styles.itemRow}>
+                <View style={styles.itemLeft}>
+                  <Ionicons name="sunny-outline" size={20} color={COLORS.subtext} />
+                  <Text style={styles.itemLabel}>Uyanma</Text>
+                </View>
+                <View style={styles.valuePill}><Text style={styles.valuePillTxt}>{onboardProfile.wakeAt}</Text></View>
+              </View>
+              <View style={styles.itemRow}>
+                <View style={styles.itemLeft}>
+                  <Ionicons name="moon-outline" size={20} color={COLORS.subtext} />
+                  <Text style={styles.itemLabel}>Uyku</Text>
+                </View>
+                <View style={styles.valuePill}><Text style={styles.valuePillTxt}>{onboardProfile.sleepAt}</Text></View>
+              </View>
+              {onboardGoal != null && (
+                <View style={styles.itemRow}>
+                  <View style={styles.itemLeft}>
+                    <Ionicons name="trophy-outline" size={20} color={COLORS.subtext} />
+                    <Text style={styles.itemLabel}>Hedef</Text>
+                  </View>
+                  <View style={styles.valuePill}><Text style={styles.valuePillTxt}>{onboardGoal} ml</Text></View>
+                </View>
+              )}
+            </>
+          ) : (
+            <Text style={styles.emptyTxt}>Onboard verisi bulunamadı. Onboard’u tamamladığında burada görünecek.</Text>
+          )}
+          <TouchableOpacity
+            style={[styles.saveBtn, { marginTop: 4, backgroundColor: '#2563EB' }]}
+            onPress={async () => {
+              try {
+                const [[, p], [, g]] = await AsyncStorage.multiGet(['ONBOARD_PROFILE', 'DAILY_GOAL_ML']);
+                setOnboardProfile(p ? JSON.parse(p) : null);
+                setOnboardGoal(g ? Number(g) : null);
+                Alert.alert('Güncellendi', 'Onboard verileri yenilendi.');
+              } catch {}
+            }}
+            activeOpacity={0.9}
+          >
+            <Text style={styles.saveTxt}>Onboard Verisini Yenile</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.card}>
           <Text style={styles.sectionTitle}>Kazanılan Rozetler</Text>
           {earnedBadges.length === 0 ? (
             <Text style={styles.emptyTxt}>Henüz kazanılmış rozetin yok. Su ekledikçe rozetler açılır.</Text>
@@ -237,6 +327,31 @@ export default function ProfileScreen() {
 
         <View style={{ height: 24 }} />
       </ScrollView>
+    {/* Günlük hedef seçici modal */}
+    {showGoalPicker && (
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalBox}>
+          <Text style={styles.modalTitle}>Günlük Hedefini Seç</Text>
+          <ScrollView>
+            {[1000, 1500, 2000, 2500, 3000, 3500, 4000].map(v => (
+              <TouchableOpacity
+                key={v}
+                onPress={() => { setGoalEditMl(v); setShowGoalPicker(false); }}
+                style={styles.modalOption}
+                activeOpacity={0.9}
+              >
+                <Text style={[styles.modalOptionTxt, goalEditMl === v && { color: '#2563EB', fontWeight: '800' }]}>
+                  {v} ml
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          <TouchableOpacity onPress={() => setShowGoalPicker(false)} style={styles.modalCloseBtn} activeOpacity={0.9}>
+            <Text style={styles.modalCloseTxt}>Kapat</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    )}
     </SafeAreaView>
   );
 }
@@ -288,4 +403,54 @@ const styles = StyleSheet.create({
   badgeItem: { width: 76, alignItems: 'center' },
   badgeLabel: { marginTop: 6, fontSize: 11, color: COLORS.subtext, textAlign: 'center' },
   emptyTxt: { color: COLORS.subtext },
+
+  stepper: { flexDirection: 'row', alignItems: 'center' },
+  stepperBtn: { backgroundColor: '#2563EB', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  stepperBtnTxt: { color: '#fff', fontWeight: '800' },
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalBox: {
+    width: '80%',
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 12,
+    color: COLORS.text,
+    textAlign: 'center',
+  },
+  modalOption: {
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  modalOptionTxt: {
+    fontSize: 15,
+    color: COLORS.text,
+    textAlign: 'center',
+  },
+  modalCloseBtn: {
+    marginTop: 12,
+    backgroundColor: '#2563EB',
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  modalCloseTxt: {
+    color: '#fff',
+    fontWeight: '800',
+  },
 });
