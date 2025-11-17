@@ -268,6 +268,17 @@ export default function ProfileScreen() {
               </View>
               <View style={styles.itemRow}>
                 <View style={styles.itemLeft}>
+                  <Ionicons name="body-outline" size={20} color={COLORS.subtext} />
+                  <Text style={styles.itemLabel}>Boy</Text>
+                </View>
+                <View style={styles.valuePill}>
+                  <Text style={styles.valuePillTxt}>
+                    {onboardProfile.heightCm != null ? `${onboardProfile.heightCm} cm` : '—'}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.itemRow}>
+                <View style={styles.itemLeft}>
                   <Ionicons name="sunny-outline" size={20} color={COLORS.subtext} />
                   <Text style={styles.itemLabel}>Uyanma</Text>
                 </View>

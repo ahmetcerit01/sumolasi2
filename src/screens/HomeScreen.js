@@ -329,9 +329,11 @@ export default function HomeScreen({ navigation }) {
             style={{ flex: 1 }}
           >
             <Animated.View style={{ transform: [{ scale: scaleCup }] }}>
-              <LinearGradient colors={["#6ED6B6", "#5081E5"]} style={styles.quickBtn}>
-                <Image source={subardagi} style={{ width: 22, height: 22, resizeMode: "contain" }} />
-                <View style={{ marginLeft: 8 }}>
+              <LinearGradient colors={["#4dc7d9", "#66a6ff"]} style={styles.quickBtn}>
+                <View style={styles.quickIconWrapper}>
+                  <Image source={subardagi} style={{ width: 18, height: 18, resizeMode: "contain" }} />
+                </View>
+                <View style={styles.quickTextWrap}>
                   <Text style={styles.quickBtnText}>Bardak</Text>
                   <Text style={styles.quickBtnSub}>200 ml</Text>
                 </View>
@@ -348,9 +350,11 @@ export default function HomeScreen({ navigation }) {
             style={{ flex: 1 }}
           >
             <Animated.View style={{ transform: [{ scale: scaleMug }] }}>
-              <LinearGradient colors={["#6ED6B6", "#5081E5"]} style={styles.quickBtn}>
-                <Image source={fincan} style={{ width: 22, height: 22, resizeMode: "contain" }} />
-                <View style={{ marginLeft: 8 }}>
+              <LinearGradient colors={["#4dc7d9", "#66a6ff"]} style={styles.quickBtn}>
+                <View style={styles.quickIconWrapper}>
+                  <Image source={fincan} style={{ width: 18, height: 18, resizeMode: "contain" }} />
+                </View>
+                <View style={styles.quickTextWrap}>
                   <Text style={styles.quickBtnText}>Fincan</Text>
                   <Text style={styles.quickBtnSub}>300 ml</Text>
                 </View>
@@ -367,9 +371,11 @@ export default function HomeScreen({ navigation }) {
             style={{ flex: 1 }}
           >
             <Animated.View style={{ transform: [{ scale: scaleBottle }] }}>
-              <LinearGradient colors={["#6ED6B6", "#5081E5"]} style={styles.quickBtn}>
-                <Image source={susisesi} style={{ width: 22, height: 22, resizeMode: "contain" }} />
-                <View style={{ marginLeft: 8 }}>
+              <LinearGradient colors={["#4dc7d9", "#66a6ff"]} style={styles.quickBtn}>
+                <View style={styles.quickIconWrapper}>
+                  <Image source={susisesi} style={{ width: 18, height: 18, resizeMode: "contain" }} />
+                </View>
+                <View style={styles.quickTextWrap}>
                   <Text style={styles.quickBtnText}>0.5 L Şişe</Text>
                   <Text style={styles.quickBtnSub}>500 ml</Text>
                 </View>
@@ -530,9 +536,9 @@ const styles = StyleSheet.create({
     gap: S.lg,
   },
   quickBtn: {
-    borderRadius: 16,
+    borderRadius: 25,
     paddingVertical: 14,
-    paddingHorizontal: 16,
+    paddingHorizontal: 18,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -540,9 +546,20 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 16,
     elevation: 2,
+    gap: 8,
   },
   quickBtnText: { color: "#fff", fontWeight: "800", fontSize: 14, lineHeight: 16 },
   quickBtnSub: { color: "rgba(255,255,255,0.85)", fontWeight: "600", fontSize: 12, lineHeight: 14 },
+
+  quickIconWrapper: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "rgba(255,255,255,0.25)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  quickTextWrap: { marginLeft: 4 },
 
   /* Motivasyon */
   motivation: {

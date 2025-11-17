@@ -40,7 +40,7 @@ export default function BottomTabs() {
                   <Ionicons name="home" size={26} color="#9CA3AF" />
                 </View>
               )}
-              <Text numberOfLines={1} ellipsizeMode="clip" style={[styles.label, focused ? styles.labelActive : styles.labelInactive]}>Ana Sayfa</Text>
+              <Text style={[styles.label, focused ? styles.labelActive : styles.labelInactive]}>Ana Sayfa</Text>
               {focused && (
                 <LinearGradient colors={["#7CE8FF", "#4C8CFF"]} style={styles.activeUnderline} />
               )}
@@ -64,7 +64,7 @@ export default function BottomTabs() {
                   <Ionicons name="calendar" size={26} color="#9CA3AF" />
                 </View>
               )}
-              <Text numberOfLines={1} ellipsizeMode="clip" style={[styles.label, focused ? styles.labelActive : styles.labelInactive]}>Geçmiş</Text>
+              <Text style={[styles.label, focused ? styles.labelActive : styles.labelInactive]}>Geçmiş</Text>
               {focused && (
                 <LinearGradient colors={["#7CE8FF", "#4C8CFF"]} style={styles.activeUnderline} />
               )}
@@ -88,7 +88,7 @@ export default function BottomTabs() {
                   <Ionicons name="alarm" size={26} color="#9CA3AF" />
                 </View>
               )}
-              <Text numberOfLines={1} ellipsizeMode="clip" style={[styles.label, focused ? styles.labelActive : styles.labelInactive]}>Hatırlatıcılar</Text>
+              <Text style={[styles.label, focused ? styles.labelActive : styles.labelInactive]}>Hatırlatıcılar</Text>
               {focused && (
                 <LinearGradient colors={["#7CE8FF", "#4C8CFF"]} style={styles.activeUnderline} />
               )}
@@ -112,7 +112,7 @@ export default function BottomTabs() {
                   <Ionicons name="ribbon" size={26} color="#9CA3AF" />
                 </View>
               )}
-              <Text numberOfLines={1} ellipsizeMode="clip" style={[styles.label, focused ? styles.labelActive : styles.labelInactive]}>Rozetler</Text>
+              <Text style={[styles.label, focused ? styles.labelActive : styles.labelInactive]}>Rozetler</Text>
               {focused && (
                 <LinearGradient colors={["#7CE8FF", "#4C8CFF"]} style={styles.activeUnderline} />
               )}
@@ -136,7 +136,7 @@ export default function BottomTabs() {
                   <Ionicons name="person" size={26} color="#9CA3AF" />
                 </View>
               )}
-              <Text numberOfLines={1} ellipsizeMode="clip" style={[styles.label, focused ? styles.labelActive : styles.labelInactive]}>Profil</Text>
+              <Text style={[styles.label, focused ? styles.labelActive : styles.labelInactive]}>Profil</Text>
               {focused && (
                 <LinearGradient colors={["#7CE8FF", "#4C8CFF"]} style={styles.activeUnderline} />
               )}

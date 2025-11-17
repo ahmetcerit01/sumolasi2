@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Dimensions,
+  Alert,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -149,7 +150,12 @@ export default function HistoryScreen() {
                 );
 
                 return (
-                  <View key={index} style={styles.barWrapper}>
+                  <TouchableOpacity key={index} style={styles.barWrapper} activeOpacity={0.8} onPress={() => {
+                    Alert.alert(
+                      `${item.label} Günü`,
+                      `${Math.round(item.value)} ml içildi.`
+                    );
+                  }}>
                     {/* Bugün: dikey yüksek bar / Diğer günler: yatay hap bar */}
                     {isToday ? (
                       <View style={[styles.todayBarContainer, { height: MAX_BAR_HEIGHT }]}>
@@ -157,19 +163,27 @@ export default function HistoryScreen() {
                           colors={[COLORS.accent, COLORS.primaryEnd]}
                           start={{ x: 0, y: 0 }}
                           end={{ x: 0, y: 1 }}
-                          style={[styles.todayBar, { height: barHeight }]}
+                          style={[styles.todayBar, { height: barHeight, justifyContent:'center' }]}
                         >
                           <Text style={styles.barValue}>{Math.round(item.value)}</Text>
                         </LinearGradient>
                       </View>
                     ) : (
-                      <View style={styles.pillBarBox}>
+                      <View style={[styles.todayBarContainer, { height: MAX_BAR_HEIGHT }]}>
                         <LinearGradient
                           colors={[COLORS.primaryStart, COLORS.primaryEnd]}
                           start={{ x: 0, y: 0 }}
-                          end={{ x: 1, y: 0 }}
-                          style={styles.pillBar}
-                        />
+                          end={{ x: 0, y: 1 }}
+                          style={[
+                            styles.todayBar,
+                            {
+                              height: barHeight,
+                              justifyContent: "center",
+                            },
+                          ]}
+                        >
+                          <Text style={styles.barValue}>{Math.round(item.value)}</Text>
+                        </LinearGradient>
                       </View>
                     )}
 
@@ -182,7 +196,7 @@ export default function HistoryScreen() {
                     >
                       {item.label}
                     </Text>
-                  </View>
+                  </TouchableOpacity>
                 );
               })}
             </View>
@@ -292,24 +306,10 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
 
-  // Diğer günler: yatay hap görünümü
-  pillBarBox: {
-    width: BAR_WIDTH,
-    height: 18,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  pillBar: {
-    width: BAR_WIDTH - 12,
-    height: 12,
-    borderRadius: 999,
-    backgroundColor: "#E6F7FF",
-  },
-
   barValue: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: barValueFontWeight,
-    color: "#FFF",
+    color: '#FFFFFF',
   },
   barLabel: {
     marginTop: 10,
