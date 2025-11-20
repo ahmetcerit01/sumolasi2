@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,584 +7,365 @@ import {
   StatusBar,
   Platform,
   Animated,
-  Easing,
-  Alert,
+  ScrollView,
   Image,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Alert,
+  Dimensions,
+  Easing
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import WaterGlass from "../components/WaterGlass";
-import { useHydrationStore } from "../storage/useHydrationStore";
-import { COLORS } from "../theme/colors";
-import { S } from "../theme/spacing";
 import { Ionicons } from "@expo/vector-icons";
 import { Audio } from "expo-av";
 import * as Notifications from "expo-notifications";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+
+import WaterGlass from "../components/WaterGlass";
+import { useHydrationStore } from "../storage/useHydrationStore";
+import { COLORS } from "../theme/colors";
+import { S } from "../theme/spacing";
+
 import subardagi from "../../assets/subardagi.png";
 import susisesi from "../../assets/susisesi.png";
 import fincan from "../../assets/fincan.png";
 
-const HEADER_H = 120;
+const { width, height } = Dimensions.get("window");
 
 export default function HomeScreen({ navigation }) {
   const insets = useSafeAreaInsets();
+  
   const totalMl = useHydrationStore((s) => s.totalMl);
   const goalMl = useHydrationStore((s) => s.goalMl);
   const add = useHydrationStore((s) => s.add);
   const resetToday = useHydrationStore((s) => s.resetToday);
   const resetAll = useHydrationStore((s) => s.resetAll);
-  const safeGoal = goalMl || 2000;
+  
+  // --- STREAK BURADA ÇEKİLİYOR ---
+  const streakDays = useHydrationStore((s) => s.streakDays);
+
+  const safeGoal = goalMl || 2500;
   const pctText = Math.round(Math.min((totalMl / Math.max(safeGoal, 1)) * 100, 100));
-  const soundRef = React.useRef(null);
-  const { streakDays } = useHydrationStore((s) => ({ streakDays: s.streakDays }));
 
-  // --- Wave & Fill Animations ---
-  const waveAnim = React.useRef(new Animated.Value(0)).current;
-  const fillHeight = React.useRef(new Animated.Value(0)).current;
-  const glassHeightRef = React.useRef(0);
-  const waveYAnim = React.useRef(new Animated.Value(0)).current;
+  const [modalVisible, setModalVisible] = useState(false);
+  const [customAmount, setCustomAmount] = useState("");
 
-  const clamp01 = (v) => Math.max(0, Math.min(1, v));
-  const ratio = clamp01(totalMl / Math.max(safeGoal, 1));
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const bgAnim = useRef(new Animated.Value(0)).current;
 
-  // preload water sound
-  React.useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        await Audio.setAudioModeAsync({
-          playsInSilentModeIOS: true,
-          allowsRecordingIOS: false,
-          staysActiveInBackground: false,
-          shouldDuckAndroid: true,
-          playThroughEarpieceAndroid: false,
-        });
-        const { sound } = await Audio.Sound.createAsync(
-          require("../../assets/sounds/water.mp3"),
-          { shouldPlay: false }
-        );
-        if (mounted) {
-          soundRef.current = sound;
-          await soundRef.current.setVolumeAsync(1.0);
-        } else {
-          await sound.unloadAsync();
-        }
-      } catch (e) {
-        console.warn("[AudioInit]", e?.message || e);
-      }
-    })();
-    return () => {
-      mounted = false;
-      if (soundRef.current) {
-        soundRef.current.unloadAsync().catch(() => {});
-        soundRef.current = null;
-      }
-    };
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(bgAnim, { toValue: 1, duration: 6000, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
+        Animated.timing(bgAnim, { toValue: 0, duration: 6000, easing: Easing.inOut(Easing.ease), useNativeDriver: false })
+      ])
+    ).start();
   }, []);
 
-  // looping waves
-  React.useEffect(() => {
-    const loop = Animated.loop(
-      Animated.timing(waveAnim, {
-        toValue: 1,
-        duration: 4000,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      })
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [waveAnim]);
+  const headerOpacity = scrollY.interpolate({
+    inputRange: [0, 100],
+    outputRange: [0, 1],
+    extrapolate: 'clamp'
+  });
 
-  // vertical bob
-  React.useEffect(() => {
-    const loopY = Animated.loop(
-      Animated.sequence([
-        Animated.timing(waveYAnim, {
-          toValue: 1,
-          duration: 1200,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(waveYAnim, {
-          toValue: 0,
-          duration: 1200,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    loopY.start();
-    return () => loopY.stop();
-  }, [waveYAnim]);
+  const titleScale = scrollY.interpolate({
+    inputRange: [-100, 0],
+    outputRange: [1.2, 1],
+    extrapolate: 'clamp'
+  });
 
-  // fill height
-  React.useEffect(() => {
-    const h = glassHeightRef.current || 0;
-    const target = h * ratio;
-    Animated.timing(fillHeight, {
-      toValue: target,
-      duration: 600,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: false,
-    }).start();
-  }, [ratio, fillHeight]);
-
+  const soundRef = useRef(null);
   const playWaterSound = async () => {
     try {
-      if (soundRef.current) {
-        try { await soundRef.current.stopAsync(); } catch {}
-        await soundRef.current.setPositionAsync(0);
-        await soundRef.current.playAsync();
-      } else {
-        const { sound } = await Audio.Sound.createAsync(
-          require("../../assets/sounds/water.mp3"),
-          { shouldPlay: true }
-        );
-        await sound.playAsync();
-        setTimeout(() => sound.unloadAsync(), 1500);
-      }
-    } catch (error) {
-      console.warn("Sound playback failed:", error?.message || error);
-    }
-  };
-
-  // --- Quick Add basış animasyonu (scale) ---
-  const scaleCup    = React.useRef(new Animated.Value(1)).current;   // Bardak
-  const scaleMug    = React.useRef(new Animated.Value(1)).current;   // Fincan
-  const scaleBottle = React.useRef(new Animated.Value(1)).current;   // Şişe
-
-  const pressIn = (val) => {
-    Animated.spring(val, {
-      toValue: 0.96,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const pressOut = (val) => {
-    Animated.spring(val, {
-      toValue: 1,
-      useNativeDriver: true,
-    }).start();
+      const { sound } = await Audio.Sound.createAsync(require("../../assets/sounds/water.mp3"));
+      await sound.playAsync();
+    } catch (error) {}
   };
 
   const quickAdd = async (ml) => {
-    // Store + ses
     add(ml);
     playWaterSound();
-    // Gün geçmişi sistemi için bugünkü değeri AsyncStorage'a yaz
-    try {
-      const newVal = totalMl + ml; // store'daki güncel değeri baz alıyoruz
-      await AsyncStorage.setItem("TODAY_CONSUMED_ML", String(newVal));
-    } catch (e) {
-      console.warn("Günlük miktar kaydedilemedi", e);
-    }
   };
 
-  const askNotifAndTest = async () => {
-    try {
-      const { status: existingStatus } = await Notifications.getPermissionsAsync();
-      let finalStatus = existingStatus;
-      if (existingStatus !== "granted") {
-        const req = await Notifications.requestPermissionsAsync({
-          ios: { allowAlert: true, allowSound: true, allowBadge: false },
-        });
-        finalStatus = req.status;
-      }
-      if (finalStatus !== "granted") return;
-      await Notifications.scheduleNotificationAsync({
-        content: { title: "💧 Su Molası", body: "Bir bardak su içme zamanı!", sound: "default" },
-        trigger: Platform.OS === "android" ? { seconds: 5, channelId: "water-reminders" } : { seconds: 5 },
-      });
-    } catch (e) {
-      console.warn("[NotifTest]", e?.message || e);
+  const handleCustomAdd = () => {
+    const amount = parseInt(customAmount);
+    if (!isNaN(amount) && amount > 0) {
+      quickAdd(amount);
+      setCustomAmount("");
+      setModalVisible(false);
+    } else {
+      Alert.alert("Hata", "Lütfen geçerli bir miktar girin.");
     }
   };
 
   const hour = new Date().getHours();
-  const greeting =
-    hour >= 5 && hour < 12 ? "Günaydın" :
-    hour >= 12 && hour < 21 ? "İyi günler" : "İyi geceler";
-  const greetingIcon =
-    hour >= 5 && hour < 12 ? "sunny-outline" :
-    hour >= 12 && hour < 21 ? "partly-sunny-outline" : "moon-outline";
+  const greeting = hour >= 5 && hour < 12 ? "Günaydın" : hour >= 12 && hour < 18 ? "Tünaydın" : "İyi Akşamlar";
+
+  const bgTopColor = bgAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['#E0F7FA', '#E3F2FD']
+  });
 
   return (
     <View style={styles.container}>
-      <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
+      <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
-      {/* bounce boşluğunu kapatan ekstra gradyan */}
-      <LinearGradient
-        pointerEvents="none"
-        colors={[COLORS.primaryStart, COLORS.primaryEnd]}
-        style={[styles.topBleed, { height: insets.top + HEADER_H + 80 }]}
-      />
+      <Animated.View style={[styles.animatedBg, { backgroundColor: bgTopColor }]}>
+        <LinearGradient
+          colors={['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.8)']}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={[styles.bubble, { top: 100, left: -20, width: 150, height: 150, backgroundColor: '#B3E5FC', opacity: 0.2 }]} />
+        <View style={[styles.bubble, { top: height * 0.4, right: -50, width: 200, height: 200, backgroundColor: '#E1BEE7', opacity: 0.15 }]} />
+      </Animated.View>
+
+      <Animated.View style={[styles.stickyHeader, { height: insets.top + 60, opacity: headerOpacity, paddingTop: insets.top }]}>
+        <Text style={styles.stickyTitle}>Bugün</Text>
+      </Animated.View>
 
       <Animated.ScrollView
-        bounces
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 140 }}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: false })}
+        scrollEventThrottle={16}
+        contentContainerStyle={{ paddingBottom: 120, paddingTop: insets.top + 20 }}
       >
-        {/* Header */}
-        <LinearGradient
-          colors={[COLORS.primaryStart, COLORS.primaryEnd]}
-          style={[styles.header, { paddingTop: S.xl + insets.top }]}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Ionicons name={greetingIcon} size={22} color="#fff" style={{ marginRight: 8 }} />
-            <Text style={styles.greet}>{greeting}</Text>
+        
+        <View style={styles.headerContainer}>
+          <Animated.View style={{ transform: [{ scale: titleScale }] }}>
+            <Text style={styles.greeting}>{greeting},</Text>
+            <Text style={styles.subGreeting}>Su molası vermeye hazır mısın?</Text>
+          </Animated.View>
+          <TouchableOpacity style={styles.profileBtn} onPress={() => navigation.navigate("Profil")}>
+             <Image source={{uri: 'https://cdn-icons-png.flaticon.com/128/11478/11478480.png'}} style={styles.avatar} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.mainCard}>
+          <View style={styles.glassBackground} />
+          
+          <View style={styles.counterRow}>
+             <View>
+                <Text style={styles.goalLabel}>Günlük Hedef</Text>
+                <Text style={styles.goalValue}>{safeGoal} ml</Text>
+             </View>
+             <View style={styles.percentBadge}>
+                <Text style={styles.percentText}>%{pctText}</Text>
+             </View>
           </View>
-        </LinearGradient>
 
-        {/* Kart */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <View style={styles.droplet}>
-              <Ionicons name="water" size={18} color={COLORS.primaryEnd} />
-            </View>
-            <Text style={styles.cardTitle}>Bugün içtiğin su</Text>
+          <View style={styles.glassWrapper}>
+             {/* YENİLENMİŞ BARDAK BİLEŞENİ */}
+             <WaterGlass totalMl={totalMl} goalMl={safeGoal} />
+             
+             {/* Orta Yazı */}
+             <View style={styles.absoluteCenter}>
+                <Text style={styles.bigTotal}>{totalMl}</Text>
+                <Text style={styles.mlLabel}>ml</Text>
+             </View>
           </View>
 
-          <Text style={styles.amount}>
-            <Text style={{ fontWeight: "800", fontSize: 32, color: "#111827" }}>
-              {totalMl}
-            </Text>
-            <Text style={{ color: "#6B7280", fontWeight: "700" }}> / {safeGoal} ml</Text>
-          </Text>
-
-          <View
-            style={styles.glassWrap}
-            onLayout={(e) => { glassHeightRef.current = e.nativeEvent.layout.height; }}
-          >
-            <WaterGlass totalMl={totalMl} goalMl={safeGoal} />
-
-            <Animated.View pointerEvents="none" style={[styles.overlayClip, { height: fillHeight }]}>
-              <LinearGradient
-                colors={["rgba(122,215,240,0.25)", "rgba(80,129,229,0.25)"]}
-                start={{ x: 0.5, y: 1 }} end={{ x: 0.5, y: 0 }}
-                style={StyleSheet.absoluteFill}
-              />
-              <Animated.View
-                pointerEvents="none"
-                style={[
-                  styles.surfaceWrap,
-                  {
-                    transform: [
-                      { translateY: waveYAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 3] }) },
-                    ],
-                  },
-                ]}
-              >
-                <Animated.View
-                  style={[
-                    styles.wave,
-                    {
-                      top: 0,
-                      transform: [{ translateX: waveAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -80] }) }],
-                      opacity: 0.6,
-                    },
-                  ]}
+          {/* --- STREAK (SERİ) KISMI --- */}
+          <View style={styles.streakContainer}>
+             <View style={[styles.streakBadge, streakDays > 0 ? styles.streakActive : styles.streakInactive]}>
+                <Ionicons 
+                  name="flame" 
+                  size={18} 
+                  color={streakDays > 0 ? "#FF5722" : "#BDBDBD"} 
                 />
-                <Animated.View
-                  style={[
-                    styles.wave,
-                    {
-                      top: 6,
-                      transform: [{ translateX: waveAnim.interpolate({ inputRange: [0, 1], outputRange: [-40, -120] }) }],
-                      opacity: 0.35,
-                    },
-                  ]}
-                />
-              </Animated.View>
-            </Animated.View>
+                <Text style={[styles.streakText, { color: streakDays > 0 ? "#E64A19" : "#9E9E9E" }]}>
+                  {streakDays > 0 ? `${streakDays} Günlük Seri!` : "Seri başlatmak için hedefini tamamla"}
+                </Text>
+             </View>
           </View>
 
-          {/* Günlük hedef % | Seri */}
-          <View style={styles.rowBoxes}>
-            <View style={styles.goalBox}>
-              <Text style={styles.boxTitle}>Günlük hedefin</Text>
-              <Text style={styles.boxValue}>%{pctText}</Text>
-            </View>
-            <View style={styles.streakBox}>
-              <Text style={styles.boxTitle}>Seri</Text>
-              <View style={styles.streakBoxRow}>
-                <Ionicons name="flame" size={16} color={COLORS.primaryEnd} style={{ marginRight: 6 }} />
-                <Text style={styles.streakBoxNumber}>{streakDays}</Text>
-                <Text style={styles.boxUnit}>gün</Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Hızlı Ekle</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickAddScroll}>
+            <QuickAddButton ml={200} icon={subardagi} label="Bardak" onPress={() => quickAdd(200)} color="#4FC3F7" />
+            <QuickAddButton ml={300} icon={fincan} label="Fincan" onPress={() => quickAdd(300)} color="#FFB74D" />
+            <QuickAddButton ml={500} icon={susisesi} label="Şişe" onPress={() => quickAdd(500)} color="#9575CD" />
+            
+            <TouchableOpacity style={styles.customAddBtn} onPress={() => setModalVisible(true)}>
+              <View style={styles.plusCircle}>
+                <Ionicons name="add" size={28} color="#fff" />
               </View>
-            </View>
-          </View>
+              <Text style={styles.customAddText}>Özel</Text>
+            </TouchableOpacity>
+          </ScrollView>
         </View>
 
-        {/* Hızlı Ekle */}
-        <View style={styles.quickAddWrap}>
-
-          {/* Bardak */}
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPressIn={() => pressIn(scaleCup)}
-            onPressOut={() => pressOut(scaleCup)}
-            onPress={() => quickAdd(200)}
-            style={{ flex: 1 }}
-          >
-            <Animated.View style={{ transform: [{ scale: scaleCup }] }}>
-              <LinearGradient colors={["#4dc7d9", "#66a6ff"]} style={styles.quickBtn}>
-                <View style={styles.quickIconWrapper}>
-                  <Image source={subardagi} style={{ width: 18, height: 18, resizeMode: "contain" }} />
-                </View>
-                <View style={styles.quickTextWrap}>
-                  <Text style={styles.quickBtnText}>Bardak</Text>
-                  <Text style={styles.quickBtnSub}>200 ml</Text>
-                </View>
-              </LinearGradient>
-            </Animated.View>
-          </TouchableOpacity>
-
-          {/* Fincan */}
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPressIn={() => pressIn(scaleMug)}
-            onPressOut={() => pressOut(scaleMug)}
-            onPress={() => quickAdd(300)}
-            style={{ flex: 1 }}
-          >
-            <Animated.View style={{ transform: [{ scale: scaleMug }] }}>
-              <LinearGradient colors={["#4dc7d9", "#66a6ff"]} style={styles.quickBtn}>
-                <View style={styles.quickIconWrapper}>
-                  <Image source={fincan} style={{ width: 18, height: 18, resizeMode: "contain" }} />
-                </View>
-                <View style={styles.quickTextWrap}>
-                  <Text style={styles.quickBtnText}>Fincan</Text>
-                  <Text style={styles.quickBtnSub}>300 ml</Text>
-                </View>
-              </LinearGradient>
-            </Animated.View>
-          </TouchableOpacity>
-
-          {/* Şişe */}
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPressIn={() => pressIn(scaleBottle)}
-            onPressOut={() => pressOut(scaleBottle)}
-            onPress={() => quickAdd(500)}
-            style={{ flex: 1 }}
-          >
-            <Animated.View style={{ transform: [{ scale: scaleBottle }] }}>
-              <LinearGradient colors={["#4dc7d9", "#66a6ff"]} style={styles.quickBtn}>
-                <View style={styles.quickIconWrapper}>
-                  <Image source={susisesi} style={{ width: 18, height: 18, resizeMode: "contain" }} />
-                </View>
-                <View style={styles.quickTextWrap}>
-                  <Text style={styles.quickBtnText}>0.5 L Şişe</Text>
-                  <Text style={styles.quickBtnSub}>500 ml</Text>
-                </View>
-              </LinearGradient>
-            </Animated.View>
-          </TouchableOpacity>
-
+        <View style={styles.gridContainer}>
+            <MenuCard 
+              title="Geçmiş" 
+              icon="calendar-outline" 
+              color="#4DB6AC" 
+              onPress={() => navigation.navigate("Geçmiş")} 
+            />
+            <MenuCard 
+              title="Hatırlatıcı" 
+              icon="alarm-outline" 
+              color="#E57373" 
+              onPress={() => navigation.navigate("Hatırlatıcılar")} 
+            />
+            <MenuCard 
+              title="Rozetler" 
+              icon="ribbon-outline" 
+              color="#F06292" 
+              onPress={() => navigation.navigate("Rozetler")} 
+            />
+            <MenuCard 
+              title="Profil" 
+              icon="person-outline" 
+              color="#7986CB" 
+              onPress={() => navigation.navigate("Profil")} 
+            />
         </View>
 
-        {/* Motivasyon */}
-        <View style={styles.motivation}>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Text style={styles.motivationTitle}>Harika gidiyorsun!</Text>
-            <Ionicons name="water" size={18} color={COLORS.primaryEnd} style={{ marginLeft: 6 }} />
-          </View>
-          <Text style={styles.motivationSub}>Günün %{pctText}'ını tamamladın.</Text>
-          <Text style={styles.motivationSub}>
-            {new Date().toLocaleDateString("tr-TR")} • Hedef: {safeGoal} ml
-          </Text>
+        <View style={styles.devPanel}>
+           <Text style={styles.devTitle}>Geliştirici Seçenekleri</Text>
+           <View style={styles.devRow}>
+             <TouchableOpacity onPress={resetToday}><Text style={styles.devLink}>Bugünü Sıfırla</Text></TouchableOpacity>
+             <Text style={{color:'#ccc', marginHorizontal: 8}}>|</Text>
+             <TouchableOpacity onPress={resetAll}><Text style={[styles.devLink, {color:'#E57373'}]}>Her Şeyi Sil</Text></TouchableOpacity>
+           </View>
         </View>
 
-        {/* Aksiyonlar */}
-        <View style={styles.actionsWrap}>
-          <View style={styles.actionsRow}>
-            <TouchableOpacity
-              style={styles.secondary}
-              onPress={() => navigation.navigate("Hatırlatıcılar")}
-            >
-              <Ionicons name="alarm-outline" size={18} color={COLORS.primaryEnd} />
-              <Text style={styles.secondaryTxt}>Hatırlatıcı</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.secondary}
-              disabled={totalMl < safeGoal}
-              onPress={resetToday}
-            >
-              <Ionicons name="refresh-outline" size={18} color={totalMl < safeGoal ? "#9CA3AF" : "#111827"} />
-              <Text style={[styles.secondaryTxt, { color: totalMl < safeGoal ? "#9CA3AF" : "#111827" }]}>
-                Bugünü Sıfırla
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.actionsRow}>
-            <TouchableOpacity
-              style={styles.danger}
-              onPress={() => {
-                resetAll();
-                Alert.alert("Sıfırlandı", "Tüm ilerleme, rozetler ve hedefler sıfırlandı.");
-              }}
-            >
-              <Text style={styles.dangerTxt}>Tümünü Sıfırla (Test)</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.actionsRow}>
-            <TouchableOpacity style={styles.secondary} onPress={askNotifAndTest}>
-              <Text style={styles.secondaryTxt}>Test Bildirimi</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
       </Animated.ScrollView>
+
+      <Modal animationType="slide" transparent={true} visible={modalVisible} onRequestClose={() => setModalVisible(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalOverlay}>
+          <TouchableOpacity style={{flex:1}} onPress={() => setModalVisible(false)} />
+          <View style={styles.modalContent}>
+            <View style={styles.modalIndicator} />
+            <Text style={styles.modalTitle}>Miktar Girin</Text>
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={styles.input}
+                placeholder="Örn: 150"
+                keyboardType="numeric"
+                autoFocus
+                value={customAmount}
+                onChangeText={setCustomAmount}
+                maxLength={4}
+              />
+              <Text style={styles.unitText}>ml</Text>
+            </View>
+            <TouchableOpacity style={styles.saveBtn} onPress={handleCustomAdd}>
+              <Text style={styles.saveBtnText}>Ekle</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
     </View>
   );
 }
 
+const QuickAddButton = ({ ml, icon, label, onPress, color }) => (
+  <TouchableOpacity activeOpacity={0.8} onPress={onPress} style={styles.quickItem}>
+    <View style={[styles.iconCircle, { backgroundColor: color + '20' }]}> 
+       <Image source={icon} style={{ width: 24, height: 24, resizeMode:'contain' }} />
+    </View>
+    <Text style={styles.quickLabel}>{label}</Text>
+    <Text style={styles.quickMl}>{ml} ml</Text>
+  </TouchableOpacity>
+);
+
+const MenuCard = ({ title, icon, color, onPress }) => (
+  <TouchableOpacity activeOpacity={0.9} onPress={onPress} style={styles.menuCard}>
+    <View style={[styles.menuIconBox, { backgroundColor: color + '15' }]}>
+      <Ionicons name={icon} size={24} color={color} />
+    </View>
+    <Text style={styles.menuTitle}>{title}</Text>
+  </TouchableOpacity>
+);
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.bg },
+  container: { flex: 1, backgroundColor: '#F8F9FA' },
+  
+  animatedBg: { ...StyleSheet.absoluteFillObject },
+  bubble: { position: 'absolute', borderRadius: 999 },
 
-  topBleed: {
-    position: "absolute",
-    top: 0, left: 0, right: 0,
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
+  stickyHeader: {
+    position: 'absolute', top: 0, left: 0, right: 0,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    zIndex: 10,
+    borderBottomWidth: 1, borderBottomColor: '#F0F0F0',
+    alignItems: 'center', justifyContent: 'center'
   },
+  stickyTitle: { fontSize: 16, fontWeight: '700', color: '#333' },
 
-  header: {
-    paddingHorizontal: S.xl,
-    paddingBottom: S.xl + 12,
-    minHeight: HEADER_H,
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  greet: { color: "#fff", fontSize: 22, fontWeight: "800" },
+  headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingHorizontal: S.xl, marginBottom: 20 },
+  greeting: { fontSize: 32, fontWeight: '800', color: '#1A237E', letterSpacing: -1 },
+  subGreeting: { fontSize: 15, color: '#5C6BC0', marginTop: 4, fontWeight: '500' },
+  profileBtn: { shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, elevation: 5 },
+  avatar: { width: 50, height: 50, borderRadius: 25, borderWidth: 2, borderColor: '#fff' },
 
-  card: {
+  mainCard: {
     marginHorizontal: S.xl,
-    marginTop: -24,
-    backgroundColor: COLORS.card,
-    borderRadius: 24,
-    padding: S.xl,
-    shadowColor: COLORS.shadow,
-    shadowOpacity: 0.9,
-    shadowRadius: 16,
-    elevation: 2,
+    borderRadius: 32,
+    padding: 24,
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    shadowColor: "#5C6BC0", shadowOpacity: 0.15, shadowRadius: 30, elevation: 15,
+    position: 'relative',
+    overflow: 'hidden',
   },
-  cardHeader: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8 },
-  droplet: {
-    width: 34, height: 34, borderRadius: 17,
-    backgroundColor: "#E6F6FF", alignItems: "center", justifyContent: "center",
+  glassBackground: {
+    position: 'absolute', top:0, left:0, right:0, bottom:0,
+    backgroundColor: 'rgba(255,255,255,0.6)',
   },
-  cardTitle: { color: COLORS.subtext, fontSize: 14, fontWeight: "700" },
-  amount: { marginTop: 4 },
+  counterRow: { width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  goalLabel: { fontSize: 12, color: '#9FA8DA', fontWeight: '700', textTransform: 'uppercase' },
+  goalValue: { fontSize: 20, color: '#3949AB', fontWeight: '800' },
+  percentBadge: { backgroundColor: '#E8EAF6', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
+  percentText: { fontWeight: '800', color: '#3949AB' },
 
-  glassWrap: {
-    alignItems: "center",
-    marginTop: S.md,
-    position: "relative",
-    alignSelf: "center",
-  },
-  overlayClip: {
-    position: "absolute",
-    left: 0, right: 0, bottom: 0,
-    overflow: "hidden",
-    borderRadius: 16,
-  },
-  surfaceWrap: { position: "absolute", top: 0, left: 0, right: 0, height: 24 },
-  wave: {
-    position: "absolute", left: 0, right: 0, top: 0, height: 24,
-    backgroundColor: "rgba(255,255,255,0.35)", borderRadius: 50,
-    shadowColor: "#ffffff", shadowOpacity: 0.3, shadowRadius: 20,
-  },
+  glassWrapper: { position: 'relative', alignItems: 'center', justifyContent: 'center', marginVertical: 5 },
+  absoluteCenter: { position: 'absolute', alignItems: 'center', justifyContent: 'center', top: 0, left: 0, right: 0, bottom: 0 },
+  bigTotal: { fontSize: 48, fontWeight: '900', color: '#1565C0', textShadowColor:'rgba(255,255,255,0.5)', textShadowOffset:{width:0, height:1}, textShadowRadius:2 },
+  mlLabel: { fontSize: 16, fontWeight: '600', color: '#5C6BC0', marginTop: -5 },
 
-  /* Günlük hedef & Seri */
-  rowBoxes: {
-    marginTop: S.lg,
-    flexDirection: "row",
-    alignItems: "stretch",
-    gap: S.lg,
-  },
-  goalBox: {
-    flex: 1, backgroundColor: "#F7FAFF",
-    borderWidth: 1, borderColor: "#E6EEF9",
-    borderRadius: 14, paddingVertical: 12, paddingHorizontal: 14,
-    justifyContent: "center",
-  },
-  streakBox: {
-    flex: 1, backgroundColor: "#F7FAFF",
-    borderWidth: 1, borderColor: "#E6EEF9",
-    borderRadius: 14, paddingVertical: 12, paddingHorizontal: 14,
-    justifyContent: "center",
-  },
-  boxTitle: { color: COLORS.subtext, fontSize: 12, fontWeight: "700", marginBottom: 6 },
-  boxValue: { color: COLORS.primaryEnd, fontSize: 22, fontWeight: "800", lineHeight: 24 },
-  streakBoxRow: { flexDirection: "row", alignItems: "flex-end" },
-  streakBoxNumber: { color: COLORS.text, fontSize: 22, fontWeight: "800", lineHeight: 24, marginRight: 6 },
-  boxUnit: { color: COLORS.subtext, fontSize: 13, fontWeight: "600", marginBottom: 1 },
+  /* STREAK STYLE */
+  streakContainer: { marginTop: 20, alignItems: 'center', width: '100%' },
+  streakBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
+  streakActive: { backgroundColor: '#FFF3E0', borderColor: '#FFE0B2' },
+  streakInactive: { backgroundColor: '#F5F5F5', borderColor: '#E0E0E0' },
+  streakText: { fontWeight: '700', marginLeft: 6, fontSize: 13 },
 
-  /* Hızlı Ekle */
-  quickAddWrap: {
-    marginHorizontal: S.xl,
-    marginTop: S.lg,
-    flexDirection: "row",
-    gap: S.lg,
-  },
-  quickBtn: {
-    borderRadius: 25,
-    paddingVertical: 14,
-    paddingHorizontal: 18,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 16,
-    elevation: 2,
-    gap: 8,
-  },
-  quickBtnText: { color: "#fff", fontWeight: "800", fontSize: 14, lineHeight: 16 },
-  quickBtnSub: { color: "rgba(255,255,255,0.85)", fontWeight: "600", fontSize: 12, lineHeight: 14 },
+  section: { marginTop: 30 },
+  sectionTitle: { paddingHorizontal: S.xl, fontSize: 18, fontWeight: '800', color: '#263238', marginBottom: 15 },
+  quickAddScroll: { paddingHorizontal: S.xl, paddingBottom: 20 },
+  quickItem: { backgroundColor: '#fff', width: 100, height: 120, borderRadius: 24, marginRight: 12, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 10, elevation: 3 },
+  iconCircle: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
+  quickLabel: { fontSize: 14, fontWeight: '700', color: '#455A64' },
+  quickMl: { fontSize: 11, fontWeight: '600', color: '#90A4AE', marginTop: 2 },
 
-  quickIconWrapper: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: "rgba(255,255,255,0.25)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  quickTextWrap: { marginLeft: 4 },
+  customAddBtn: { width: 80, height: 120, alignItems: 'center', justifyContent: 'center', marginRight: S.xl },
+  plusCircle: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#ECEFF1', alignItems: 'center', justifyContent: 'center', marginBottom: 8, borderWidth: 2, borderColor: '#CFD8DC', borderStyle: 'dashed' },
+  customAddText: { fontSize: 12, fontWeight: '700', color: '#78909C' },
 
-  /* Motivasyon */
-  motivation: {
-    marginHorizontal: S.xl,
-    marginTop: S.xl,
-    backgroundColor: COLORS.card,
-    borderRadius: 20,
-    padding: S.lg,
-  },
-  motivationTitle: { fontSize: 18, fontWeight: "800", color: COLORS.text, marginBottom: 2 },
-  motivationSub: { color: COLORS.subtext, marginTop: 2 },
+  gridContainer: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: S.xl, marginTop: 10, justifyContent: 'space-between' },
+  menuCard: { width: '48%', backgroundColor: '#fff', padding: 16, borderRadius: 20, marginBottom: 16, flexDirection: 'row', alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 8, elevation: 2 },
+  menuIconBox: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  menuTitle: { fontSize: 14, fontWeight: '700', color: '#374151' },
 
-  /* Aksiyonlar */
-  actionsWrap: { marginHorizontal: S.xl, marginTop: S.lg, gap: S.md },
-  actionsRow: { flexDirection: "row", gap: S.lg, alignItems: "center" },
-  secondary: {
-    flex: 1, borderWidth: 2, borderColor: "#BFD8FF",
-    borderRadius: 16, alignItems: "center", justifyContent: "center",
-    paddingVertical: 14, flexDirection: "row", gap: 8,
-  },
-  secondaryTxt: { color: COLORS.primaryEnd, fontWeight: "800" },
-  danger: {
-    flex: 1, borderWidth: 2, borderColor: "#DC2626",
-    borderRadius: 16, alignItems: "center", justifyContent: "center",
-    paddingVertical: 16,
-  },
-  dangerTxt: { color: "#DC2626", fontWeight: "800" },
+  devPanel: { marginTop: 20, alignItems: 'center', opacity: 0.6 },
+  devTitle: { fontSize: 10, textTransform: 'uppercase', color: '#B0BEC5', fontWeight: '700' },
+  devRow: { flexDirection: 'row', gap: 15, marginTop: 5 },
+  devLink: { fontSize: 12, color: '#78909C', fontWeight: '600' },
+
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 30, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 20 },
+  modalIndicator: { width: 40, height: 4, backgroundColor: '#E0E0E0', borderRadius: 2, marginBottom: 20 },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: '#263238', marginBottom: 20 },
+  inputWrapper: { flexDirection: 'row', alignItems: 'baseline', borderBottomWidth: 2, borderBottomColor: '#29B6F6', marginBottom: 30 },
+  input: { fontSize: 40, fontWeight: '700', color: '#29B6F6', padding: 10, minWidth: 100, textAlign: 'center' },
+  unitText: { fontSize: 18, color: '#90A4AE', fontWeight: '600' },
+  saveBtn: { backgroundColor: '#29B6F6', width: '100%', padding: 18, borderRadius: 20, alignItems: 'center', shadowColor: '#29B6F6', shadowOpacity: 0.3, shadowRadius: 10 },
+  saveBtnText: { color: '#fff', fontSize: 18, fontWeight: '800' },
 });

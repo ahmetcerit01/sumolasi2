@@ -1,23 +1,40 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Switch, KeyboardAvoidingView, Platform, ScrollView, Alert, Modal, DeviceEventEmitter } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Switch, KeyboardAvoidingView, Platform, ScrollView, Alert, DeviceEventEmitter } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useHydrationStore } from '../storage/useHydrationStore';
 import { COLORS } from '../theme/colors';
 import { S } from '../theme/spacing';
-import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
+import { Ionicons } from '@expo/vector-icons';
 
-// ------- helpers -------
-
-// RemindersScreen.js (üst kısma ekle)
+// ------- SABİTLER -------
 const REMINDER_IDS_KEY = 'SUMOLASI_REMINDER_IDS_V1';
 const REMINDER_ENABLED_KEY = 'REMINDER_ENABLED';
 const REMINDER_INTERVAL_HOURS_KEY = 'REMINDER_INTERVAL_HOURS';
 const LAST_SCHEDULED_DATE_KEY = 'REMINDER_LAST_SCHEDULED_DATE';
 const IS_EXPO_GO = Constants?.appOwnership === 'expo';
+
+const pad = (n) => (n < 10 ? `0${n}` : `${n}`);
+
+// Helper: Bugünün belirli saati
+const todayAt = (h, m) => {
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return d;
+};
+
+const todayKey = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+};
+
+const setLastScheduledToday = async () => {
+  try { await AsyncStorage.setItem(LAST_SCHEDULED_DATE_KEY, todayKey()); } catch {}
+};
+
+// --- BİLDİRİM FONKSİYONLARI ---
 
 async function ensureAndroidChannel() {
   if (Platform.OS !== 'android') return;
@@ -44,76 +61,44 @@ async function cancelExistingReminders() {
 }
 
 async function scheduleOneDailyCalendar({ hour, minute }) {
-  // second:5 kaldırıldı, sadece saat/dakika ve repeats ile tetiklenir
-  const trigger = {
-    hour,
-    minute,
-    repeats: true,
-    ...(Platform.OS === 'android' ? { channelId: 'hydration-daily' } : {}),
-  };
-
+  const trigger = { hour, minute, repeats: true, ...(Platform.OS === 'android' ? { channelId: 'hydration-daily' } : {}) };
   const id = await Notifications.scheduleNotificationAsync({
-    content: {
-      title: 'Su Molası',
-      body: 'Bir bardak su içme zamanı!',
-      sound: 'default',
-      priority: Notifications.AndroidNotificationPriority.HIGH,
-      data: { type: 'WATER_REMINDER' },
-    },
+    content: { title: 'Su Molası', body: 'Bir bardak su içme zamanı!', sound: 'default', data: { type: 'WATER_REMINDER' } },
     trigger,
   });
   return id;
 }
 
-// Expo Go fallback: schedule one-off notification for an exact Date
 async function scheduleOneExactDate(dateObj) {
   const id = await Notifications.scheduleNotificationAsync({
-    content: {
-      title: 'Su Molası',
-      body: 'Bir bardak su içme zamanı!',
-      sound: 'default',
-      priority: Notifications.AndroidNotificationPriority.HIGH,
-      data: { type: 'WATER_REMINDER' },
-    },
-    // Updated API: pass trigger as an object with type 'date'
+    content: { title: 'Su Molası', body: 'Bir bardak su içme zamanı!', sound: 'default', data: { type: 'WATER_REMINDER' } },
     trigger: { type: 'date', date: dateObj },
   });
   return id;
 }
 
-async function scheduleDailyRemindersCalendar(times /* [{hour, minute}] */) {
-  // izin
+async function scheduleDailyRemindersCalendar(times) {
   const { status } = await Notifications.requestPermissionsAsync();
   if (status !== 'granted') throw new Error('Bildirim izni verilmedi.');
 
   await ensureAndroidChannel();
   await cancelExistingReminders();
 
-  // normalize + tekilleştir + sırala
   const normalized = [...times]
-    .map(t => ({
-      hour: Math.max(0, Math.min(23, Number(t.hour))),
-      minute: Math.max(0, Math.min(59, Number(t.minute))),
-    }))
+    .map(t => ({ hour: Math.max(0, Math.min(23, Number(t.hour))), minute: Math.max(0, Math.min(59, Number(t.minute))) }))
     .filter((t, i, arr) => arr.findIndex(x => x.hour === t.hour && x.minute === t.minute) === i)
     .sort((a, b) => (a.hour - b.hour) || (a.minute - b.minute));
 
   const ids = [];
   if (IS_EXPO_GO) {
-    // Expo Go fallback: schedule exact-date one-offs for *today* (no repeats),
-    // and push any slot that is in the past or too close to "now" to *tomorrow*.
     const now = Date.now();
     for (const t of normalized) {
       let d = todayAt(t.hour, t.minute);
-      // if scheduled time is within the next 15 seconds or already past, move to next day
-      if (d.getTime() <= now + 15000) {
-        d = new Date(d.getTime() + 24 * 60 * 60 * 1000);
-      }
+      if (d.getTime() <= now + 15000) d = new Date(d.getTime() + 24 * 60 * 60 * 1000);
       const id = await scheduleOneExactDate(d);
       ids.push(id);
     }
   } else {
-    // Real build/dev-client: use reliable repeating calendar triggers
     for (const t of normalized) {
       const id = await scheduleOneDailyCalendar(t);
       ids.push(id);
@@ -123,477 +108,263 @@ async function scheduleDailyRemindersCalendar(times /* [{hour, minute}] */) {
   return ids.length;
 }
 
-const pad = (n) => (n < 10 ? `0${n}` : `${n}`);
-
-const AWAKE_START_H = 9;
-const AWAKE_START_M = 0;
-const AWAKE_END_H   = 23;
-const AWAKE_END_M   = 30;
-
-// BUGÜN h:m
-const todayAt = (h, m) => {
-  const d = new Date();
-  d.setHours(h, m, 0, 0);
-  return d;
-};
-
-// Bugünün tarih damgası YYYY-MM-DD (isteğe bağlı)
-const todayKey = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-};
-
-const setLastScheduledToday = async () => {
-  try { await AsyncStorage.setItem(LAST_SCHEDULED_DATE_KEY, todayKey()); } catch {}
-};
-
-// Store + Storage birleştirerek bugünkü tüketimi olabilecek en doğru şekilde bul
-const getConsumedTodaySafe = async (storeValue) => {
-  let best = Number(storeValue || 0);
-  const candidateKeys = [
-    'TODAY_CONSUMED_ML',
-    'consumedToday',
-    'hydration_today_ml',
-    'WATER_TODAY_ML',
-    `TODAY_CONSUMED_ML_${todayKey()}`,
-  ];
-  try {
-    const results = await AsyncStorage.multiGet(candidateKeys);
-    for (const [, v] of results) {
-      const num = Number(v);
-      if (Number.isFinite(num)) best = Math.max(best, num);
-    }
-  } catch {}
-  // Opsiyonel günlük log toparlama
-  try {
-    const log = await AsyncStorage.getItem('INTAKE_LOG'); // [{ts, ml}, ...] ise topla
-    if (log) {
-      const arr = JSON.parse(log);
-      if (Array.isArray(arr)) {
-        const start = todayAt(0, 0).getTime();
-        const end = todayAt(23, 59).getTime();
-        const sum = arr.reduce((acc, it) => {
-          const ts = new Date(it?.ts || 0).getTime();
-          const ml = Number(it?.ml || 0);
-          if (ts >= start && ts <= end && Number.isFinite(ml)) acc += ml;
-          return acc;
-        }, 0);
-        best = Math.max(best, sum);
-      }
-    }
-  } catch {}
-  return best;
-};
+// ------- COMPONENT -------
 
 export default function RemindersScreen() {
-  // -------- store --------
-  const goalMl    = useHydrationStore(s => s.goalMl);
-  const setGoalMl = useHydrationStore(s => s.setGoalMl);
+  const goalMl = useHydrationStore(s => s.goalMl);
+  const todayTotal = useHydrationStore(s => s.totalMl);
 
-  const storeConsumedToday = useHydrationStore(s =>
-    s.todayConsumedMl ?? s.todayTotalMl ?? s.totalTodayMl ?? s.todayMl ?? 0
-  ) || 0;
-
-  // -------- local ui state --------
-  const [goal, setGoal] = useState(Number(goalMl || 2000));
   const [enabled, setEnabled] = useState(true);
-  const [intervalHours, setIntervalHours] = useState(2); // 1 | 1.5 | 2 | 3 | 4
+  const [intervalHours, setIntervalHours] = useState(2);
+  const [wakeTime, setWakeTime] = useState({ h: 9, m: 0 });
+  const [sleepTime, setSleepTime] = useState({ h: 23, m: 0 });
+  const [previewTimes, setPreviewTimes] = useState([]);
 
-  // Hedef picker (opsiyonel – mevcut UI korunuyor)
-  const [showGoalPicker, setShowGoalPicker] = useState(false);
-  const [tempGoal, setTempGoal] = useState(goal);
-  const openGoalPicker   = () => { setTempGoal(goal); setShowGoalPicker(true); };
-  const confirmGoal      = () => { setShowGoalPicker(false); setGoal(tempGoal); };
-  const cancelGoal       = () => { setShowGoalPicker(false); };
-
-  useEffect(() => { setGoal(Number(goalMl || 2000)); }, [goalMl]);
-
-  // Load persisted settings on mount
+  // Profil ve Ayarları Yükle
   useEffect(() => {
     (async () => {
       try {
+        const profileRaw = await AsyncStorage.getItem('ONBOARD_PROFILE');
+        if (profileRaw) {
+          const p = JSON.parse(profileRaw);
+          if (p.wakeAt) { const [h, m] = p.wakeAt.split(':').map(Number); if (!isNaN(h)) setWakeTime({ h, m }); }
+          if (p.sleepAt) { const [h, m] = p.sleepAt.split(':').map(Number); if (!isNaN(h)) setSleepTime({ h, m }); }
+        }
         const kv = await AsyncStorage.multiGet([REMINDER_ENABLED_KEY, REMINDER_INTERVAL_HOURS_KEY]);
         const enabledStr = kv.find(k => k[0] === REMINDER_ENABLED_KEY)?.[1];
         const intervalStr = kv.find(k => k[0] === REMINDER_INTERVAL_HOURS_KEY)?.[1];
-        if (enabledStr !== null && enabledStr !== undefined) {
-          setEnabled(enabledStr === '1' || enabledStr === 'true');
-        }
-        const parsedInterval = Number(intervalStr);
-        if (Number.isFinite(parsedInterval) && parsedInterval > 0) {
-          setIntervalHours(parsedInterval);
-        }
+        
+        if (enabledStr !== null) setEnabled(enabledStr === '1');
+        if (intervalStr) setIntervalHours(Number(intervalStr));
       } catch {}
     })();
   }, []);
 
-  // Ensure auto scheduling on launch
-  const ensureAutoScheduleForToday = async () => {
-    try {
-      const hasPerm = await ensurePermission();
-      if (!hasPerm) return;
-      await ensureAndroidChannel();
-      // read enabled + interval + existing ids + last scheduled date
-      const [[, enabledStr], [, intervalStr], [, lastDate], [, rawIds]] =
-        await AsyncStorage.multiGet([REMINDER_ENABLED_KEY, REMINDER_INTERVAL_HOURS_KEY, LAST_SCHEDULED_DATE_KEY, REMINDER_IDS_KEY]);
-      const persistedEnabled = (enabledStr === '1' || enabledStr === 'true');
-      const interval = Number(intervalStr);
-      const ids = rawIds ? JSON.parse(rawIds) : [];
-      if (!persistedEnabled || !Number.isFinite(interval) || interval <= 0) return;
-      const dates = generateTimesFixedInterval(interval);
-      const times = dates.map(d => ({ hour: d.getHours(), minute: d.getMinutes() }));
-      if (IS_EXPO_GO) {
-        // expo go: every day we need fresh one-offs
-        if (lastDate !== todayKey()) {
-          await cancelExistingReminders();
-          await scheduleDailyRemindersCalendar(times);
-          await setLastScheduledToday();
-        }
-      } else {
-        // dev/prod: repeats daily; schedule once if none exist
-        if (!ids || ids.length === 0) {
-          await scheduleDailyRemindersCalendar(times);
-        }
-      }
-    } catch {}
-  };
-
+  // --- PREVIEW OLUŞTURUCU (GÖRSEL ÇİZELGE) ---
+  // Bu fonksiyon "Şu an saat kaç" diye bakmaz. Sadece ideal bir günü simüle eder.
   useEffect(() => {
-    ensureAutoScheduleForToday();
-  }, []);
+    const generatePreview = () => {
+      const intervalMinutes = Math.round(intervalHours * 60);
+      
+      // Bugünün tarihi üzerinden sanal başlangıç ve bitiş oluştur
+      let start = new Date();
+      start.setHours(wakeTime.h, wakeTime.m, 0, 0);
+      
+      let end = new Date();
+      end.setHours(sleepTime.h, sleepTime.m, 0, 0);
 
-  // Android heads-up kanalı
-  useEffect(() => {
-    (async () => {
-      if (Platform.OS === 'android') {
-        try {
-          await Notifications.setNotificationChannelAsync('hydration-daily', {
-            name: 'Su Molası',
-            importance: Notifications.AndroidImportance.HIGH,
-            sound: 'default',
-            vibrationPattern: [0, 250, 250, 250],
-            lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-          });
-        } catch {}
+      // Eğer uyku saati uyanmadan küçükse (örn: 01:00), gece yarısını geçmiş demektir, yarına atalım
+      if (end <= start) {
+        end.setDate(end.getDate() + 1);
       }
-    })();
-  }, []);
 
-  const ensurePermission = async () => {
-    const { status } = await Notifications.getPermissionsAsync();
-    if (status !== 'granted') {
-      const req = await Notifications.requestPermissionsAsync({
-        ios: { allowAlert: true, allowSound: true, allowBadge: false }
-      });
-      return req.status === 'granted';
+      const list = [];
+      // İlk bildirim uyanır uyanmaz değil, 1. aralıkta başlasın (Tercih meselesi, start direkt eklenirse uyanır uyanmaz olur)
+      // Biz burada "start"tan itibaren ekleyelim.
+      let current = new Date(start.getTime());
+      
+      // Uyanma anını da ekleyelim mi? Genelde uyanınca su içilir.
+      // Ama biz interval kadar sonrasını ekleyelim ki "aralık" mantığı otursun.
+      current = new Date(current.getTime() + intervalMinutes * 60000);
+
+      while (current <= end) {
+        list.push(new Date(current));
+        current = new Date(current.getTime() + intervalMinutes * 60000);
+      }
+      
+      setPreviewTimes(list);
+    };
+
+    generatePreview();
+  }, [intervalHours, wakeTime, sleepTime]);
+
+
+  // --- GERÇEK PLANLAMA (BU DEĞİŞMEDİ) ---
+  const onSave = async () => {
+    if (!enabled) {
+      await cancelExistingReminders();
+      await AsyncStorage.setItem(REMINDER_ENABLED_KEY, '0');
+      Alert.alert('Kaydedildi', 'Hatırlatıcılar kapatıldı.');
+      return;
     }
-    return true;
-  };
+    if (todayTotal >= goalMl) {
+      await cancelExistingReminders();
+      Alert.alert('Harika!', 'Bugünkü hedefini zaten tamamladın.');
+      return;
+    }
 
-  // Bildirim içeriği — sade metin
-  const buildContent = () => ({
-    title: 'Su Molası',
-    body: 'Bir bardak su içme zamanı!',
-    sound: 'default',
-    data: { type: 'WATER_REMINDER' },
-  });
+    // Gerçek planlamada "ŞİMDİDEN SONRAKİ" zamanları bulmamız lazım
+    const intervalMinutes = Math.round(intervalHours * 60);
+    const start = todayAt(wakeTime.h, wakeTime.m);
+    let end = todayAt(sleepTime.h, sleepTime.m);
+    if (end < start) end = todayAt(23, 59);
 
-  // 09:00–23:30 arasında sabit aralık (saat) listele
-  const generateTimesFixedInterval = (hours) => {
-    const intervalMinutes = Math.round(hours * 60); // 1.5 saat = 90 dk
-    const start = todayAt(AWAKE_START_H, AWAKE_START_M);
-    const end   = todayAt(AWAKE_END_H,   AWAKE_END_M);
-
-    // Şimdiden sonraki en yakın slot (en az +90sn)
     const now = new Date();
+    // Başlangıç: En az 90sn sonra
     let t = new Date(Math.max(start.getTime(), now.getTime() + 90 * 1000));
 
-    // t'yi ızgaraya oturt
-    const minutesSinceStart = Math.max(0, Math.floor((t - start) / 60000));
-    const offsetToNext = minutesSinceStart % intervalMinutes === 0
-      ? 0
-      : (intervalMinutes - (minutesSinceStart % intervalMinutes));
-    t = new Date(t.getTime() + offsetToNext * 60000);
+    // Izgara hesabı
+    const diffMs = t - start;
+    if (diffMs > 0) {
+      const minutesSinceStart = Math.floor(diffMs / 60000);
+      const offsetToNext = minutesSinceStart % intervalMinutes === 0 
+        ? 0 
+        : (intervalMinutes - (minutesSinceStart % intervalMinutes));
+      t = new Date(t.getTime() + offsetToNext * 60000);
+    }
 
-    const out = [];
+    const timesToSchedule = [];
     while (t <= end) {
-      out.push(new Date(t));
+      timesToSchedule.push({ hour: t.getHours(), minute: t.getMinutes() });
       t = new Date(t.getTime() + intervalMinutes * 60000);
     }
-    return out;
-  };
 
-  // --- YARDIMCI FONKSİYONLAR ---
-
-  // YYYY-MM-DD HH:MM formatında string döndürür
-  function formatForConsole(d) {
-    if (!d || !(d instanceof Date)) return '';
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  }
-
-  // Sıradaki planlanan zamanı hesapla
-  function computeNextPlannedTime() {
-    const now = new Date();
-    const slots = generateTimesFixedInterval(intervalHours);
-    // Şimdiden sonraki ilk slotu bul
-    const next = slots.find(d => d.getTime() > now.getTime());
-    if (next) return next;
-    // Bugün bitti, yarın sabah ilk slotu döndür
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(AWAKE_START_H, AWAKE_START_M, 0, 0);
-    return tomorrow;
-  }
-
-  // Sıradaki bildirimi konsola yaz ve alert göster
-  const onLogNextNotificationTime = async () => {
-    try {
-      const next = computeNextPlannedTime();
-      if (next && next instanceof Date && !isNaN(next.getTime())) {
-        console.log('[SuMolası] Next reminder at:', formatForConsole(next));
-        Alert.alert('Bilgi', 'Sıradaki bildirim: ' + formatForConsole(next));
-      } else {
-        Alert.alert('Bilgi', 'Bugün/yarın için uygun zaman bulunamadı.');
-      }
-    } catch (e) {
-      Alert.alert('Hata', e?.message || 'Hesaplanamadı');
-    }
-  };
-
-  const onSave = async () => {
-  // 1) hedefi doğrula + store'a yaz
-  const newGoal = Number(goal);
-  if (!Number.isFinite(newGoal) || newGoal <= 0) {
-    Alert.alert('Hedef geçersiz', 'Günlük hedef (ml) pozitif bir sayı olmalı.');
-    return;
-  }
-  try { if (typeof setGoalMl === 'function') setGoalMl(newGoal); } catch {}
-
-  // 2) bugünkü tüketimi topla (hedef tamam ise kurma)
-  const effectiveConsumed = await getConsumedTodaySafe(storeConsumedToday);
-
-  // 3) Hatırlatıcılar kapalıysa yalnızca mevcut planları iptal et
-  if (!enabled) {
-    await cancelExistingReminders();
-    Alert.alert('Kaydedildi', 'Hatırlatıcılar kapatıldı ve tüm planlar iptal edildi.');
-    return;
-  }
-
-  // 4) Hedef zaten tamamlandıysa planlama yapma
-  if (effectiveConsumed >= newGoal) {
-    await cancelExistingReminders();
-    Alert.alert('Harika!', 'Günlük hedef tamamlanmış. Yeni hatırlatma planlanmadı.');
-    return;
-  }
-
-  // 5) Aralıklardan saat:dakika listesi üret
-  const dates = generateTimesFixedInterval(intervalHours); // mevcut fonksiyonun
-  const times = dates.map(d => ({ hour: d.getHours(), minute: d.getMinutes() }));
-
-  try {
-    // 6) Günlük tekrarlı takvim tetikleyicileri kur
-    const count = await scheduleDailyRemindersCalendar(times);
-
-    // 7) Bazı ayarları kaydet (opsiyonel)
-    try {
+    // Eğer bugün için hiç vakit kalmadıysa uyarı ver ama ayarları kaydet
+    if (timesToSchedule.length === 0) {
       await AsyncStorage.multiSet([
-        ['REMINDER_MODE', 'interval_hours'],
-        ['REMINDER_INTERVAL_HOURS', String(intervalHours)],
-        ['REMINDER_AWAKE_START', `${pad(AWAKE_START_H)}:${pad(AWAKE_START_M)}`],
-        ['REMINDER_AWAKE_END', `${pad(AWAKE_END_H)}:${pad(AWAKE_END_M)}`],
-        ['REMINDER_GOAL_ML', String(newGoal)],
-        [REMINDER_ENABLED_KEY, enabled ? '1' : '0'],
+        [REMINDER_INTERVAL_HOURS_KEY, String(intervalHours)],
+        [REMINDER_ENABLED_KEY, '1'],
+      ]);
+      Alert.alert("Kaydedildi", "Bugün için planlanacak saat kalmadı. Yarın sabah başlayacak.");
+      return;
+    }
+
+    try {
+      const count = await scheduleDailyRemindersCalendar(timesToSchedule);
+      await AsyncStorage.multiSet([
+        [REMINDER_INTERVAL_HOURS_KEY, String(intervalHours)],
+        [REMINDER_ENABLED_KEY, '1'],
         ...(IS_EXPO_GO ? [[LAST_SCHEDULED_DATE_KEY, todayKey()]] : []),
       ]);
-    } catch {}
-
-    Alert.alert('Kaydedildi', `Günlük ${count} hatırlatıcı planlandı.`);
-  } catch (e) {
-    Alert.alert('Hata', e?.message || 'Hatırlatıcılar planlanamadı.');
-  }
-};
-
-
-  // Sıklık alanı: off iken küçült & kilitle
-  const frequencyDisabled = !enabled;
-
-  // 1 Dakika Sonra Test Et butonu handler'ı
-  const onTestInOneMinute = async () => {
-    try {
-      const hasPerm = await ensurePermission();
-      if (!hasPerm) {
-        Alert.alert('İzin gerekli', 'Bildirim izni verilmedi.');
-        return;
-      }
-      await ensureAndroidChannel();
-      const inOneMinute = new Date(Date.now() + 60 * 1000);
-      await scheduleOneExactDate(inOneMinute);
-      Alert.alert('Planlandı', '1 dakika sonra tek seferlik test bildirimi gelecek.');
+      Alert.alert('Kaydedildi', `${count} hatırlatıcı planlandı.`);
     } catch (e) {
-      Alert.alert('Hata', e?.message || 'Planlanamadı');
+      Alert.alert('Hata', 'Planlama yapılamadı.');
     }
   };
+
+  // Test Fonksiyonları
+  const onTestInOneMinute = async () => {
+    await ensureAndroidChannel();
+    await scheduleOneExactDate(new Date(Date.now() + 60 * 1000));
+    Alert.alert('Planlandı', '1 dk sonra bildirim gelecek.');
+  };
+
+  const wakeStr = `${pad(wakeTime.h)}:${pad(wakeTime.m)}`;
+  const sleepStr = `${pad(sleepTime.h)}:${pad(sleepTime.m)}`;
+  const frequencyDisabled = !enabled;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#f7f7f7' }} edges={['top']}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        <ScrollView
-          contentContainerStyle={[styles.container, { paddingTop: 12, paddingBottom: 32 }]}
-          keyboardShouldPersistTaps="handled"
-        >
+        <ScrollView contentContainerStyle={[styles.container, { paddingTop: 12, paddingBottom: 32 }]}>
           <Text style={styles.title}>Hatırlatıcılar</Text>
 
-          {/* Günlük Hedef */}
-          <View style={styles.block}>
-            <Text style={styles.label}>Günlük Hedef (ml)</Text>
-            <TouchableOpacity style={styles.goalRow} onPress={openGoalPicker} activeOpacity={0.8}>
-              <View style={{ flexDirection:'row', alignItems:'center' }}>
-                <View style={styles.badge}><Text style={styles.badgeTxt}>{goal} ml</Text></View>
-                <Text style={styles.small}>Değiştir</Text>
-              </View>
-              <Ionicons name={showGoalPicker ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.subtext} />
-            </TouchableOpacity>
-
-            {/* iOS goal wheel */}
-            {Platform.OS === 'ios' && showGoalPicker && (
-              <View style={styles.sheet}>
-                <View style={{ height: 180, justifyContent: 'center' }}>
-                  <Picker
-                    selectedValue={tempGoal}
-                    onValueChange={(v) => setTempGoal(v)}
-                    itemStyle={{ fontWeight: '700', color: COLORS.text }}
-                  >
-                    {Array.from({ length: 39 }, (_, i) => 1200 + i * 100).map((ml) => (
-                      <Picker.Item key={ml} label={`${ml} ml`} value={ml} />
-                    ))}
-                  </Picker>
-                </View>
-                <View style={styles.rowBetween}>
-                  <TouchableOpacity onPress={cancelGoal} style={styles.actionBtn}>
-                    <Text style={[styles.small,{fontWeight:'800'}]}>Vazgeç</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={confirmGoal} style={styles.actionBtn}>
-                    <Text style={[styles.small,{fontWeight:'800', color: COLORS.primaryEnd}]}>Tamam</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-
-            {/* Android goal modal */}
-            {Platform.OS === 'android' && (
-              <Modal visible={showGoalPicker} transparent animationType="fade" onRequestClose={cancelGoal}>
-                <View style={styles.modalContainer}>
-                  <View style={styles.modalCard}>
-                    <Picker
-                      mode="dropdown"
-                      selectedValue={tempGoal}
-                      onValueChange={(v) => setTempGoal(v)}
-                      dropdownIconColor={COLORS.subtext}
-                      style={{ width: '100%' }}
-                    >
-                      {Array.from({ length: 39 }, (_, i) => 1200 + i * 100).map((ml) => (
-                        <Picker.Item key={ml} label={`${ml} ml`} value={ml} />
-                      ))}
-                    </Picker>
-                    <View style={[styles.rowBetween,{marginTop:12}] }>
-                      <TouchableOpacity onPress={cancelGoal} style={styles.actionBtn}>
-                        <Text style={[styles.small,{fontWeight:'800'}]}>Vazgeç</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={confirmGoal} style={styles.actionBtn}>
-                        <Text style={[styles.small,{fontWeight:'800', color: COLORS.primaryEnd}]}>Tamam</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </View>
-              </Modal>
-            )}
-
-            <Text style={[styles.small, { marginTop: 8 }]}>
-              Bugün içilen (tespit edilen): {storeConsumedToday} ml
-            </Text>
-          </View>
-
-          {/* Sıklık + On/Off */}
+          {/* Aralık Bilgisi */}
           <View style={styles.block}>
             <View style={styles.rowBetween}>
-              <Text style={styles.label}>Sabit Aralıklar (09:00 – 23:30)</Text>
-              <View style={styles.row}>
-                <Text style={styles.small}>Aktif</Text>
-                <Switch value={enabled} onValueChange={setEnabled} />
+              <View>
+                <Text style={styles.label}>Bildirim Aralığı</Text>
+                <Text style={styles.subLabel}>({wakeStr} – {sleepStr})</Text>
               </View>
+              <Switch value={enabled} onValueChange={setEnabled} trackColor={{true:COLORS.primaryEnd}} />
             </View>
+            
+            <View style={styles.infoBox}>
+              <Ionicons name="information-circle" size={18} color="#3B82F6" style={{marginRight:6}} />
+              <Text style={styles.infoText}>
+                Bu saatler profil ayarlarından (uyanma/uyuma) otomatik alınır.
+              </Text>
+            </View>
+          </View>
 
-            <View
-              style={[
-                frequencyDisabled ? styles.frequencyDisabled : null,
-              ]}
-              pointerEvents={frequencyDisabled ? 'none' : 'auto'}
-            >
-              <Text style={[styles.small, { marginBottom: 8 }]}>Bildirim sıklığı</Text>
-              <View style={[styles.row, { flexWrap: 'wrap' }]}>
+          {/* Sıklık & Timeline */}
+          <View style={styles.block}>
+            <View style={frequencyDisabled ? styles.frequencyDisabled : null} pointerEvents={frequencyDisabled ? 'none' : 'auto'}>
+              <Text style={[styles.label, { marginBottom: 12 }]}>Bildirim Sıklığı</Text>
+              
+              {/* Butonlar */}
+              <View style={[styles.row, { flexWrap: 'wrap', marginBottom: 20 }]}>
                 {[1, 1.5, 2, 2.5, 3, 4].map(h => (
                   <TouchableOpacity
                     key={String(h)}
                     onPress={() => setIntervalHours(h)}
                     style={[
                       styles.badge,
-                      {
-                        borderColor: intervalHours === h ? COLORS.primaryEnd : '#DBEAFE',
-                        backgroundColor: intervalHours === h ? '#E0F2FE' : '#EFF6FF',
-                        marginBottom: 8
-                      }
+                      intervalHours === h && styles.badgeActive
                     ]}
                   >
-                    <Text style={styles.badgeTxt}>
-                      {h} saat
+                    <Text style={[styles.badgeTxt, intervalHours === h && styles.badgeTxtActive]}>
+                      {h} sa
                     </Text>
                   </TouchableOpacity>
                 ))}
               </View>
-              {!frequencyDisabled && (
-                <Text style={[styles.hint, { marginTop: 8 }]}>
-                  “Kaydet” ile bir sonraki uygun zamandan itibaren bugünkü hatırlatıcılar planlanır.
-                </Text>
-              )}
-            </View>
 
-            {frequencyDisabled && (
-              <Text style={[styles.hint, { marginTop: 8 }]}>
-                Hatırlatıcı kapalı. Açtığında sıklık seçeneği aktif olur.
-              </Text>
-            )}
+              {/* TIMELINE ÇİZELGESİ */}
+              <View style={styles.timelineWrapper}>
+                <Text style={styles.timelineTitle}>Örnek Günlük Plan</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.timelineScroll}>
+                  {/* Başlangıç (Uyanma) */}
+                  <View style={styles.timelineNode}>
+                    <Text style={styles.nodeLabel}>Uyanış</Text>
+                    <View style={[styles.nodeDot, { backgroundColor:'#F59E0B' }]} />
+                    <Text style={styles.nodeTime}>{wakeStr}</Text>
+                  </View>
+
+                  {/* Aradaki Bildirimler */}
+                  {previewTimes.map((d, i) => (
+                    <View key={i} style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <View style={styles.line} />
+                      <View style={styles.timelineNode}>
+                        <View style={styles.nodeDot} />
+                        <Text style={styles.nodeTime}>
+                          {pad(d.getHours())}:{pad(d.getMinutes())}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+
+                  {/* Bitiş (Uyku) - Opsiyonel, eğer liste sonu uykudan önceyse çizgi çek */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <View style={styles.line} />
+                      <View style={styles.timelineNode}>
+                        <Text style={styles.nodeLabel}>Uyku</Text>
+                        <View style={[styles.nodeDot, { backgroundColor:'#6366F1' }]} />
+                        <Text style={styles.nodeTime}>{sleepStr}</Text>
+                      </View>
+                  </View>
+
+                </ScrollView>
+              </View>
+
+            </View>
+            {frequencyDisabled && <Text style={styles.disabledText}>Hatırlatıcı kapalı.</Text>}
           </View>
 
+          {/* Kaydet */}
           <TouchableOpacity style={styles.save} onPress={onSave}>
             <Text style={styles.saveTxt}>Kaydet</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={[styles.save, { backgroundColor: '#0ea5e9' }]} onPress={onTestInOneMinute}>
-            <Text style={styles.saveTxt}>1 Dakika Sonra Test Et</Text>
-          </TouchableOpacity>
+          {/* Test */}
+          <View style={styles.testArea}>
+            <Text style={styles.testTitle}>Test Paneli</Text>
+            <View style={{flexDirection:'row', gap:10}}>
+              <TouchableOpacity style={[styles.testBtn, {backgroundColor:'#0ea5e9', flex:1}]} onPress={onTestInOneMinute}>
+                <Text style={styles.saveTxt}>1 Dk Test</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.testBtn, {backgroundColor:'#374151', flex:1}]} onPress={() => DeviceEventEmitter.emit('OPEN_ONBOARD')}>
+                <Text style={styles.saveTxt}>Onboard</Text>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity style={[styles.testBtn, styles.cancel, {marginTop:10}]} onPress={async () => {
+                await Notifications.cancelAllScheduledNotificationsAsync();
+                Alert.alert('Temizlendi');
+            }}>
+              <Text style={[styles.saveTxt, {color:'#B45309'}]}>Hepsini İptal Et</Text>
+            </TouchableOpacity>
+          </View>
 
-          <TouchableOpacity
-            style={[styles.save, { backgroundColor: '#374151' }]}
-            onPress={() => DeviceEventEmitter.emit('OPEN_ONBOARD')}
-          >
-            <Text style={styles.saveTxt}>Onboard Test</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.save, { backgroundColor: '#111827' }]}
-            onPress={onLogNextNotificationTime}
-          >
-            <Text style={styles.saveTxt}>Sıradaki Zamanı Konsola Yaz</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.save, styles.cancel]}
-            onPress={async () => {
-              await Notifications.cancelAllScheduledNotificationsAsync();
-              Alert.alert('İptal edildi', 'Tüm planlı hatırlatıcılar kaldırıldı.');
-            }}
-          >
-            <Text style={[styles.saveTxt, { color: '#B45309' }]}>Tüm Hatırlatıcıları İptal Et</Text>
-          </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -603,26 +374,36 @@ export default function RemindersScreen() {
 const styles = StyleSheet.create({
   container: { padding: S.xl },
   title: { fontSize: 22, fontWeight: '800', color: COLORS.text, marginBottom: S.lg },
-  block: { backgroundColor: COLORS.card, borderRadius: 16, padding: S.lg, marginBottom: S.lg },
-  label: { fontSize: 16, fontWeight: '800', color: COLORS.text, marginBottom: 8 },
+  block: { backgroundColor: COLORS.card, borderRadius: 16, padding: S.lg, marginBottom: S.lg, elevation: 1 },
+  label: { fontSize: 16, fontWeight: '800', color: COLORS.text },
+  subLabel: { fontSize: 14, fontWeight: '600', color: COLORS.primaryEnd, marginTop: 2 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  small: { color: COLORS.subtext, fontWeight: '700' },
-  hint: { color: COLORS.subtext, marginTop: 8 },
-  save: { backgroundColor: COLORS.primaryEnd, borderRadius: 16, alignItems: 'center', paddingVertical: 14, marginTop: S.md },
-  saveTxt: { color: '#fff', fontWeight: '800' },
-  cancel: { backgroundColor: '#FFF7ED', borderWidth: 2, borderColor: '#FDBA74' },
-  goalRow: { flexDirection:'row', alignItems:'center', justifyContent:'space-between', borderWidth:2, borderColor:'#BFD8FF', borderRadius:12, paddingVertical:12, paddingHorizontal:12, backgroundColor:'#fff' },
-  badge: { backgroundColor:'#EFF6FF', borderRadius:10, paddingHorizontal:10, paddingVertical:6, marginRight:8, borderWidth:1, borderColor:'#DBEAFE' },
-  badgeTxt: { fontWeight:'800', color: COLORS.text },
-  sheet: { marginTop:8, backgroundColor:'#fff', borderRadius:12, borderWidth:2, borderColor:'#BFD8FF', padding:8 },
-  modalContainer: { flex:1, backgroundColor:'rgba(0,0,0,0.4)', justifyContent:'center', alignItems:'center', padding:24 },
-  modalCard: { width:'100%', maxWidth:360, backgroundColor:'#fff', borderRadius:16, borderWidth:2, borderColor:'#BFD8FF', padding:12 },
-  actionBtn: { paddingVertical:10, paddingHorizontal:16 },
+  
+  infoBox: { flexDirection:'row', backgroundColor:'#EFF6FF', padding:10, borderRadius:10, marginTop:8 },
+  infoText: { color: '#1E40AF', fontSize:12, flex:1, lineHeight:16 },
 
-  // off iken sıklık alanını küçült/soluklaştır
-  frequencyDisabled: {
-    opacity: 0.5,
-    transform: [{ scale: 0.98 }],
-  },
+  badge: { backgroundColor:'#F3F4F6', borderRadius:10, paddingVertical:10, width:'30%', alignItems:'center', marginBottom:8, borderWidth:1, borderColor:'#E5E7EB' },
+  badgeActive: { backgroundColor:'#EFF6FF', borderColor:COLORS.primaryEnd },
+  badgeTxt: { fontWeight:'700', color: '#6B7280' },
+  badgeTxtActive: { color: COLORS.primaryEnd },
+
+  timelineWrapper: { marginTop: 10, backgroundColor: '#F9FAFB', borderRadius: 12, padding: 12 },
+  timelineTitle: { fontSize: 12, fontWeight: '700', color: '#9CA3AF', marginBottom: 10, textTransform:'uppercase' },
+  timelineScroll: { alignItems: 'center', paddingRight: 20 },
+  timelineNode: { alignItems: 'center', width: 50 },
+  nodeLabel: { fontSize: 10, color: '#9CA3AF', marginBottom: 4, fontWeight:'600' },
+  nodeDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: COLORS.primaryEnd, marginBottom: 4 },
+  nodeTime: { fontSize: 12, fontWeight: '700', color: '#374151' },
+  line: { width: 30, height: 2, backgroundColor: '#E5E7EB', marginTop: 4 }, // Çizgi biraz aşağıda kalsın
+
+  save: { backgroundColor: COLORS.primaryEnd, borderRadius: 16, alignItems: 'center', paddingVertical: 16, marginTop: 10, elevation: 2 },
+  saveTxt: { color: '#fff', fontWeight: '800', fontSize: 15 },
+  frequencyDisabled: { opacity: 0.4 },
+  disabledText: { color:'#EF4444', marginTop:8, fontSize:12, fontWeight:'600' },
+
+  testArea: { marginTop: 30, paddingTop: 20, borderTopWidth: 1, borderTopColor: '#E5E7EB' },
+  testTitle: { fontSize: 12, fontWeight: '700', color: '#9CA3AF', textTransform: 'uppercase', marginBottom: 10, textAlign: 'center' },
+  testBtn: { borderRadius: 12, alignItems: 'center', paddingVertical: 12 },
+  cancel: { backgroundColor: '#FFF7ED', borderWidth: 2, borderColor: '#FDBA74' },
 });

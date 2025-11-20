@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -6,369 +6,291 @@ import {
   ScrollView,
   TouchableOpacity,
   Dimensions,
-  Alert,
+  StatusBar,
+  Animated
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Info } from "lucide-react-native";
-
-// Tema güvenli import (isim/konum şaşsa bile default ver)
-import * as THEME from "../theme/colors";
-const COLORS = THEME?.COLORS ?? {
-  bg: "#F9FBFF",
-  text: "#0F172A",
-  subtext: "#667085",
-  card: "#FFFFFF",
-  border: "#EAEFF7",
-  shadow: "rgba(16, 24, 40, 0.07)",
-  primaryStart: "#7CE8FF",
-  primaryEnd: "#4C8CFF",
-  accent: "#A2E4F5",
-};
-const S = THEME?.S ?? { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 };
-
-// Store
+import { useFocusEffect } from "@react-navigation/native"; 
+import { LinearGradient } from "expo-linear-gradient";
+import { Ionicons } from "@expo/vector-icons";
+import { COLORS } from "../theme/colors";
+import { S } from "../theme/spacing";
 import { useHydrationStore } from "../storage/useHydrationStore";
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from '@react-navigation/native';
-
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const CHART_WIDTH = SCREEN_WIDTH - 80;
-const BAR_WIDTH = (CHART_WIDTH - 40) / 5;
-const MAX_BAR_HEIGHT = 200;
-
-// Tipografi ağırlıkları (iOS hissi)
-const titleFontWeight = "800";
-const cardTitleFontWeight = "700";
-const barValueFontWeight = "700";
-const barLabelFontWeight = "600";
-const todayLabelFontWeight = "800";
-const statLabelFontWeight = "500";
-const statValueFontWeight = "700";
-const infoTitleFontWeight = "700";
-const infoLabelFontWeight = "500";
-const infoValueFontWeight = "700";
-
-const WEEKDAY_LABELS = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"];
-
-// --- Tarih yardımcıları ---
-const pad2 = (n) => (n < 10 ? `0${n}` : String(n));
-const yyyymmdd = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-const addDays = (d, delta) => { const x = new Date(d); x.setDate(x.getDate() + delta); return x; };
-
-const HISTORY_KEY = (dateStr) => `HISTORY:${dateStr}`; // ör: HISTORY:2025-11-10
+const SCREEN_WIDTH = Dimensions.get("window").width;
+const CHART_HEIGHT = 220;
 
 export default function HistoryScreen() {
-  const { totalMl, goalMl } = useHydrationStore((s) => ({
-    totalMl: s.totalMl,
-    goalMl: s.goalMl,
-  }));
   const insets = useSafeAreaInsets();
+  
+  // Store Verileri
+  const weeklyData = useHydrationStore((s) => s.getWeeklyData());
+  const currentGoal = useHydrationStore((s) => s.goalMl); 
+  
+  const [selectedDay, setSelectedDay] = useState(null);
+  const [animationKey, setAnimationKey] = useState(0); // Animasyonları tetiklemek için anahtar
 
-  const [history5, setHistory5] = useState([]); // [{label, value, goal, isToday, date}]
+  // Sayfa Animasyonu (Fade & Slide)
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  const loadLast5 = useCallback(async () => {
-    const today = new Date();
-    const items = [];
-    for (let i = 4; i >= 0; i--) {
-      const d = addDays(today, -i);
-      const dateStr = yyyymmdd(d);
-      const isToday = i === 0;
-      // Haftanın Türkçe kısaltmaları pazartesiden başlasın
-      const dow = d.getDay(); // 0 Pazar … 6 Cumartesi
-      const mapIndex = ((dow - 1 + 7) % 7);
-      const label = WEEKDAY_LABELS[mapIndex] || "?";
-
-      let stored = 0;
-      try {
-        const raw = await AsyncStorage.getItem(HISTORY_KEY(dateStr));
-        stored = raw ? Number(raw) : 0;
-      } catch {}
-
-      const value = isToday ? totalMl : stored; // bugünse store içeriğini canlı değerden ez
-      items.push({ label, value: Math.max(0, value), goal: goalMl, isToday, date: dateStr });
-    }
-    setHistory5(items);
-  }, [totalMl, goalMl]);
-
-  // Bugünün değeri değiştikçe kalıcılaştır (gece 00:00 sonrası geçmişte kalacak)
-  useEffect(() => {
-    const todayStr = yyyymmdd(new Date());
-    AsyncStorage.setItem(HISTORY_KEY(todayStr), String(totalMl)).catch(() => {});
-  }, [totalMl]);
-
-  // Ekran odağa geldiğinde ve her dakika bir kez yenile (gün dönüşünü yakalamak için)
+  // --- HER EKRAN AÇILDIĞINDA ÇALIŞACAK ---
   useFocusEffect(
     useCallback(() => {
-      let mounted = true;
-      (async () => { if (mounted) await loadLast5(); })();
-      const iv = setInterval(() => { loadLast5(); }, 60 * 1000);
-      return () => { mounted = false; clearInterval(iv); };
-    }, [loadLast5])
+      // 1. Opaklığı sıfırla
+      fadeAnim.setValue(0);
+      
+      // 2. Animasyon anahtarını değiştir (Barları yeniden çizmek için)
+      setAnimationKey(prev => prev + 1);
+
+      // 3. Giriş animasyonunu başlat
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }).start();
+
+      // 4. Veri varsa son günü seç (Opsiyonel: her girişte resetlemek istersem)
+      // if (weeklyData && weeklyData.length > 0) {
+      //   setSelectedDay(weeklyData[weeklyData.length - 1]);
+      // }
+      
+    }, []) // Dependency array boş
   );
 
-  const chartData = history5.length ? history5 : [];
-  const maxValue = useMemo(() => Math.max(...(chartData.length ? chartData.map(d => Math.max(d.value, d.goal)) : [1]), 1), [chartData]);
-  const average = useMemo(() => chartData.length ? Math.round(chartData.reduce((s, d) => s + d.value, 0) / chartData.length) : 0, [chartData]);
+  // Veri takibi (Sonsuz döngü korumalı)
+  useEffect(() => {
+    if (weeklyData && weeklyData.length > 0) {
+      const lastItem = weeklyData[weeklyData.length - 1];
+      const shouldUpdate = 
+        !selectedDay || 
+        selectedDay.fullDate !== lastItem.fullDate || 
+        selectedDay.ml !== lastItem.ml;
+
+      if (shouldUpdate) {
+        setSelectedDay(lastItem);
+      }
+    }
+  }, [weeklyData, selectedDay]);
+
+  if (!selectedDay || !weeklyData || weeklyData.length === 0) {
+    return <View style={styles.container} />;
+  }
+
+  // --- HESAPLAMALAR ---
+  const maxIntake = Math.max(...weeklyData.map(d => d.ml || 0));
+  const chartScaleMax = Math.max(maxIntake, currentGoal, 2500);
+  const targetLinePosition = (currentGoal / chartScaleMax) * CHART_HEIGHT;
+  const totalWeekly = weeklyData.reduce((acc, curr) => acc + (curr.ml || 0), 0);
+  const avgWeekly = Math.round(totalWeekly / weeklyData.length);
+  const bestDay = weeklyData.reduce((prev, current) => 
+    ((prev.ml || 0) > (current.ml || 0)) ? prev : current
+  , { ml: 0, day: '-' });
 
   return (
-    <LinearGradient
-      colors={[COLORS.primaryStart, COLORS.primaryEnd]}
-      style={styles.gradient}
-    >
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={[styles.content, { paddingTop: insets.top + 20 }]}
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" />
+      
+      <View style={[styles.headerBg, { height: insets.top + 80 }]}>
+        <LinearGradient colors={["#E0F2FE", "#F0F9FF"]} style={StyleSheet.absoluteFill} />
+      </View>
+
+      <ScrollView 
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
       >
-        {/* Başlık */}
-        <View style={styles.header}>
-          <Text style={styles.title}>Geçmiş 💧</Text>
+        <View style={[styles.headerContent, { marginTop: insets.top + 10 }]}>
+          <Text style={styles.headerTitle}>Geçmiş Raporu</Text>
+          <Text style={styles.headerSubtitle}>Son 7 günün su tüketim analizi</Text>
         </View>
 
-        {/* Kart: Son 5 Gün */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>Son 5 Gün</Text>
-            <TouchableOpacity style={styles.infoButton} activeOpacity={0.7}>
-              <Info size={18} color="#666" />
-            </TouchableOpacity>
-          </View>
+        {/* ÖZET KARTI (Animasyonlu) */}
+        <Animated.View 
+          style={[
+            styles.summaryCard, 
+            { 
+              opacity: fadeAnim, 
+              transform: [{translateY: fadeAnim.interpolate({inputRange:[0,1], outputRange:[20,0]})}] 
+            }
+          ]}
+        >
+          <LinearGradient
+            colors={[COLORS.primaryStart, COLORS.primaryEnd]}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+            style={styles.cardGradient}
+          >
+            <View style={styles.summaryRow}>
+              <View>
+                <Text style={styles.summaryLabel}>Bu Hafta Toplam</Text>
+                <Text style={styles.summaryValue}>{(totalWeekly / 1000).toFixed(1)} L</Text>
+              </View>
+              <View style={styles.summaryIconBox}>
+                <Ionicons name="stats-chart" size={24} color="#fff" />
+              </View>
+            </View>
+          </LinearGradient>
+        </Animated.View>
 
-          {/* Grafik */}
+        {/* GRAFİK ALANI */}
+        <View style={styles.chartSection}>
+          <Text style={styles.sectionTitle}>Günlük Performans</Text>
+          
           <View style={styles.chartContainer}>
-            {/* Üst boş alan — ekranda ilk kartın üstü temiz kalsın */}
-            <View style={styles.chartTopSpacer} />
+            <View style={[styles.targetLine, { bottom: targetLinePosition }]} />
+            <Text style={[styles.targetLabel, { bottom: targetLinePosition + 5 }]}>
+              Hedef ({currentGoal}ml)
+            </Text>
 
-            <View style={styles.chart}>
-              {chartData.map((item, index) => {
-                const isToday = item.isToday;
-                const barHeight = Math.max(
-                  10,
-                  (item.value / maxValue) * MAX_BAR_HEIGHT
-                );
+            <View style={styles.barsRow}>
+              {weeklyData.map((item, index) => {
+                const isSelected = selectedDay.fullDate === item.fullDate;
+                const heightPercent = Math.min((item.ml || 0) / chartScaleMax, 1);
+                const isGoalMet = item.ml >= (item.goal || currentGoal) && item.ml > 0;
 
                 return (
-                  <TouchableOpacity key={index} style={styles.barWrapper} activeOpacity={0.8} onPress={() => {
-                    Alert.alert(
-                      `${item.label} Günü`,
-                      `${Math.round(item.value)} ml içildi.`
-                    );
-                  }}>
-                    {/* Bugün: dikey yüksek bar / Diğer günler: yatay hap bar */}
-                    {isToday ? (
-                      <View style={[styles.todayBarContainer, { height: MAX_BAR_HEIGHT }]}>
-                        <LinearGradient
-                          colors={[COLORS.accent, COLORS.primaryEnd]}
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 0, y: 1 }}
-                          style={[styles.todayBar, { height: barHeight, justifyContent:'center' }]}
-                        >
-                          <Text style={styles.barValue}>{Math.round(item.value)}</Text>
-                        </LinearGradient>
-                      </View>
-                    ) : (
-                      <View style={[styles.todayBarContainer, { height: MAX_BAR_HEIGHT }]}>
-                        <LinearGradient
-                          colors={[COLORS.primaryStart, COLORS.primaryEnd]}
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 0, y: 1 }}
-                          style={[
-                            styles.todayBar,
-                            {
-                              height: barHeight,
-                              justifyContent: "center",
-                            },
-                          ]}
-                        >
-                          <Text style={styles.barValue}>{Math.round(item.value)}</Text>
-                        </LinearGradient>
-                      </View>
+                  <TouchableOpacity 
+                    key={index} 
+                    activeOpacity={0.8}
+                    style={styles.barWrapper}
+                    onPress={() => setSelectedDay(item)}
+                  >
+                    {isSelected && (
+                      <Animated.View style={styles.bubble}>
+                        <Text style={styles.bubbleText}>{item.ml}</Text>
+                        <View style={styles.bubbleArrow} />
+                      </Animated.View>
                     )}
 
-                    {/* Gün etiketi */}
-                    <Text
-                      style={[
-                        styles.barLabel,
-                        isToday && styles.todayLabel,
-                      ]}
-                    >
-                      {item.label}
+                    {/* 
+                       BURAYA DİKKAT: key={animationKey} vererek
+                       her sayfa açılışında bileşeni sıfırlayıp
+                       animasyonun tekrar çalışmasını sağlıyoruz.
+                    */}
+                    <Bar 
+                      // animationKey her değiştiğinde Bar yeniden render olur
+                      key={`bar-${index}-${animationKey}`} 
+                      height={heightPercent * CHART_HEIGHT} 
+                      color={isSelected ? COLORS.primaryEnd : "#E0E7FF"}
+                      isGoalMet={isGoalMet}
+                    />
+                    
+                    <Text style={[styles.dayText, isSelected && styles.dayTextSelected]}>
+                      {item.day}
                     </Text>
                   </TouchableOpacity>
                 );
               })}
             </View>
+          </View>
+        </View>
 
-            {/* Alt çizgi (divider) */}
-            <View style={styles.chartDivider} />
-
-            {/* Ortalama */}
-            <View style={{ alignItems: "center", marginTop: 12 }}>
-              <Text style={styles.statSubLabel}>Ortalama</Text>
-              <Text style={styles.statBigValue}>{average} ml / gün</Text>
+        {/* İSTATİSTİKLER GRID (Animasyonlu) */}
+        <Animated.View 
+          style={[
+            styles.statsGrid,
+            { 
+              opacity: fadeAnim, 
+              transform: [{translateY: fadeAnim.interpolate({inputRange:[0,1], outputRange:[40,0]})}] // Biraz daha aşağıdan gelsin
+            }
+          ]}
+        >
+          <View style={styles.statBox}>
+            <View style={[styles.iconCircle, { backgroundColor: "#EFF6FF" }]}>
+              <Ionicons name="water-outline" size={20} color={COLORS.primaryEnd} />
             </View>
-          </View>
-        </View>
-
-        {/* Kart: Haftalık Özet */}
-        <View style={styles.infoCard}>
-          <Text style={styles.infoTitle}>Haftalık Özet</Text>
-
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Bugün</Text>
-            <Text style={styles.infoValue}>{totalMl} ml</Text>
+            <Text style={styles.statValue}>{avgWeekly} ml</Text>
+            <Text style={styles.statLabel}>Günlük Ort.</Text>
           </View>
 
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Günlük Hedef</Text>
-            <Text style={styles.infoValue}>{goalMl} ml</Text>
+          <View style={styles.statBox}>
+            <View style={[styles.iconCircle, { backgroundColor: "#FEF3C7" }]}>
+              <Ionicons name="trophy-outline" size={20} color="#D97706" />
+            </View>
+            <Text style={styles.statValue}>{bestDay.ml > 0 ? bestDay.day : "-"}</Text>
+            <Text style={styles.statLabel}>En İyi ({bestDay.ml}ml)</Text>
           </View>
 
-          <View style={[styles.infoRow, { borderBottomWidth: 0 }]}>
-            <Text style={styles.infoLabel}>Ortalama</Text>
-            <Text style={styles.infoValue}>{average} ml</Text>
+          <View style={styles.statBox}>
+            <View style={[styles.iconCircle, { backgroundColor: selectedDay.ml >= (selectedDay.goal || currentGoal) && selectedDay.ml > 0 ? "#DCFCE7" : "#FEE2E2" }]}>
+              <Ionicons 
+                name={selectedDay.ml >= (selectedDay.goal || currentGoal) && selectedDay.ml > 0 ? "checkmark-circle-outline" : "close-circle-outline"} 
+                size={20} 
+                color={selectedDay.ml >= (selectedDay.goal || currentGoal) && selectedDay.ml > 0 ? "#16A34A" : "#DC2626"} 
+              />
+            </View>
+            <Text style={[styles.statValue, { fontSize: 16 }]}>
+              {selectedDay.ml === 0 ? "Veri Yok" : (selectedDay.ml >= (selectedDay.goal || currentGoal) ? "Hedef Tutuldu" : "Hedef Altında")}
+            </Text>
+            <Text style={styles.statLabel}>{selectedDay.day} Günü</Text>
           </View>
-        </View>
+
+        </Animated.View>
       </ScrollView>
-    </LinearGradient>
+    </View>
   );
 }
 
+// Animated Bar
+const Bar = ({ height, color, isGoalMet }) => {
+  const animHeight = useRef(new Animated.Value(0)).current;
+  
+  useEffect(() => {
+    Animated.spring(animHeight, {
+      toValue: height || 5,
+      friction: 6,
+      tension: 40,
+      useNativeDriver: false,
+    }).start();
+  }, [height]);
+
+  return (
+    <View style={styles.barContainer}>
+      <View style={styles.barBackground} />
+      <Animated.View 
+        style={[
+          styles.barFill, 
+          { 
+            height: animHeight, 
+            backgroundColor: color,
+            shadowColor: isGoalMet ? color : "transparent",
+            shadowOpacity: isGoalMet ? 0.5 : 0,
+            shadowRadius: 8,
+          }
+        ]} 
+      />
+    </View>
+  );
+};
+
 const styles = StyleSheet.create({
-  gradient: { flex: 1 },
-  container: { flex: 1 },
-  content: { padding: S.xl, paddingBottom: 120 },
-
-  header: { marginBottom: S.xl },
-  title: { fontSize: 32, fontWeight: titleFontWeight, color: "#FFF" },
-
-  // Kartlar
-  card: {
-    backgroundColor: COLORS.card,
-    borderRadius: 32,
-    padding: 24,
-    marginBottom: 16,
-    shadowColor: COLORS.shadow,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 1,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: cardTitleFontWeight,
-    color: COLORS.text,
-  },
-  infoButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: COLORS.bg,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  // Grafik
-  chartContainer: { marginTop: 8, marginBottom: 8 },
-  chartTopSpacer: { height: 8 },
-  chart: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-    height: MAX_BAR_HEIGHT + 40,
-    paddingHorizontal: 8,
-  },
-  barWrapper: { alignItems: "center", flex: 1 },
-
-  // Bugün barı (dikey uzun)
-  todayBarContainer: {
-    width: BAR_WIDTH,
-    alignItems: "center",
-    justifyContent: "flex-end",
-  },
-  todayBar: {
-    width: BAR_WIDTH - 6,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: COLORS.primaryEnd,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 6,
-  },
-
-  barValue: {
-    fontSize: 13,
-    fontWeight: barValueFontWeight,
-    color: '#FFFFFF',
-  },
-  barLabel: {
-    marginTop: 10,
-    fontSize: 13,
-    fontWeight: barLabelFontWeight,
-    color: "#9AA3AF",
-  },
-  todayLabel: {
-    color: COLORS.primaryEnd,
-    fontWeight: todayLabelFontWeight,
-  },
-
-  chartDivider: {
-    height: 1,
-    backgroundColor: COLORS.border,
-    marginTop: 8,
-  },
-
-  statSubLabel: {
-    fontSize: 13,
-    color: "#6B7280",
-    fontWeight: statLabelFontWeight,
-  },
-  statBigValue: {
-    marginTop: 4,
-    fontSize: 18,
-    fontWeight: statValueFontWeight,
-    color: COLORS.primaryEnd,
-  },
-
-  // Haftalık özet kartı
-  infoCard: {
-    backgroundColor: "rgba(255,255,255,0.95)",
-    borderRadius: 28,
-    padding: 20,
-    marginTop: 12,
-  },
-  infoTitle: {
-    fontSize: 16,
-    fontWeight: infoTitleFontWeight,
-    color: COLORS.text,
-    marginBottom: 8,
-  },
-  infoRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  infoLabel: {
-    fontSize: 14,
-    color: "#6B7280",
-    fontWeight: infoLabelFontWeight,
-  },
-  infoValue: {
-    fontSize: 16,
-    fontWeight: infoValueFontWeight,
-    color: COLORS.text,
-  },
+  container: { flex: 1, backgroundColor: "#FAFAFA" },
+  headerBg: { position: "absolute", top: 0, left: 0, right: 0, zIndex: -1 },
+  headerContent: { paddingHorizontal: S.xl, marginBottom: 20 },
+  headerTitle: { fontSize: 28, fontWeight: "800", color: "#1F2937" },
+  headerSubtitle: { fontSize: 14, color: "#6B7280", marginTop: 4 },
+  summaryCard: { marginHorizontal: S.xl, borderRadius: 24, shadowColor: COLORS.primaryEnd, shadowOpacity: 0.3, shadowRadius: 15, elevation: 8 },
+  cardGradient: { padding: 24, borderRadius: 24 },
+  summaryRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  summaryLabel: { color: "rgba(255,255,255,0.9)", fontSize: 14, fontWeight: "600", marginBottom: 4 },
+  summaryValue: { color: "#fff", fontSize: 32, fontWeight: "800" },
+  summaryIconBox: { width: 48, height: 48, borderRadius: 24, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
+  chartSection: { marginTop: 30, paddingHorizontal: S.xl },
+  sectionTitle: { fontSize: 18, fontWeight: "700", color: "#1F2937", marginBottom: 20 },
+  chartContainer: { height: CHART_HEIGHT + 50, justifyContent: "flex-end" },
+  barsRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", height: CHART_HEIGHT },
+  targetLine: { position: "absolute", left: 0, right: 0, height: 1, backgroundColor: "#9CA3AF", borderStyle: "dashed", borderWidth: 1, borderColor: "#9CA3AF", opacity: 0.3, zIndex: -1 },
+  targetLabel: { position: "absolute", right: 0, fontSize: 10, color: "#9CA3AF", fontWeight: "700", backgroundColor: "#FAFAFA", paddingLeft: 4 },
+  barWrapper: { alignItems: "center", width: (SCREEN_WIDTH - 60) / 7 },
+  barContainer: { width: 14, height: CHART_HEIGHT, justifyContent: "flex-end", backgroundColor: "rgba(229, 231, 235, 0.3)", borderRadius: 10, overflow: "hidden" },
+  barBackground: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "#F3F4F6", borderRadius: 10 },
+  barFill: { width: "100%", borderRadius: 10 },
+  dayText: { marginTop: 12, fontSize: 12, fontWeight: "600", color: "#9CA3AF" },
+  dayTextSelected: { color: COLORS.primaryEnd, fontWeight: "800" },
+  bubble: { position: "absolute", top: -35, backgroundColor: "#1F2937", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, alignItems: "center", zIndex: 10 },
+  bubbleText: { color: "#fff", fontSize: 12, fontWeight: "700" },
+  bubbleArrow: { width: 0, height: 0, borderLeftWidth: 5, borderRightWidth: 5, borderTopWidth: 5, borderLeftColor: "transparent", borderRightColor: "transparent", borderTopColor: "#1F2937", marginTop: -1 },
+  statsGrid: { marginTop: 30, paddingHorizontal: S.xl, flexDirection: "row", flexWrap: "wrap", gap: 12 },
+  statBox: { flexGrow: 1, width: "45%", backgroundColor: "#fff", padding: 16, borderRadius: 20, borderWidth: 1, borderColor: "#F3F4F6", shadowColor: "#000", shadowOpacity: 0.02, shadowRadius: 10 },
+  iconCircle: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", marginBottom: 12 },
+  statValue: { fontSize: 18, fontWeight: "800", color: "#1F2937", marginBottom: 2 },
+  statLabel: { fontSize: 12, color: "#6B7280", fontWeight: "500" },
 });

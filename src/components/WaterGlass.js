@@ -1,131 +1,159 @@
-import { useEffect, useRef } from 'react';
-import { View, StyleSheet, Animated } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
-import { COLORS } from '../theme/colors';
+import React, { useEffect, useRef } from 'react';
+import { View, StyleSheet, Animated, Easing } from 'react-native';
+import Svg, { Defs, LinearGradient, Stop, Path, ClipPath, G } from 'react-native-svg';
 
-// Bardağın içi: dikey dolum (LinearGradient)
-// Arkadaki halka: tepeden başlayarak gradyanlı, yüzdeye göre dolan Animated SVG ring
+// SVG bileşenlerini animasyonlu hale getiriyoruz
+const AnimatedG = Animated.createAnimatedComponent(G);
 
 export default function WaterGlass({ totalMl, goalMl }) {
-  const percent = goalMl ? totalMl / goalMl : 0;
-  const clamped = Math.min(percent, 1);
+  const rawPercent = goalMl ? totalMl / goalMl : 0;
+  const percent = Math.min(Math.max(rawPercent, 0), 1.1); // Max %110
 
-  // Bardak içi dolum animasyonu
-  const fillH = useRef(new Animated.Value(clamped)).current;
-  const spill = useRef(new Animated.Value(0)).current;
+  // --- ANİMASYON DEĞERLERİ ---
+  const fillAnim = useRef(new Animated.Value(percent)).current;
+  const waveAnimFront = useRef(new Animated.Value(0)).current;
+  const waveAnimBack = useRef(new Animated.Value(0)).current;
 
-  // Halka dolum animasyonu (0..1)
-  const ringProgress = useRef(new Animated.Value(clamped)).current;
-
+  // 1. YÜKSELME ANİMASYONU (Elastik)
   useEffect(() => {
-    Animated.timing(fillH, { toValue: clamped, duration: 500, useNativeDriver: false }).start();
+    Animated.timing(fillAnim, {
+      toValue: percent,
+      duration: 1500,
+      easing: Easing.out(Easing.elastic(0.8)), // Su dolarken hafifçe yaylansın
+      useNativeDriver: true, 
+    }).start();
+  }, [percent]);
 
-    Animated.timing(ringProgress, { toValue: Math.min(percent, 1), duration: 600, useNativeDriver: false }).start();
+  // 2. DALGA ANİMASYONLARI (Sonsuz Döngü)
+  useEffect(() => {
+    const loop = Animated.parallel([
+      // Ön Dalga (Hızlı)
+      Animated.loop(
+        Animated.timing(waveAnimFront, {
+          toValue: 1,
+          duration: 2000, // 2 saniyede bir tur
+          easing: Easing.linear,
+          useNativeDriver: true,
+        })
+      ),
+      // Arka Dalga (Yavaş - Derinlik için)
+      Animated.loop(
+        Animated.timing(waveAnimBack, {
+          toValue: 1,
+          duration: 4000, // 4 saniyede bir tur (Daha yavaş)
+          easing: Easing.linear,
+          useNativeDriver: true,
+        })
+      ),
+    ]);
+    
+    loop.start();
+    return () => loop.stop();
+  }, []);
 
-    if (percent > 1) {
-      spill.setValue(0);
-      Animated.sequence([
-        Animated.timing(spill, { toValue: 1, duration: 350, useNativeDriver: true }),
-        Animated.timing(spill, { toValue: 0, duration: 350, useNativeDriver: true }),
-      ]).start();
-    }
-  }, [totalMl, goalMl]);
+  // --- INTERPOLASYONLAR ---
 
-  // Bardak içi yükseklik
-  const height = fillH.interpolate({ inputRange: [0, 1], outputRange: [0, 120] });
+  // Dalga Döngüsü (0'dan -180'e kayıp başa saracak)
+  const xFront = waveAnimFront.interpolate({ inputRange: [0, 1], outputRange: [0, -180] });
+  const xBack = waveAnimBack.interpolate({ inputRange: [0, 1], outputRange: [0, -180] });
 
-  // Halka boyutları
-  const size = 170;              // önceki ring görünümü ile aynı
-  const strokeWidth = 10;
-  const cx = size / 2;
-  const cy = size / 2;
-  const r = size / 2 - strokeWidth / 2; // stroke merkeze çizilir
-  const C = 2 * Math.PI * r;            // çevre
-
-  // strokeDashoffset = C * (1 - progress)
-  const dashOffset = ringProgress.interpolate({ inputRange: [0, 1], outputRange: [C, 0] });
+  // Su Yüksekliği (220 piksel bardak boyu)
+  const yFill = fillAnim.interpolate({
+    inputRange: [0, 1, 1.2], 
+    outputRange: [220, 15, 0], // 220 (Boş) -> 15 (Dolu)
+  });
 
   return (
-    <View style={styles.wrapper}>
-      {/* Arkadaki halka: zemin + animasyonlu ilerleme */}
-      <View style={{ position: 'absolute', width: size, height: size }}>
-        <Svg width={size} height={size}>
-          <Defs>
-            <SvgLinearGradient id="ringGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-              <Stop offset="0%" stopColor={COLORS.primaryStart} />
-              <Stop offset="100%" stopColor={COLORS.primaryEnd} />
-            </SvgLinearGradient>
-          </Defs>
+    <View style={styles.container}>
+      <Svg width={160} height={220} viewBox="0 0 160 220">
+        <Defs>
+          {/* Canlı Mavi Gradyan */}
+          <LinearGradient id="waterGrad" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0%" stopColor="#29B6F6" stopOpacity="0.9" />
+            <Stop offset="100%" stopColor="#0288D1" stopOpacity="1" />
+          </LinearGradient>
 
-          {/* Arka plan (tam halka) */}
-          <Circle
-            cx={cx}
-            cy={cy}
-            r={r}
-            stroke="rgba(76,140,255,0.15)"
-            strokeWidth={strokeWidth}
-            fill="none"
-          />
+          {/* Bardak Maskesi */}
+          <ClipPath id="glassShape">
+            <Path d="M20,10 L35,180 Q40,210 80,210 H80 Q120,210 125,180 L140,10" />
+          </ClipPath>
+        </Defs>
 
-          {/* İlerleyen halka: tepeden başlamak için -90° döndürülür */}
-          <AnimatedCircle
-            cx={cx}
-            cy={cy}
-            r={r}
-            stroke="url(#ringGrad)"
-            strokeWidth={strokeWidth}
-            strokeDasharray={C}
-            strokeDashoffset={dashOffset}
-            strokeLinecap="round"
-            rotation="-90"
-            origin={`${cx}, ${cy}`}
-            fill="none"
-          />
-        </Svg>
-      </View>
+        {/* 1. BOŞ BARDAK ZEMİNİ */}
+        <Path
+          d="M20,10 L35,180 Q40,210 80,210 H80 Q120,210 125,180 L140,10"
+          fill="#E1F5FE" 
+          fillOpacity={0.4}
+        />
 
-      {/* Bardak gövdesi + su dolumu */}
-      <View style={styles.glass}>
-        <Animated.View style={[styles.fillContainer, { height }]}>          
-          <LinearGradient colors={[COLORS.primaryStart, COLORS.primaryEnd]} style={styles.fill}/>
-        </Animated.View>
-      </View>
+        {/* 2. SU ALANI (MASKELENMİŞ) */}
+        <G clipPath="url(#glassShape)">
+          
+          {/* Yükselme Grubu */}
+          <AnimatedG style={{ transform: [{ translateY: yFill }] }}>
+            
+            {/* A) ARKA DALGA (Daha koyu/opak, yavaş, ters faz) */}
+            <AnimatedG style={{ transform: [{ translateX: xBack }] }}>
+              <Path
+                fill="#0277BD" // Daha koyu mavi
+                fillOpacity={0.4}
+                // Geniş dalga deseni (her 180px'de tekrar eder)
+                d="M0,10 Q45,-15 90,10 T180,10 T270,10 T360,10 V300 H0 Z"
+              />
+            </AnimatedG>
 
-      {/* Hedef aşımında üstte küçük "spill" efekti */}
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          styles.spill,
-          { opacity: spill, transform: [{ translateY: spill.interpolate({ inputRange: [0, 1], outputRange: [10, -12] }) }] },
-        ]}
-      />
+            {/* B) ÖN DALGA (Parlak, hızlı) */}
+            <AnimatedG style={{ transform: [{ translateX: xFront }] }}>
+              <Path
+                fill="url(#waterGrad)"
+                // Arka dalgadan biraz farklı fazda
+                d="M0,15 Q45,35 90,15 T180,15 T270,15 T360,15 V300 H0 Z"
+              />
+            </AnimatedG>
+
+          </AnimatedG>
+        </G>
+
+        {/* 3. DETAYLAR (Çerçeve ve Parlama) */}
+        {/* Bardak Çerçevesi */}
+        <Path
+          d="M20,10 L35,180 Q40,210 80,210 H80 Q120,210 125,180 L140,10"
+          fill="none"
+          stroke="rgba(0,0,0,0.05)"
+          strokeWidth="4"
+          strokeLinecap="round"
+        />
+        
+        {/* Cam Yansıması (Highlight) */}
+        <Path
+          d="M35,30 L42,160"
+          stroke="rgba(255,255,255,0.7)"
+          strokeWidth="3"
+          strokeLinecap="round"
+        />
+        
+        {/* Bardak Ağzı */}
+        <Path
+          d="M20,10 Q80,-5 140,10"
+          fill="none"
+          stroke="rgba(0,0,0,0.05)"
+          strokeWidth="2"
+        />
+
+      </Svg>
     </View>
   );
 }
 
-// Animated SVG Circle
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
-
 const styles = StyleSheet.create({
-  wrapper: { alignItems: 'center', justifyContent: 'center' },
-  glass: {
-    width: 90,
-    height: 140,
-    borderRadius: 20,
-    borderWidth: 2,
-    borderTopWidth: 0,
-    borderColor: '#E6EDF7',
-    backgroundColor: '#F8FAFF',
-    overflow: 'hidden',
-    alignItems: 'stretch',
-    justifyContent: 'flex-end',
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 1,
+  container: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    // Bardağa 3D derinlik katan gölge
+    shadowColor: "#0277BD",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 18,
+    elevation: 12,
   },
-  fillContainer: { position: 'absolute', bottom: 0, left: 0, right: 0 },
-  fill: { width: '100%', height: '100%' },
-  spill: { position: 'absolute', top: 10, width: 110, height: 10, borderRadius: 10, backgroundColor: 'rgba(124,232,255,0.8)' },
 });

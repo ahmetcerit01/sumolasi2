@@ -1,26 +1,30 @@
-// src/screens/ProfileScreen.js
-import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Switch, Alert } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  TouchableOpacity, 
+  ScrollView, 
+  Platform, 
+  Switch, 
+  Alert, 
+  Animated, 
+  Easing, 
+  Dimensions, 
+  Image,
+  StatusBar
+} from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { useHydrationStore } from '../storage/useHydrationStore';
-import { COLORS as THEME_COLORS } from '../theme/colors';
 import { BADGES } from '../constants/badges';
 import BadgeIcon from '../components/BadgeIcon';
 
-// Fallback renkler (theme yoksa)
-const COLORS = THEME_COLORS || {
-  bg: '#F8FAFF',
-  card: '#FFFFFF',
-  text: '#111827',
-  subtext: '#6B7280',
-  border: '#BFD8FF',
-  primaryStart: '#7AD7F0',
-  primaryEnd: '#5081E5',
-};
+const { width, height } = Dimensions.get('window');
 
 const STORAGE_KEYS = {
   reminderTime: 'SUMOLASI_REMINDER_TIME',
@@ -33,71 +37,66 @@ const waterFacts = [
   'Güne bir bardak suyla başlamak metabolizmayı harekete geçirir.',
   'Yeterli su tüketimi cildin bariyer fonksiyonunu destekler.',
   'Öğünlerden önce su içmek tokluk hissini artırabilir.',
-  'Alkali içecekler, bazı kişilerde mide yanmasını hafifletebilir.',
   'Sıcak havalarda terle birlikte su kaybı artar; günlük alımı artır.',
-  'Kafeinli içecekler suyun yerini tutmaz; su alımını ayrıca takip et.',
   'Su; kas fonksiyonları, dolaşım ve ısı dengesi için kritiktir.',
   'Azar azar ama düzenli içmek, tek seferde çok içmekten daha konforludur.',
-  'Soğuk su bazı kişilerde egzersiz sonrası toparlanmayı kolay hissettirebilir.',
 ];
 
-// Foreground davranışı
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldPlaySound: false,
     shouldSetBadge: false,
-    // SDK 54+: banner & list tercihleri
     shouldShowBanner: true,
     shouldShowList: true,
   }),
 });
 
 export default function ProfileScreen() {
+  const insets = useSafeAreaInsets();
+  
   // Store
   const goalMl = useHydrationStore(s => s.goalMl);
   const setGoalMl = useHydrationStore(s => s.setGoalMl);
+  const badgesMap = useHydrationStore(s => s.badges || {});
+
+  // Animasyonlar
+  const bgAnim = useRef(new Animated.Value(0)).current;
+  const scrollY = useRef(new Animated.Value(0)).current;
 
   // UI state
-  const [reminderTime, setReminderTime] = useState(() => {
-    const d = new Date();
-    d.setHours(9, 0, 0, 0);
-    return d;
-  });
+  const [reminderTime, setReminderTime] = useState(new Date());
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [onboardProfile, setOnboardProfile] = useState(null);
   const [onboardGoal, setOnboardGoal] = useState(null);
-  const [goalEditMl, setGoalEditMl] = useState(() => (typeof goalMl === 'number' && !Number.isNaN(goalMl) ? goalMl : 2000));
+  const [goalEditMl, setGoalEditMl] = useState(goalMl || 2000);
   const [showGoalPicker, setShowGoalPicker] = useState(false);
 
-  // Rozetler: store içinde farklı anahtar adlarını destekle
-  const unlockedBadgesArr = useHydrationStore(s => s.unlockedBadges || s.unlockedBadgeIds || []);
-  const badgesMap = useHydrationStore(s => s.badges || {});
-  const mergedUnlockedSet = useMemo(() => {
-    const set = new Set();
-    if (Array.isArray(unlockedBadgesArr)) unlockedBadgesArr.forEach(id => set.add(String(id)));
-    // badgesMap: { [id]: true/false }
-    Object.keys(badgesMap).forEach(id => {
-      if (badgesMap[id]) set.add(String(id));
-    });
-    return set;
-  }, [unlockedBadgesArr, badgesMap]);
-  const earnedBadges = useMemo(
-    () => BADGES.filter(b => mergedUnlockedSet.has(String(b.id))),
-    [mergedUnlockedSet]
-  );
-
   const fact = useMemo(() => waterFacts[Math.floor(Math.random() * waterFacts.length)], []);
+  const earnedCount = Object.keys(badgesMap).length;
 
-  // Storage'dan yükle
+  // Arkaplan Animasyonu
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(bgAnim, { toValue: 1, duration: 8000, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
+        Animated.timing(bgAnim, { toValue: 0, duration: 8000, easing: Easing.inOut(Easing.ease), useNativeDriver: false })
+      ])
+    ).start();
+  }, []);
+
+  // Storage Yükleme
   useEffect(() => {
     (async () => {
       try {
-        const [tRaw, notifRaw, soundRaw] = await Promise.all([
+        const [tRaw, notifRaw, soundRaw, [, p], [, g]] = await Promise.all([
           AsyncStorage.getItem(STORAGE_KEYS.reminderTime),
           AsyncStorage.getItem(STORAGE_KEYS.notifications),
           AsyncStorage.getItem(STORAGE_KEYS.sound),
+          AsyncStorage.getItem('ONBOARD_PROFILE').then(res => ['ONBOARD_PROFILE', res]),
+          AsyncStorage.getItem('DAILY_GOAL_ML').then(res => ['DAILY_GOAL_ML', res])
         ]);
+
         if (tRaw) {
           const parsed = JSON.parse(tRaw);
           const d = new Date();
@@ -106,362 +105,355 @@ export default function ProfileScreen() {
         }
         if (notifRaw !== null) setNotificationsEnabled(notifRaw === '1');
         if (soundRaw !== null) setSoundEnabled(soundRaw === '1');
-      } catch {}
-    })();
-  }, []);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const [[, p], [, g]] = await AsyncStorage.multiGet(['ONBOARD_PROFILE', 'DAILY_GOAL_ML']);
-        const profile = p ? JSON.parse(p) : null;
-        const goal = g ? Number(g) : null;
-        setOnboardProfile(profile);
-        if (typeof goal === 'number' && !Number.isNaN(goal)) {
-          setOnboardGoal(goal);
-          // Eğer store'da bir hedef yoksa veya 0'sa, düzenlenebilir hedefi onboard değeriyle başlat
-          if (!(typeof goalMl === 'number' && !Number.isNaN(goalMl) && goalMl > 0)) {
-            setGoalEditMl(goal);
-          }
+        // Onboard verileri
+        if (p) setOnboardProfile(JSON.parse(p));
+        if (g) {
+           const gVal = Number(g);
+           setOnboardGoal(gVal);
+           // Eğer store'da hedef yoksa bunu kullan
+           if (!goalMl) setGoalEditMl(gVal);
         }
       } catch {}
     })();
   }, []);
 
+  // Hedef Store ile senkronize olsun (açılışta)
+  useEffect(() => {
+    if (goalMl) setGoalEditMl(goalMl);
+  }, [goalMl]);
+
   const saveSettings = async () => {
     try {
-      await AsyncStorage.setItem(
-        STORAGE_KEYS.reminderTime,
-        JSON.stringify({ h: reminderTime.getHours(), m: reminderTime.getMinutes() })
-      );
-      await AsyncStorage.setItem(STORAGE_KEYS.notifications, notificationsEnabled ? '1' : '0');
-      await AsyncStorage.setItem(STORAGE_KEYS.sound, soundEnabled ? '1' : '0');
+      await AsyncStorage.multiSet([
+        [STORAGE_KEYS.reminderTime, JSON.stringify({ h: reminderTime.getHours(), m: reminderTime.getMinutes() })],
+        [STORAGE_KEYS.notifications, notificationsEnabled ? '1' : '0'],
+        [STORAGE_KEYS.sound, soundEnabled ? '1' : '0'],
+        ['DAILY_GOAL_ML', String(goalEditMl)]
+      ]);
 
-      // Günlük hedefi kaydet
-      await AsyncStorage.setItem('DAILY_GOAL_ML', String(goalEditMl));
-      setGoalMl(goalEditMl);
+      setGoalMl(goalEditMl); // Store güncelle
 
-      // Günlük tek bildirim (Expo Go kısıtlı; dev build'te tam)
+      // Bildirim Ayarla
       if (notificationsEnabled) {
         const { status } = await Notifications.requestPermissionsAsync();
-        if (status !== 'granted') {
-          Alert.alert('İzin Gerekli', 'Bildirim gönderebilmek için izin vermelisin.');
-        } else {
+        if (status === 'granted') {
           await Notifications.cancelAllScheduledNotificationsAsync();
-          const trigger = {
-            hour: reminderTime.getHours(),
-            minute: reminderTime.getMinutes(),
-            repeats: true,
-          };
           await Notifications.scheduleNotificationAsync({
-            content: {
-              title: 'Su Molası',
-              body: 'Bugünün su hedefi için bir bardak ekle.',
-              sound: soundEnabled ? 'default' : null,
-            },
-            trigger,
+            content: { title: 'Su Molası', body: 'Hedefini tutturmak için bir bardak su iç!', sound: soundEnabled ? 'default' : null },
+            trigger: { hour: reminderTime.getHours(), minute: reminderTime.getMinutes(), repeats: true },
           });
+        } else {
+          Alert.alert('İzin Gerekli', 'Bildirim izni verilmedi.');
         }
       } else {
         await Notifications.cancelAllScheduledNotificationsAsync();
       }
 
-      Alert.alert('Kaydedildi', 'Profil ayarların güncellendi.');
+      Alert.alert('Başarılı', 'Profil ayarların güncellendi! 🎉');
     } catch (e) {
-      Alert.alert('Hata', 'Ayarlar kaydedilirken bir sorun oluştu.');
+      Alert.alert('Hata', 'Kaydedilirken sorun oluştu.');
     }
   };
 
+  // Animasyonlu Arkaplan Renkleri
+  const bgTopColor = bgAnim.interpolate({ inputRange: [0, 1], outputRange: ['#E3F2FD', '#F3E5F5'] });
+
+  // Header Animasyonu
+  const headerScale = scrollY.interpolate({
+    inputRange: [-100, 0],
+    outputRange: [1.5, 1],
+    extrapolate: 'clamp'
+  });
+
   return (
-    <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.headerRow}>
-            <Ionicons name="water-outline" size={22} color={COLORS.card} />
-            <Text style={styles.headerTitle}>Profil</Text>
-          </View>
-          <Text style={styles.headerSub}>Hedefini ve hatırlatıcılarını yönet.</Text>
-        </View>
+    <View style={styles.container}>
+      <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
-        {/* Settings Card */}
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Günlük Ayarlar</Text>
+      {/* CANLI ARKAPLAN */}
+      <Animated.View style={[styles.animatedBg, { backgroundColor: bgTopColor }]}>
+        <LinearGradient
+          colors={['rgba(255,255,255,0.2)', 'rgba(255,255,255,0.9)']}
+          style={StyleSheet.absoluteFill}
+        />
+        {/* Dekoratif */}
+        <View style={[styles.bubble, { top: -50, right: -50, width: 300, height: 300, backgroundColor: '#BBDEFB', opacity: 0.2 }]} />
+        <View style={[styles.bubble, { top: height * 0.5, left: -50, width: 200, height: 200, backgroundColor: '#E1BEE7', opacity: 0.15 }]} />
+      </Animated.View>
 
-          {/* Önerilen hedef (readonly) */}
-          <View style={[styles.itemRow, { opacity: 0.9 }]}> 
-            <View style={styles.itemLeft}>
-              <Ionicons name="sparkles-outline" size={20} color={COLORS.subtext} />
-              <Text style={styles.itemLabel}>Önerilen hedef</Text>
-            </View>
-            <View style={styles.valuePill}>
-              <Text style={styles.valuePillTxt}>{onboardGoal != null ? `${onboardGoal} ml` : '—'}</Text>
-            </View>
-          </View>
-
-          {/* Günlük hedef (kullanıcı ayarlanabilir) */}
-          <View style={styles.itemRow}>
-            <View style={styles.itemLeft}>
-              <Ionicons name="trophy-outline" size={20} color={COLORS.subtext} />
-              <Text style={styles.itemLabel}>Günlük hedef</Text>
-            </View>
-            <TouchableOpacity
-  style={[styles.valuePill, { flexDirection: 'row', alignItems: 'center' }]}
-  activeOpacity={0.8}
-  onPress={() => setShowGoalPicker(true)}
->
-  <Text style={styles.valuePillTxt}>{goalEditMl} ml</Text>
-  <Ionicons name="chevron-down-outline" size={18} color={COLORS.subtext} style={{ marginLeft: 4 }} />
-</TouchableOpacity>
-          </View>
-
-          <Text style={styles.readonlyHint}>Önerilen hedef, kiloya göre otomatik hesaplanır. Günlük hedefi kendine göre ayarlayabilirsin.</Text>
-
-          {/* Switches */}
-          <View style={styles.itemRow}>
-            <View style={styles.itemLeft}>
-              <Ionicons name="notifications-outline" size={20} color={COLORS.subtext} />
-              <Text style={styles.itemLabel}>Bildirimler</Text>
-            </View>
-            <Switch value={notificationsEnabled} onValueChange={setNotificationsEnabled} />
-          </View>
-
-          <View style={styles.itemRow}>
-            <View style={styles.itemLeft}>
-              <Ionicons name="volume-high-outline" size={20} color={COLORS.subtext} />
-              <Text style={styles.itemLabel}>Su sesi efekti</Text>
-            </View>
-            <Switch value={soundEnabled} onValueChange={setSoundEnabled} />
-          </View>
-
-          <TouchableOpacity style={styles.saveBtn} onPress={saveSettings} activeOpacity={0.9}>
-            <Text style={styles.saveTxt}>Kaydet</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Facts Card */}
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Su Gerçekleri</Text>
-          <View style={styles.factBox}>
-            <Ionicons name="information-circle-outline" size={18} color={COLORS.subtext} style={{ marginRight: 6 }} />
-            <Text style={styles.factTxt}>{fact}</Text>
+      <Animated.ScrollView
+        contentContainerStyle={{ paddingBottom: 120 }}
+        showsVerticalScrollIndicator={false}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: false })}
+        scrollEventThrottle={16}
+      >
+        
+        {/* --- PROFİL HEADER --- */}
+        <View style={[styles.headerContainer, { paddingTop: insets.top + 20 }]}>
+          <Animated.View style={[styles.avatarContainer, { transform: [{ scale: headerScale }] }]}>
+            <Image 
+              source={{uri: 'https://cdn-icons-png.flaticon.com/128/11478/11478480.png'}} 
+              style={styles.avatar} 
+            />
+          </Animated.View>
+          
+          <Text style={styles.userName}>Su Savaşçısı</Text>
+          <View style={styles.badgeRow}>
+             <View style={styles.miniBadge}>
+                <Ionicons name="ribbon" size={14} color="#FFA000" />
+                <Text style={styles.miniBadgeText}>{earnedCount} Rozet</Text>
+             </View>
+             <View style={[styles.miniBadge, {backgroundColor: '#E1F5FE'}]}>
+                <Ionicons name="water" size={14} color="#039BE5" />
+                <Text style={[styles.miniBadgeText, {color: '#0277BD'}]}>Seviye {Math.floor(earnedCount/3) + 1}</Text>
+             </View>
           </View>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Profil Bilgileri</Text>
-          {onboardProfile ? (
-            <>
-              <View style={styles.itemRow}>
-                <View style={styles.itemLeft}>
-                  <Ionicons name="person-outline" size={20} color={COLORS.subtext} />
-                  <Text style={styles.itemLabel}>Cinsiyet</Text>
-                </View>
-                <View style={styles.valuePill}><Text style={styles.valuePillTxt}>{onboardProfile.gender === 'male' ? 'Erkek' : 'Kadın'}</Text></View>
+        {/* --- BİLGİ KARTLARI (GRID) --- */}
+        <View style={styles.statsGrid}>
+           {/* Kilo */}
+           <View style={styles.statCard}>
+              <View style={[styles.iconBox, {backgroundColor: '#E8F5E9'}]}>
+                 <Ionicons name="fitness" size={20} color="#2E7D32" />
               </View>
-              <View style={styles.itemRow}>
-                <View style={styles.itemLeft}>
-                  <Ionicons name="fitness-outline" size={20} color={COLORS.subtext} />
-                  <Text style={styles.itemLabel}>Ağırlık</Text>
-                </View>
-                <View style={styles.valuePill}><Text style={styles.valuePillTxt}>{onboardProfile.weightKg} kg</Text></View>
+              <View>
+                 <Text style={styles.statLabel}>Ağırlık</Text>
+                 <Text style={styles.statValue}>{onboardProfile?.weightKg || '--'} kg</Text>
               </View>
-              <View style={styles.itemRow}>
-                <View style={styles.itemLeft}>
-                  <Ionicons name="body-outline" size={20} color={COLORS.subtext} />
-                  <Text style={styles.itemLabel}>Boy</Text>
-                </View>
-                <View style={styles.valuePill}>
-                  <Text style={styles.valuePillTxt}>
-                    {onboardProfile.heightCm != null ? `${onboardProfile.heightCm} cm` : '—'}
-                  </Text>
-                </View>
+           </View>
+
+           {/* Uyanma */}
+           <View style={styles.statCard}>
+              <View style={[styles.iconBox, {backgroundColor: '#FFF3E0'}]}>
+                 <Ionicons name="sunny" size={20} color="#EF6C00" />
               </View>
-              <View style={styles.itemRow}>
-                <View style={styles.itemLeft}>
-                  <Ionicons name="sunny-outline" size={20} color={COLORS.subtext} />
-                  <Text style={styles.itemLabel}>Uyanma</Text>
-                </View>
-                <View style={styles.valuePill}><Text style={styles.valuePillTxt}>{onboardProfile.wakeAt}</Text></View>
+              <View>
+                 <Text style={styles.statLabel}>Uyanış</Text>
+                 <Text style={styles.statValue}>{onboardProfile?.wakeAt || '--:--'}</Text>
               </View>
-              <View style={styles.itemRow}>
-                <View style={styles.itemLeft}>
-                  <Ionicons name="moon-outline" size={20} color={COLORS.subtext} />
-                  <Text style={styles.itemLabel}>Uyku</Text>
-                </View>
-                <View style={styles.valuePill}><Text style={styles.valuePillTxt}>{onboardProfile.sleepAt}</Text></View>
+           </View>
+
+           {/* Uyku */}
+           <View style={styles.statCard}>
+              <View style={[styles.iconBox, {backgroundColor: '#F3E5F5'}]}>
+                 <Ionicons name="moon" size={20} color="#8E24AA" />
               </View>
-              {onboardGoal != null && (
-                <View style={styles.itemRow}>
-                  <View style={styles.itemLeft}>
-                    <Ionicons name="trophy-outline" size={20} color={COLORS.subtext} />
-                    <Text style={styles.itemLabel}>Hedef</Text>
-                  </View>
-                  <View style={styles.valuePill}><Text style={styles.valuePillTxt}>{onboardGoal} ml</Text></View>
-                </View>
-              )}
-            </>
-          ) : (
-            <Text style={styles.emptyTxt}>Onboard verisi bulunamadı. Onboard’u tamamladığında burada görünecek.</Text>
-          )}
-          <TouchableOpacity
-            style={[styles.saveBtn, { marginTop: 4, backgroundColor: '#2563EB' }]}
-            onPress={async () => {
-              try {
+              <View>
+                 <Text style={styles.statLabel}>Uyku</Text>
+                 <Text style={styles.statValue}>{onboardProfile?.sleepAt || '--:--'}</Text>
+              </View>
+           </View>
+
+           {/* Boy */}
+           <View style={styles.statCard}>
+              <View style={[styles.iconBox, {backgroundColor: '#E3F2FD'}]}>
+                 <Ionicons name="resize" size={20} color="#1565C0" />
+              </View>
+              <View>
+                 <Text style={styles.statLabel}>Boy</Text>
+                 <Text style={styles.statValue}>{onboardProfile?.heightCm || '--'} cm</Text>
+              </View>
+           </View>
+        </View>
+
+        <TouchableOpacity 
+            style={styles.refreshLink} 
+            onPress={() => Alert.alert("Bilgi", "Bilgilerini güncellemek için 'Onboard Verisini Yenile' butonunu kullanabilirsin.")}
+        >
+            <Text style={styles.refreshLinkText}>Bilgileri Düzenle</Text>
+            <Ionicons name="chevron-forward" size={14} color="#90A4AE" />
+        </TouchableOpacity>
+
+        {/* --- HEDEF AYARI (BÜYÜK KART) --- */}
+        <View style={styles.sectionCard}>
+           <Text style={styles.sectionTitle}>Günlük Hedef</Text>
+           
+           <View style={styles.goalContainer}>
+              <View>
+                 <Text style={styles.goalSub}>Önerilen: {onboardGoal || 2500} ml</Text>
+                 <TouchableOpacity style={styles.goalSelector} onPress={() => setShowGoalPicker(true)}>
+                    <Text style={styles.goalValueMain}>{goalEditMl}</Text>
+                    <Text style={styles.goalUnit}>ml</Text>
+                    <Ionicons name="chevron-down" size={20} color="#374151" style={{marginLeft: 5}} />
+                 </TouchableOpacity>
+              </View>
+              <View style={styles.goalIconCircle}>
+                 <Ionicons name="trophy" size={32} color="#FFB300" />
+              </View>
+           </View>
+
+           <View style={styles.divider} />
+
+           {/* AYARLAR */}
+           <View style={styles.settingRow}>
+              <View style={styles.settingLeft}>
+                 <View style={[styles.settingIcon, {backgroundColor: '#E0F2F1'}]}>
+                    <Ionicons name="notifications" size={18} color="#00695C" />
+                 </View>
+                 <Text style={styles.settingText}>Bildirimler</Text>
+              </View>
+              <Switch 
+                value={notificationsEnabled} 
+                onValueChange={setNotificationsEnabled} 
+                trackColor={{ true: '#4DB6AC', false: '#E0E0E0' }} 
+                thumbColor={'#fff'}
+              />
+           </View>
+
+           <View style={styles.settingRow}>
+              <View style={styles.settingLeft}>
+                 <View style={[styles.settingIcon, {backgroundColor: '#EDE7F6'}]}>
+                    <Ionicons name="musical-notes" size={18} color="#5E35B1" />
+                 </View>
+                 <Text style={styles.settingText}>Ses Efektleri</Text>
+              </View>
+              <Switch 
+                value={soundEnabled} 
+                onValueChange={setSoundEnabled} 
+                trackColor={{ true: '#7E57C2', false: '#E0E0E0' }} 
+                thumbColor={'#fff'}
+              />
+           </View>
+        </View>
+
+        {/* --- KAYDET BUTONU --- */}
+        <TouchableOpacity style={styles.saveBtn} onPress={saveSettings} activeOpacity={0.9}>
+           <LinearGradient
+             colors={['#29B6F6', '#0288D1']}
+             style={styles.saveBtnGradient}
+             start={{x:0, y:0}} end={{x:1, y:0}}
+           >
+              <Text style={styles.saveBtnText}>Değişiklikleri Kaydet</Text>
+              <Ionicons name="checkmark-circle" size={20} color="#fff" style={{marginLeft: 8}} />
+           </LinearGradient>
+        </TouchableOpacity>
+
+        {/* --- SU GERÇEĞİ (BİLGİ) --- */}
+        <View style={styles.factCard}>
+           <View style={styles.factHeader}>
+              <Ionicons name="bulb" size={20} color="#FBC02D" />
+              <Text style={styles.factTitle}>Biliyor muydun?</Text>
+           </View>
+           <Text style={styles.factText}>{fact}</Text>
+        </View>
+
+        {/* --- ONBOARD YENİLEME (ALT BUTON) --- */}
+        <TouchableOpacity 
+           style={styles.resetOnboardBtn} 
+           onPress={async () => {
+             try {
+                // Sadece veri çekip logluyoruz, gerçek reset için navigation lazım olabilir
                 const [[, p], [, g]] = await AsyncStorage.multiGet(['ONBOARD_PROFILE', 'DAILY_GOAL_ML']);
                 setOnboardProfile(p ? JSON.parse(p) : null);
                 setOnboardGoal(g ? Number(g) : null);
-                Alert.alert('Güncellendi', 'Onboard verileri yenilendi.');
-              } catch {}
-            }}
-            activeOpacity={0.9}
-          >
-            <Text style={styles.saveTxt}>Onboard Verisini Yenile</Text>
-          </TouchableOpacity>
-        </View>
+                Alert.alert('Yenilendi', 'Veriler AsyncStorage\'dan tekrar çekildi.');
+             } catch {}
+           }}
+        >
+           <Text style={styles.resetOnboardText}>Onboard Verisini Yenile</Text>
+        </TouchableOpacity>
 
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Kazanılan Rozetler</Text>
-          {earnedBadges.length === 0 ? (
-            <Text style={styles.emptyTxt}>Henüz kazanılmış rozetin yok. Su ekledikçe rozetler açılır.</Text>
-          ) : (
-            <View style={styles.badgesWrap}>
-              {earnedBadges.map(b => (
-                <View key={b.id} style={styles.badgeItem}>
-                  <BadgeIcon name={b.icon} unlocked />
-                  <Text style={styles.badgeLabel}>{b.title}</Text>
-                </View>
+      </Animated.ScrollView>
+
+      {/* --- HEDEF SEÇİCİ MODAL --- */}
+      {showGoalPicker && (
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={styles.modalBackdrop} onPress={() => setShowGoalPicker(false)} />
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Hedefini Seç</Text>
+            <ScrollView style={{maxHeight: 300}}>
+              {[1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000].map(v => (
+                <TouchableOpacity
+                  key={v}
+                  style={[styles.modalOption, goalEditMl === v && styles.modalOptionSelected]}
+                  onPress={() => { setGoalEditMl(v); setShowGoalPicker(false); }}
+                >
+                  <Text style={[styles.modalOptionText, goalEditMl === v && styles.modalOptionTextSelected]}>
+                    {v} ml
+                  </Text>
+                  {goalEditMl === v && <Ionicons name="checkmark" size={20} color="#0288D1" />}
+                </TouchableOpacity>
               ))}
-            </View>
-          )}
+            </ScrollView>
+            <TouchableOpacity style={styles.modalClose} onPress={() => setShowGoalPicker(false)}>
+              <Text style={styles.modalCloseText}>Kapat</Text>
+            </TouchableOpacity>
+          </View>
         </View>
+      )}
 
-        <View style={{ height: 24 }} />
-      </ScrollView>
-    {/* Günlük hedef seçici modal */}
-    {showGoalPicker && (
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalBox}>
-          <Text style={styles.modalTitle}>Günlük Hedefini Seç</Text>
-          <ScrollView>
-            {[1000, 1500, 2000, 2500, 3000, 3500, 4000].map(v => (
-              <TouchableOpacity
-                key={v}
-                onPress={() => { setGoalEditMl(v); setShowGoalPicker(false); }}
-                style={styles.modalOption}
-                activeOpacity={0.9}
-              >
-                <Text style={[styles.modalOptionTxt, goalEditMl === v && { color: '#2563EB', fontWeight: '800' }]}>
-                  {v} ml
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-          <TouchableOpacity onPress={() => setShowGoalPicker(false)} style={styles.modalCloseBtn} activeOpacity={0.9}>
-            <Text style={styles.modalCloseTxt}>Kapat</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    )}
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: COLORS.bg },
-  container: { padding: 16 },
-  header: {
-    backgroundColor: COLORS.primaryEnd,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-  },
-  headerRow: { flexDirection: 'row', alignItems: 'center' },
-  headerTitle: { color: COLORS.card, fontSize: 18, fontWeight: '800', marginLeft: 8 },
-  headerSub: { color: '#E6F0FF', marginTop: 6 },
+  container: { flex: 1, backgroundColor: '#F8F9FA' },
+  animatedBg: { ...StyleSheet.absoluteFillObject },
+  bubble: { position: 'absolute', borderRadius: 999 },
 
-  card: {
-    backgroundColor: COLORS.card,
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 2,
-    borderColor: COLORS.border,
-    marginBottom: 16,
-  },
-  sectionTitle: { fontSize: 16, fontWeight: '800', color: COLORS.text, marginBottom: 8 },
+  /* Header */
+  headerContainer: { alignItems: 'center', marginBottom: 24 },
+  avatarContainer: { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 10, elevation: 8, marginBottom: 12, position: 'relative' },
+  avatar: { width: 100, height: 100, borderRadius: 50, borderWidth: 4, borderColor: '#fff' },
+  editIconBadge: { position: 'absolute', bottom: 0, right: 0, backgroundColor: '#29B6F6', width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' },
+  userName: { fontSize: 24, fontWeight: '800', color: '#1A237E' },
+  badgeRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
+  miniBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF8E1', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  miniBadgeText: { fontSize: 12, fontWeight: '700', color: '#FF8F00', marginLeft: 4 },
 
-  itemRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12 },
-  itemLeft: { flexDirection: 'row', alignItems: 'center' },
-  itemLabel: { marginLeft: 8, color: COLORS.text, fontWeight: '600' },
-  valuePill: { backgroundColor: '#EFF6FF', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: '#DBEAFE' },
-  valuePillTxt: { fontWeight: '800', color: COLORS.text },
+  /* Grid Stats */
+  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 12, justifyContent: 'space-between' },
+  statCard: { width: '48%', backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 12, flexDirection: 'row', alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+  iconBox: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  statLabel: { fontSize: 12, color: '#90A4AE', fontWeight: '600' },
+  statValue: { fontSize: 16, fontWeight: '800', color: '#374151' },
 
-  saveBtn: {
-    marginTop: 8,
-    backgroundColor: COLORS.primaryEnd,
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  saveTxt: { color: '#fff', fontWeight: '800' },
+  refreshLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 24 },
+  refreshLinkText: { color: '#90A4AE', fontSize: 13, fontWeight: '600', marginRight: 4 },
 
-  factBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F1F5FE', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#DBEAFE' },
-  factTxt: { flex: 1, color: COLORS.text },
+  /* Main Settings Card */
+  sectionCard: { backgroundColor: '#fff', marginHorizontal: 16, borderRadius: 24, padding: 20, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, elevation: 3, marginBottom: 20 },
+  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#90A4AE', marginBottom: 16, textTransform: 'uppercase', letterSpacing: 0.5 },
+  
+  goalContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  goalSub: { fontSize: 13, color: '#90A4AE', fontWeight: '500', marginBottom: 4 },
+  goalSelector: { flexDirection: 'row', alignItems: 'baseline' },
+  goalValueMain: { fontSize: 32, fontWeight: '800', color: '#1A237E' },
+  goalUnit: { fontSize: 16, fontWeight: '600', color: '#90A4AE', marginLeft: 4 },
+  goalIconCircle: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#FFF8E1', alignItems: 'center', justifyContent: 'center' },
 
-  // New styles
-  readonlyHint: { marginTop: 4, color: COLORS.subtext, fontSize: 12 },
-  badgesWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  badgeItem: { width: 76, alignItems: 'center' },
-  badgeLabel: { marginTop: 6, fontSize: 11, color: COLORS.subtext, textAlign: 'center' },
-  emptyTxt: { color: COLORS.subtext },
+  divider: { height: 1, backgroundColor: '#F5F5F5', marginVertical: 20 },
 
-  stepper: { flexDirection: 'row', alignItems: 'center' },
-  stepperBtn: { backgroundColor: '#2563EB', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
-  stepperBtnTxt: { color: '#fff', fontWeight: '800' },
-  modalOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalBox: {
-    width: '80%',
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  modalTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    marginBottom: 12,
-    color: COLORS.text,
-    textAlign: 'center',
-  },
-  modalOption: {
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  modalOptionTxt: {
-    fontSize: 15,
-    color: COLORS.text,
-    textAlign: 'center',
-  },
-  modalCloseBtn: {
-    marginTop: 12,
-    backgroundColor: '#2563EB',
-    paddingVertical: 10,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  modalCloseTxt: {
-    color: '#fff',
-    fontWeight: '800',
-  },
+  settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  settingLeft: { flexDirection: 'row', alignItems: 'center' },
+  settingIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  settingText: { fontSize: 16, fontWeight: '600', color: '#374151' },
+
+  /* Save Button */
+  saveBtn: { marginHorizontal: 16, marginBottom: 24, borderRadius: 20, shadowColor: '#0288D1', shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
+  saveBtnGradient: { paddingVertical: 18, borderRadius: 20, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
+  saveBtnText: { color: '#fff', fontSize: 18, fontWeight: '800' },
+
+  /* Fact Card */
+  factCard: { marginHorizontal: 16, backgroundColor: '#FFFDE7', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#FFF59D', marginBottom: 24 },
+  factHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  factTitle: { fontSize: 14, fontWeight: '700', color: '#F9A825', marginLeft: 6 },
+  factText: { fontSize: 14, color: '#F57F17', lineHeight: 20 },
+
+  /* Reset Text */
+  resetOnboardBtn: { alignItems: 'center', padding: 10 },
+  resetOnboardText: { color: '#B0BEC5', fontWeight: '600', fontSize: 13 },
+
+  /* Modal */
+  modalOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', zIndex: 100 },
+  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)' },
+  modalContent: { width: '80%', backgroundColor: '#fff', borderRadius: 24, padding: 24, elevation: 10 },
+  modalTitle: { fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 16, color: '#1A237E' },
+  modalOption: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F5F5F5', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  modalOptionSelected: { backgroundColor: '#E1F5FE', marginHorizontal: -24, paddingHorizontal: 24 },
+  modalOptionText: { fontSize: 16, color: '#374151', fontWeight: '600' },
+  modalOptionTextSelected: { color: '#0288D1', fontWeight: '800' },
+  modalClose: { marginTop: 16, alignItems: 'center', padding: 12 },
+  modalCloseText: { color: '#F44336', fontWeight: '700' }
 });

@@ -1,265 +1,214 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, Modal, TouchableOpacity, Pressable, Dimensions } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { 
+  View, Text, StyleSheet, ScrollView, Modal, TouchableOpacity, 
+  Dimensions, Animated, Easing, StatusBar 
+} from 'react-native';
 import ConfettiCannon from 'react-native-confetti-cannon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+
 import BadgeIcon from '../components/BadgeIcon';
 import { BADGES } from '../constants/badges';
 import { useHydrationStore } from '../storage/useHydrationStore';
-import { Ionicons } from '@expo/vector-icons';
+
+const { width, height } = Dimensions.get('window');
 
 export default function BadgesScreen() {
   const insets = useSafeAreaInsets();
-  const badgesState = useHydrationStore(s => s.badges) || {};
-  const unlockedBadgeIdsFromStore = useHydrationStore(s => s.unlockedBadgeIds) || [];
-  const [celebrateId, setCelebrateId] = React.useState(null);
-  const [selectedBadge, setSelectedBadge] = React.useState(null);
-  const prevBadgesRef = React.useRef({});
-  const mountedRef = React.useRef(false);
+  const earnedBadgesMap = useHydrationStore(s => s.badges) || {};
+  
+  const [celebrate, setCelebrate] = useState(false);
+  const [selectedBadge, setSelectedBadge] = useState(null);
+  const bgAnim = useRef(new Animated.Value(0)).current;
+  
+  const totalBadges = BADGES.length;
+  const earnedCount = Object.keys(earnedBadgesMap).length;
+  const progressPercent = totalBadges > 0 ? (earnedCount / totalBadges) * 100 : 0;
 
   useEffect(() => {
-    if (!mountedRef.current) {
-      mountedRef.current = true;
-      prevBadgesRef.current = badgesState || {};
-      return;
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(bgAnim, { toValue: 1, duration: 8000, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
+        Animated.timing(bgAnim, { toValue: 0, duration: 8000, easing: Easing.inOut(Easing.ease), useNativeDriver: false })
+      ])
+    ).start();
+  }, []);
+
+  const prevCountRef = useRef(earnedCount);
+  useEffect(() => {
+    if (earnedCount > prevCountRef.current) {
+      setCelebrate(true);
+      setTimeout(() => setCelebrate(false), 5000);
     }
+    prevCountRef.current = earnedCount;
+  }, [earnedCount]);
 
-    const prev = prevBadgesRef.current || {};
-    Object.keys(badgesState || {}).forEach((id) => {
-      const was = !!prev[id];
-      const now = !!badgesState[id];
-      if (!was && now && !celebrateId) {
-        setCelebrateId(id);
-        const title = (Array.isArray(BADGES) ? BADGES.find(b => b.id === id)?.title : id) || id;
-        Alert.alert('🎉 Tebrikler!', `${title} rozetini kazandın!`);
-      }
-    });
-    prevBadgesRef.current = badgesState || {};
-  }, [badgesState]);
+  const bgTopColor = bgAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['#F3E5F5', '#E1F5FE'] 
+  });
 
-  const data = Array.isArray(BADGES) ? BADGES : [];
-  const screenW = Dimensions.get('window').width || 360;
+  const formatDate = (isoString) => {
+    if (!isoString || typeof isoString !== 'string') return '';
+    try {
+      const date = new Date(isoString);
+      return date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
+    } catch { return ''; }
+  };
 
   return (
-    <ScrollView
-      contentContainerStyle={[
-        styles.container,
-        { paddingTop: insets.top + 12, paddingBottom: 60 },
-      ]}
-    >
-      <Text style={styles.title}>Rozetlerim</Text>
+    <View style={styles.container}>
+      <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
-      {!data.length && (
-        <View style={styles.emptyBox}>
-          <Text style={styles.emptyTitle}>Hiç rozet tanımlı değil</Text>
-          <Text style={styles.emptyText}>src/constants/badges.js içindeki BADGES dizisini ve görsel dosya adlarını kontrol et.</Text>
+      <Animated.View style={[styles.animatedBg, { backgroundColor: bgTopColor }]}>
+        <LinearGradient colors={['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.9)']} style={StyleSheet.absoluteFill} />
+        <View style={[styles.bubble, { top: 50, left: -30, width: 180, height: 180, backgroundColor: '#B3E5FC', opacity: 0.2 }]} />
+        <View style={[styles.bubble, { top: height * 0.6, right: -40, width: 220, height: 220, backgroundColor: '#E1BEE7', opacity: 0.15 }]} />
+      </Animated.View>
+
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 20, paddingBottom: 100 }]} showsVerticalScrollIndicator={false}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Koleksiyon</Text>
+          <Text style={styles.subtitle}>Başarılarını tamamla, rozetleri kap!</Text>
         </View>
-      )}
+        
+        {/* Progress */}
+        <View style={styles.progressCard}>
+            <View style={styles.progressTextRow}>
+                <Text style={styles.progressLabel}>Rozet Seviyesi</Text>
+                <Text style={styles.progressValue}>{earnedCount} / {totalBadges}</Text>
+            </View>
+            <View style={styles.progressBarTrack}>
+                <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
+            </View>
+            <Text style={styles.motivationText}>
+                {progressPercent === 100 ? "Efsanesin! 🏆" : progressPercent > 50 ? "Harika gidiyorsun!" : "Yolun başındasın, devam et!"}
+            </Text>
+        </View>
 
-      <View style={styles.grid}>
-        {data.map(badge => {
-          const unlocked = !!badgesState[badge.id] || unlockedBadgeIdsFromStore.includes(badge.id);
-          return (
-            <Pressable
-              key={badge.id}
-              style={[styles.cell, { opacity: unlocked ? 1 : 0.5 }]}
-              onPress={() => setSelectedBadge(badge)}
-            >
-              <View style={styles.iconWrap}>
-                <BadgeIcon name={badge.id} size={80} />
-                {!unlocked && (
-                  <View style={styles.lockOverlay}>
-                    <Ionicons name="lock-closed" size={26} color="#94A3B8" />
+        {/* Grid */}
+        <View style={styles.grid}>
+          {BADGES.map((badge) => {
+            const earnedData = earnedBadgesMap[badge.id];
+            const isUnlocked = !!earnedData;
+            
+            return (
+              <TouchableOpacity
+                key={badge.id}
+                style={styles.badgeWrapper}
+                activeOpacity={0.8}
+                onPress={() => setSelectedBadge({ ...badge, isUnlocked, earnedData })}
+              >
+                <View style={[styles.badgeCard, isUnlocked ? styles.badgeUnlocked : styles.badgeLocked]}>
+                  <View style={[styles.iconBox, !isUnlocked && { opacity: 0.5 }]}>
+                    <BadgeIcon 
+                      name={badge.icon || badge.id} 
+                      size={50} 
+                      unlocked={isUnlocked}
+                      color={badge.color} 
+                    />
                   </View>
-                )}
-              </View>
-              <Text numberOfLines={2} style={[styles.label, !unlocked && styles.locked]}>
-                {badge.title}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      {celebrateId && (
-        <ConfettiCannon
-          count={100}
-          origin={{ x: screenW / 2, y: 0 }}
-          autoStart={true}
-          fadeOut={true}
-          explosionSpeed={400}
-          onAnimationEnd={() => setCelebrateId(null)}
-        />
-      )}
-
-      {/* Seçilen rozet için bilgi modalı */}
-      <Modal
-        transparent
-        visible={!!selectedBadge}
-        animationType="fade"
-        onRequestClose={() => setSelectedBadge(null)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            {selectedBadge && (
-              <>
-                <BadgeIcon name={selectedBadge.id} size={140} />
-                <Text style={styles.modalTitle}>{selectedBadge.title}</Text>
-
-                {/* Kısa açıklama (varsa) */}
-                {selectedBadge.description || selectedBadge.desc ? (
-                  <Text style={styles.modalDesc}>
-                    {selectedBadge.description || selectedBadge.desc}
-                  </Text>
-                ) : null}
-
-                {/* YENİ: Nasıl kazanılır? (howToEarn alanını göster) */}
-                <View style={styles.howBlock}>
-                  <Text style={styles.howLabel}>Nasıl kazanılır?</Text>
-                  <Text style={styles.howText}>
-                    {selectedBadge.howToEarn || 'Bu rozetin koşulu yakında eklenecek.'}
+                  {!isUnlocked && (
+                    <View style={styles.lockOverlay}>
+                      <Ionicons name="lock-closed" size={16} color="#90A4AE" />
+                    </View>
+                  )}
+                  <Text numberOfLines={1} style={[styles.badgeLabel, !isUnlocked && { color: '#90A4AE' }]}>
+                    {badge.title}
                   </Text>
                 </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </ScrollView>
 
-                <TouchableOpacity style={styles.modalClose} onPress={() => setSelectedBadge(null)}>
-                  <Text style={styles.modalCloseText}>Kapat</Text>
-                </TouchableOpacity>
-              </>
-            )}
+      {celebrate && <ConfettiCannon count={200} origin={{ x: width / 2, y: -20 }} autoStart={true} fadeOut={true} />}
+
+      <Modal transparent visible={!!selectedBadge} animationType="fade" onRequestClose={() => setSelectedBadge(null)}>
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={styles.modalBackdropTouch} onPress={() => setSelectedBadge(null)} />
+          <View style={styles.modalContent}>
+            <LinearGradient colors={selectedBadge?.isUnlocked ? ['#E3F2FD', '#FFFFFF'] : ['#FAFAFA', '#FFFFFF']} style={styles.modalGradient}>
+              <View style={[styles.bigIconCircle, selectedBadge?.isUnlocked ? styles.circleUnlocked : styles.circleLocked]}>
+                  <BadgeIcon 
+                    name={selectedBadge?.icon || selectedBadge?.id} 
+                    size={80} 
+                    unlocked={selectedBadge?.isUnlocked}
+                    color={selectedBadge?.color} // Modal içindeki büyük ikona da renk gidiyor
+                  />
+                  {!selectedBadge?.isUnlocked && (
+                     <View style={styles.bigLockIcon}><Ionicons name="lock-closed" size={40} color="rgba(0,0,0,0.2)" /></View>
+                  )}
+              </View>
+              <Text style={styles.modalTitle}>{selectedBadge?.title}</Text>
+              {selectedBadge?.isUnlocked ? (
+                 <View style={styles.earnedBadge}>
+                    <Ionicons name="checkmark-circle" size={16} color="#2E7D32" />
+                    <Text style={styles.earnedText}>Kazanıldı</Text>
+                    {typeof selectedBadge.earnedDate === 'string' && <Text style={styles.dateText}>• {formatDate(selectedBadge.earnedDate)}</Text>}
+                 </View>
+              ) : (
+                 <View style={styles.lockedBadge}><Text style={styles.lockedText}>KİLİTLİ</Text></View>
+              )}
+              <Text style={styles.modalDesc}>{selectedBadge?.description}</Text>
+              {!selectedBadge?.isUnlocked && (
+                <View style={styles.hintBox}>
+                  <Ionicons name="bulb" size={20} color="#00b7ffff" style={{marginRight: 8}} />
+                  <Text style={styles.hintText}>{selectedBadge?.howToEarn}</Text>
+                </View>
+              )}
+              <TouchableOpacity style={styles.closeBtn} onPress={() => setSelectedBadge(null)}>
+                <Text style={styles.closeBtnText}>Tamam</Text>
+              </TouchableOpacity>
+            </LinearGradient>
           </View>
         </View>
       </Modal>
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    paddingHorizontal: 18,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#1F2A44',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-around',
-  },
-  cell: {
-    width: '30%',
-    alignItems: 'center',
-    marginBottom: 28,
-  },
-  iconWrap: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    backgroundColor: '#F1F6FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  lockOverlay: {
-    position: 'absolute',
-    inset: 0,
-    backgroundColor: 'rgba(255,255,255,0.65)',
-    borderRadius: 45,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  label: {
-    fontSize: 13,
-    textAlign: 'center',
-    color: '#1F2A44',
-    marginTop: 6,
-    fontWeight: '500',
-  },
-  locked: {
-    color: '#9FB6D6',
-  },
-  emptyBox: {
-    padding: 14,
-    borderRadius: 12,
-    backgroundColor: '#F7FAFF',
-    borderWidth: 1,
-    borderColor: '#E3EEFF',
-    marginBottom: 12,
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1F2A44',
-    marginBottom: 4,
-  },
-  emptyText: {
-    fontSize: 13,
-    color: '#4E6480',
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalCard: {
-    width: '80%',
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    alignItems: 'center',
-    paddingVertical: 24,
-    paddingHorizontal: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 8,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#1F2A44',
-    marginTop: 16,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  modalDesc: {
-    fontSize: 14,
-    color: '#4E6480',
-    textAlign: 'center',
-    marginBottom: 12,
-  },
-  howBlock: {
-    width: '100%',
-    marginTop: 8,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#EEF2FF',
-    marginBottom: 16,
-  },
-  howLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#4C8CFF',
-    marginBottom: 6,
-  },
-  howText: {
-    fontSize: 14,
-    color: '#384152',
-    textAlign: 'center',
-  },
-  modalClose: {
-    backgroundColor: '#4C8CFF',
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 20,
-  },
-  modalCloseText: {
-    color: '#fff',
-    fontWeight: '600',
-  },
+  container: { flex: 1, backgroundColor: '#F8F9FA' },
+  animatedBg: { ...StyleSheet.absoluteFillObject },
+  bubble: { position: 'absolute', borderRadius: 999 },
+  header: { alignItems: 'center', marginBottom: 20, paddingHorizontal: 20 },
+  title: { fontSize: 32, fontWeight: '800', color: '#1A237E', letterSpacing: -1 },
+  subtitle: { fontSize: 15, color: '#5C6BC0', marginTop: 4, fontWeight: '500' },
+  progressCard: { backgroundColor: '#fff', marginHorizontal: 20, marginBottom: 24, borderRadius: 20, padding: 20, shadowColor: '#5C6BC0', shadowOpacity: 0.15, shadowRadius: 15, elevation: 5 },
+  progressTextRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  progressLabel: { fontSize: 14, fontWeight: '700', color: '#546E7A' },
+  progressValue: { fontSize: 14, fontWeight: '800', color: '#1976D2' },
+  progressBarTrack: { height: 8, backgroundColor: '#E3F2FD', borderRadius: 4, overflow: 'hidden', marginBottom: 12 },
+  progressBarFill: { height: '100%', backgroundColor: '#29B6F6', borderRadius: 4 },
+  motivationText: { fontSize: 12, color: '#78909C', fontStyle: 'italic', textAlign: 'center' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 12 },
+  badgeWrapper: { width: '33.33%', padding: 8, alignItems: 'center' },
+  badgeCard: { width: '100%', aspectRatio: 0.9, backgroundColor: '#fff', borderRadius: 16, alignItems: 'center', justifyContent: 'center', padding: 8, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5, elevation: 2, borderWidth: 1 },
+  badgeUnlocked: { borderColor: '#E1F5FE', backgroundColor: '#fff' },
+  badgeLocked: { borderColor: 'transparent', backgroundColor: 'rgba(255,255,255,0.6)', shadowOpacity: 0 },
+  iconBox: { marginBottom: 8 },
+  lockOverlay: { position: 'absolute', top: 6, right: 6, backgroundColor: '#ECEFF1', padding: 4, borderRadius: 12 },
+  badgeLabel: { fontSize: 11, fontWeight: '700', color: '#374151', textAlign: 'center' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
+  modalBackdropTouch: { ...StyleSheet.absoluteFillObject },
+  modalContent: { width: '85%', borderRadius: 32, overflow: 'hidden', elevation: 10 },
+  modalGradient: { padding: 24, alignItems: 'center' },
+  bigIconCircle: { width: 120, height: 120, borderRadius: 60, justifyContent: 'center', alignItems: 'center', marginBottom: 16, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, elevation: 5 },
+  circleUnlocked: { backgroundColor: '#fff' },
+  circleLocked: { backgroundColor: '#ECEFF1', opacity: 0.8 },
+  bigLockIcon: { position: 'absolute' },
+  modalTitle: { fontSize: 22, fontWeight: '800', color: '#1A237E', textAlign: 'center', marginBottom: 6 },
+  earnedBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#E8F5E9', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginBottom: 16 },
+  earnedText: { fontSize: 12, fontWeight: '700', color: '#2E7D32', marginLeft: 4 },
+  dateText: { fontSize: 12, color: '#2E7D32', marginLeft: 4 },
+  lockedBadge: { backgroundColor: '#FFEBEE', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginBottom: 16 },
+  lockedText: { fontSize: 12, fontWeight: '700', color: '#C62828' },
+  modalDesc: { fontSize: 15, color: '#546E7A', textAlign: 'center', lineHeight: 22, marginBottom: 20 },
+  hintBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF8E1', padding: 12, borderRadius: 12, marginBottom: 20, width: '100%' },
+  hintText: { flex: 1, fontSize: 13, color: '#F57F17', fontWeight: '600' },
+  closeBtn: { backgroundColor: '#29B6F6', paddingHorizontal: 32, paddingVertical: 14, borderRadius: 16, elevation: 4 },
+  closeBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 }
 });
