@@ -6,41 +6,43 @@ import Svg, { Defs, LinearGradient, Stop, Path, ClipPath, G } from 'react-native
 const AnimatedG = Animated.createAnimatedComponent(G);
 
 export default function WaterGlass({ totalMl, goalMl }) {
-  const rawPercent = goalMl ? totalMl / goalMl : 0;
-  const percent = Math.min(Math.max(rawPercent, 0), 1.1); // Max %110
+  // Hedef sıfırsa hata vermesin diye kontrol
+  const rawPercent = goalMl > 0 ? totalMl / goalMl : 0;
+  // %0 ile %110 arasında sınırla (Taşma efekti için biraz pay bıraktık)
+  const percent = Math.min(Math.max(rawPercent, 0), 1.1); 
 
   // --- ANİMASYON DEĞERLERİ ---
   const fillAnim = useRef(new Animated.Value(percent)).current;
   const waveAnimFront = useRef(new Animated.Value(0)).current;
   const waveAnimBack = useRef(new Animated.Value(0)).current;
 
-  // 1. YÜKSELME ANİMASYONU (Elastik)
+  // 1. YÜKSELME ANİMASYONU (HIZLANDIRILDI ⚡️)
   useEffect(() => {
     Animated.timing(fillAnim, {
       toValue: percent,
-      duration: 1500,
-      easing: Easing.out(Easing.elastic(0.8)), // Su dolarken hafifçe yaylansın
+      duration: 800, // 1.5 saniye yerine 0.8 saniye (Çok daha seri)
+      easing: Easing.out(Easing.cubic), // Yaylanmayı kaldırdık, net duruş.
       useNativeDriver: true, 
     }).start();
   }, [percent]);
 
-  // 2. DALGA ANİMASYONLARI (Sonsuz Döngü)
+  // 2. DALGA ANİMASYONLARI (SAKİNLEŞTİRİLDİ 🌊)
   useEffect(() => {
     const loop = Animated.parallel([
-      // Ön Dalga (Hızlı)
+      // Ön Dalga (Sakin akış)
       Animated.loop(
         Animated.timing(waveAnimFront, {
           toValue: 1,
-          duration: 2000, // 2 saniyede bir tur
+          duration: 5000, // 2000 yerine 5000 (Daha yavaş ve huzurlu)
           easing: Easing.linear,
           useNativeDriver: true,
         })
       ),
-      // Arka Dalga (Yavaş - Derinlik için)
+      // Arka Dalga (Daha da yavaş - Derinlik için)
       Animated.loop(
         Animated.timing(waveAnimBack, {
           toValue: 1,
-          duration: 4000, // 4 saniyede bir tur (Daha yavaş)
+          duration: 4000, // 4000 yerine 9000
           easing: Easing.linear,
           useNativeDriver: true,
         })
@@ -59,8 +61,10 @@ export default function WaterGlass({ totalMl, goalMl }) {
 
   // Su Yüksekliği (220 piksel bardak boyu)
   const yFill = fillAnim.interpolate({
-    inputRange: [0, 1, 1.2], 
-    outputRange: [220, 15, 0], // 220 (Boş) -> 15 (Dolu)
+    inputRange: [0, 0.5, 1], 
+    // Bardak tabanı dar olduğu için seviye ayarlaması:
+    // [Boş, Yarım, Dolu] piksel değerleri
+    outputRange: [220, 110, 15], 
   });
 
   return (
@@ -97,12 +101,12 @@ export default function WaterGlass({ totalMl, goalMl }) {
               <Path
                 fill="#0277BD" // Daha koyu mavi
                 fillOpacity={0.4}
-                // Geniş dalga deseni (her 180px'de tekrar eder)
+                // Geniş dalga deseni
                 d="M0,10 Q45,-15 90,10 T180,10 T270,10 T360,10 V300 H0 Z"
               />
             </AnimatedG>
 
-            {/* B) ÖN DALGA (Parlak, hızlı) */}
+            {/* B) ÖN DALGA (Parlak, ana dalga) */}
             <AnimatedG style={{ transform: [{ translateX: xFront }] }}>
               <Path
                 fill="url(#waterGrad)"
@@ -115,7 +119,6 @@ export default function WaterGlass({ totalMl, goalMl }) {
         </G>
 
         {/* 3. DETAYLAR (Çerçeve ve Parlama) */}
-        {/* Bardak Çerçevesi */}
         <Path
           d="M20,10 L35,180 Q40,210 80,210 H80 Q120,210 125,180 L140,10"
           fill="none"
@@ -124,10 +127,10 @@ export default function WaterGlass({ totalMl, goalMl }) {
           strokeLinecap="round"
         />
         
-        {/* Cam Yansıması (Highlight) */}
+        {/* Cam Yansıması */}
         <Path
           d="M35,30 L42,160"
-          stroke="rgba(255,255,255,0.7)"
+          stroke="rgba(255,255,255,0.6)"
           strokeWidth="3"
           strokeLinecap="round"
         />

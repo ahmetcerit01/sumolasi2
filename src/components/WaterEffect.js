@@ -1,70 +1,93 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import LottieView from 'lottie-react-native';
 import { Audio } from 'expo-av';
+import { View, StyleSheet } from 'react-native';
 
-export default function WaterEffect({ visible, onFinish, soundOnly = true }) {
-  const soundRef = useRef(null);
-  const anim = useRef(null);
+export default function WaterEffect({ visible, onFinish, soundOnly = false }) {
+  const [sound, setSound] = useState(null);
+  const lottieRef = useRef(null);
 
-  React.useEffect(() => {
+  // 1. Sesi önceden yükle (Preload) - Gecikmeyi önler
+  useEffect(() => {
     let isMounted = true;
-    (async () => {
+
+    async function loadSound() {
       try {
-        const { sound } = await Audio.Sound.createAsync(
-          require('../../assets/sounds/water.mp3'),
-          { volume: 1.0, shouldPlay: false }
+        const { sound: soundObject } = await Audio.Sound.createAsync(
+          require('../../assets/sounds/water_pop.mp3'), // Modern ses dosyası (aşağıda açıklama var)
+          { shouldPlay: false, volume: 1.0 }
         );
-        if (isMounted) soundRef.current = sound;
-      } catch (e) {
-        console.warn('Water sound could not be loaded:', e?.message || e);
+        if (isMounted) setSound(soundObject);
+      } catch (error) {
+        console.log('Ses yüklenemedi:', error);
       }
-    })();
+    }
+
+    loadSound();
+
     return () => {
       isMounted = false;
-      if (soundRef.current) {
-        soundRef.current.unloadAsync().catch(() => {});
+      if (sound) {
+        sound.unloadAsync();
       }
     };
   }, []);
 
-  React.useEffect(() => {
-    const play = async () => {
-      try {
-        if (soundRef.current) {
-          // Replay from start each time
-          await soundRef.current.replayAsync();
-        }
-      } catch (e) {
-        console.warn('Water sound play failed:', e?.message || e);
-      }
-    };
-
+  // 2. Tetiklendiğinde çalıştır
+  useEffect(() => {
     if (visible) {
-      play();
-      if (!soundOnly) {
-        anim.current?.play();
+      // Sesi Oynat
+      if (sound) {
+        sound.replayAsync();
       }
-      // Animasyon/işaret süresi dolunca kapat
-      setTimeout(() => onFinish && onFinish(), 1200);
+
+      // Animasyonu Oynat
+      if (!soundOnly && lottieRef.current) {
+        lottieRef.current.play();
+      } else if (soundOnly) {
+        // Eğer sadece ses ise, kısa bir süre sonra işlemi bitir
+        setTimeout(() => {
+          onFinish && onFinish();
+        }, 800);
+      }
     }
-  }, [visible, soundOnly, onFinish]);
+  }, [visible, sound, soundOnly]);
+
+  if (!visible || soundOnly) return null;
 
   return (
-    visible && !soundOnly ? (
+    <View style={styles.overlay} pointerEvents="none">
       <LottieView
-        ref={anim}
+        ref={lottieRef}
         source={require('../../assets/animations/water-splash.json')}
-        autoPlay
         loop={false}
-        style={{
-          width: 200,
-          height: 200,
-          position: 'absolute',
-          bottom: 200,
-          alignSelf: 'center',
-          zIndex: 10,
+        autoPlay={false} // Manuel tetikliyoruz
+        speed={0.8} // Modern ve akıcı bir hız (Çok yavaş olmamalı)
+        resizeMode="cover" // Ekranı veya alanı tam kaplaması için
+        onAnimationFinish={() => {
+          // Lottie bitince otomatik tetiklenir
+          onFinish && onFinish();
         }}
+        style={styles.lottie}
       />
-    ) : null
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  overlay: {
+    position: 'absolute',
+    bottom: 0, // İkonun veya ekranın altından başlasın
+    left: 0,
+    right: 0,
+    top: 0,
+    justifyContent: 'center', // Ortala
+    alignItems: 'center',
+    zIndex: 999, // En üstte görünsün
+    elevation: 999,
+  },
+  lottie: {
+    width: 300, // Daha geniş bir alan
+    height: 300,
+  },
+});

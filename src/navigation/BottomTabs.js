@@ -1,23 +1,26 @@
+import React from 'react';
+import { View, Text, StyleSheet, Platform, Dimensions } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { LinearGradient } from 'expo-linear-gradient';
+import Ionicons from '@expo/vector-icons/Ionicons';
+
+// Ekranlarınızı import edin
 import HomeScreen from '../screens/HomeScreen';
 import HistoryScreen from '../screens/HistoryScreen';
 import RemindersScreen from '../screens/RemindersScreen';
 import BadgesScreen from '../screens/BadgesScreen';
 import ProfileScreen from '../screens/ProfileScreen';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { View, Text, StyleSheet } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 
 const Tab = createBottomTabNavigator();
+const { width } = Dimensions.get('window');
 
 export default function BottomTabs() {
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        tabBarShowLabel: false,
-        tabBarStyle: [styles.tabBar],
-        tabBarItemStyle: styles.tabBarItem,
+        tabBarShowLabel: false, // Etiketleri manuel yönetiyoruz
+        tabBarStyle: styles.tabBar,
       }}
     >
       <Tab.Screen
@@ -25,26 +28,7 @@ export default function BottomTabs() {
         component={HomeScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <View style={styles.tabItem}>
-              {focused ? (
-                <LinearGradient
-                  colors={["#7CE8FF", "#4C8CFF"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={[styles.iconCircle, styles.iconCircleActive]}
-                >
-                  <Ionicons name="home" size={26} color="#fff" />
-                </LinearGradient>
-              ) : (
-                <View style={styles.iconCircleInactive}>
-                  <Ionicons name="home" size={26} color="#9CA3AF" />
-                </View>
-              )}
-              <Text style={[styles.label, focused ? styles.labelActive : styles.labelInactive]}>Ana Sayfa</Text>
-              {focused && (
-                <LinearGradient colors={["#7CE8FF", "#4C8CFF"]} style={styles.activeUnderline} />
-              )}
-            </View>
+            <TabIcon focused={focused} name="home" label="Ana Sayfa" />
           ),
         }}
       />
@@ -54,21 +38,7 @@ export default function BottomTabs() {
         component={HistoryScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <View style={styles.tabItem}>
-              {focused ? (
-                <LinearGradient colors={["#7CE8FF", "#4C8CFF"]} style={[styles.iconCircle, styles.iconCircleActive]}>
-                  <Ionicons name="calendar" size={26} color="#fff" />
-                </LinearGradient>
-              ) : (
-                <View style={styles.iconCircleInactive}>
-                  <Ionicons name="calendar" size={26} color="#9CA3AF" />
-                </View>
-              )}
-              <Text style={[styles.label, focused ? styles.labelActive : styles.labelInactive]}>Geçmiş</Text>
-              {focused && (
-                <LinearGradient colors={["#7CE8FF", "#4C8CFF"]} style={styles.activeUnderline} />
-              )}
-            </View>
+            <TabIcon focused={focused} name="calendar" label="Geçmiş" />
           ),
         }}
       />
@@ -78,21 +48,7 @@ export default function BottomTabs() {
         component={RemindersScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <View style={styles.tabItem}>
-              {focused ? (
-                <LinearGradient colors={["#7CE8FF", "#4C8CFF"]} style={[styles.iconCircle, styles.iconCircleActive]}>
-                  <Ionicons name="alarm" size={26} color="#fff" />
-                </LinearGradient>
-              ) : (
-                <View style={styles.iconCircleInactive}>
-                  <Ionicons name="alarm" size={26} color="#9CA3AF" />
-                </View>
-              )}
-              <Text style={[styles.label, focused ? styles.labelActive : styles.labelInactive]}>Hatırlatıcılar</Text>
-              {focused && (
-                <LinearGradient colors={["#7CE8FF", "#4C8CFF"]} style={styles.activeUnderline} />
-              )}
-            </View>
+            <TabIcon focused={focused} name="alarm" label="Hatırlatıcılar" />
           ),
         }}
       />
@@ -102,21 +58,7 @@ export default function BottomTabs() {
         component={BadgesScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <View style={styles.tabItem}>
-              {focused ? (
-                <LinearGradient colors={["#7CE8FF", "#4C8CFF"]} style={[styles.iconCircle, styles.iconCircleActive]}>
-                  <Ionicons name="ribbon" size={26} color="#fff" />
-                </LinearGradient>
-              ) : (
-                <View style={styles.iconCircleInactive}>
-                  <Ionicons name="ribbon" size={26} color="#9CA3AF" />
-                </View>
-              )}
-              <Text style={[styles.label, focused ? styles.labelActive : styles.labelInactive]}>Rozetler</Text>
-              {focused && (
-                <LinearGradient colors={["#7CE8FF", "#4C8CFF"]} style={styles.activeUnderline} />
-              )}
-            </View>
+            <TabIcon focused={focused} name="ribbon" label="Rozetler" />
           ),
         }}
       />
@@ -126,21 +68,7 @@ export default function BottomTabs() {
         component={ProfileScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <View style={styles.tabItem}>
-              {focused ? (
-                <LinearGradient colors={["#7CE8FF", "#4C8CFF"]} style={[styles.iconCircle, styles.iconCircleActive]}>
-                  <Ionicons name="person" size={26} color="#fff" />
-                </LinearGradient>
-              ) : (
-                <View style={styles.iconCircleInactive}>
-                  <Ionicons name="person" size={26} color="#9CA3AF" />
-                </View>
-              )}
-              <Text style={[styles.label, focused ? styles.labelActive : styles.labelInactive]}>Profil</Text>
-              {focused && (
-                <LinearGradient colors={["#7CE8FF", "#4C8CFF"]} style={styles.activeUnderline} />
-              )}
-            </View>
+            <TabIcon focused={focused} name="person" label="Profil" />
           ),
         }}
       />
@@ -148,66 +76,111 @@ export default function BottomTabs() {
   );
 }
 
+// Tekrar eden kodları önlemek için özel bileşen
+const TabIcon = ({ focused, name, label }) => {
+  return (
+    <View style={styles.tabItem}>
+      {/* İKON ALANI */}
+      {focused ? (
+        <LinearGradient
+          colors={['#7CE8FF', '#4C8CFF']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.iconContainerActive}
+        >
+          <Ionicons name={name} size={24} color="#fff" />
+        </LinearGradient>
+      ) : (
+        <View style={styles.iconContainerInactive}>
+          <Ionicons name={name} size={24} color="#9CA3AF" />
+        </View>
+      )}
+
+      {/* METİN ALANI - numberOfLines={1} taşmayı engeller */}
+      <Text 
+        numberOfLines={1} 
+        style={[styles.label, focused ? styles.labelActive : styles.labelInactive]}
+      >
+        {label}
+      </Text>
+
+      {/* AKTİF ÇİZGİSİ (Opsiyonel, şık durur) */}
+      {focused && (
+        <LinearGradient 
+          colors={['#7CE8FF', '#4C8CFF']} 
+          style={styles.activeLine} 
+        />
+      )}
+    </View>
+  );
+};
+
 const styles = StyleSheet.create({
   tabBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     backgroundColor: '#FFFFFF',
-    height: 108,
+    height: Platform.OS === 'ios' ? 95 : 80, // iPhone'larda home indicator için daha yüksek
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     borderTopWidth: 0,
-    borderTopLeftRadius: 26,
-    borderTopRightRadius: 26,
-    paddingTop: 8,
-    paddingBottom: 12,
-    paddingHorizontal: 14,
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: -6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
-    elevation: 12,
-    overflow: 'visible',
-  },
-  tabBarItem: {
-    paddingHorizontal: 4,
+    // Profesyonel gölge
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 10,
+    paddingHorizontal: 5, // Kenarlardan hafif boşluk
   },
   tabItem: {
     alignItems: 'center',
-    justifyContent: 'flex-start',
-    paddingTop: 4,
-  },label: {
-  fontSize: 10,
-  lineHeight: 12,
-  marginTop: 4,
-  textAlign: 'center',
-  maxWidth: 64, // sabit genişlik yerine maksimum genişlik
-  flexShrink: 1, // sığmazsa küçültsün
-},
-iconCircle: {
-  width: 40,
-  height: 40,
-  borderRadius: 20,
-  justifyContent: 'center',
-  alignItems: 'center',
-},
-iconCircleActive: {
-  width: 46,
-  height: 46,
-  borderRadius: 23,
-  marginTop: 2,
-},
-
-  iconCircleInactive: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: '#EEF2F7',
+    justifyContent: 'center',
+    width: width / 5, // Ekranı tam 5 parçaya bölerek her tab'a eşit alan verir
+    height: '100%',
+    top: Platform.OS === 'ios' ? 10 : 0, // İçeriği biraz aşağı it
+  },
+  iconContainerActive: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: 4,
+    // Aktif ikon gölgesi
+    shadowColor: '#4C8CFF',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 5,
   },
-  labelActive: { color: '#4C8CFF', fontWeight: '600' },
-  labelInactive: { color: '#A3AEC2', fontWeight: '500' },
-  activeUnderline: {
-    width: 32,
-    height: 4,
-    borderRadius: 4,
+  iconContainerInactive: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  label: {
+    fontSize: 11, // Okunabilir ama küçük
+    textAlign: 'center',
+    width: '100%', // Bulunduğu alanın tamamını kullansın
+    paddingHorizontal: 2, // Yanlardan çok az boşluk
+  },
+  labelActive: {
+    color: '#4C8CFF',
+    fontWeight: '700',
+  },
+  labelInactive: {
+    color: '#9CA3AF',
+    fontWeight: '500',
+  },
+  activeLine: {
+    width: 20,
+    height: 3,
+    borderRadius: 2,
     marginTop: 4,
-  },
+    opacity: 0.8,
+  }
 });
