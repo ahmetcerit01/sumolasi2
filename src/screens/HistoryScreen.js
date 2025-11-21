@@ -48,29 +48,36 @@ export default function HistoryScreen() {
         duration: 800,
         useNativeDriver: true,
       }).start();
-
-      // 4. Veri varsa son günü seç (Opsiyonel: her girişte resetlemek istersem)
-      // if (weeklyData && weeklyData.length > 0) {
-      //   setSelectedDay(weeklyData[weeklyData.length - 1]);
-      // }
       
-    }, []) // Dependency array boş
+    }, []) 
   );
 
-  // Veri takibi (Sonsuz döngü korumalı)
+  // --- VERİ TAKİBİ VE GÜNCELLEME (DÜZELTİLDİ) ---
   useEffect(() => {
     if (weeklyData && weeklyData.length > 0) {
-      const lastItem = weeklyData[weeklyData.length - 1];
-      const shouldUpdate = 
-        !selectedDay || 
-        selectedDay.fullDate !== lastItem.fullDate || 
-        selectedDay.ml !== lastItem.ml;
+      // Listenin son elemanı (Bugün)
+      const todayItem = weeklyData[weeklyData.length - 1];
 
-      if (shouldUpdate) {
-        setSelectedDay(lastItem);
+      if (!selectedDay) {
+        // 1. Hiç gün seçili değilse (ilk açılış), bugünü seç
+        setSelectedDay(todayItem);
+      } else {
+        // 2. Zaten bir gün seçiliyse, o günün GÜNCEL verisini bul
+        // (Böylece geçmişe tıklayınca sayfa yenilense bile o günde kalırsın)
+        const updatedSelectedDay = weeklyData.find(d => d.fullDate === selectedDay.fullDate);
+        
+        if (updatedSelectedDay) {
+          // Sadece veri (ml) değiştiyse state güncelle (Gereksiz render önler)
+          if (updatedSelectedDay.ml !== selectedDay.ml) {
+            setSelectedDay(updatedSelectedDay);
+          }
+        } else {
+          // Eğer seçili gün artık listede yoksa (örn: hafta değişti), bugüne dön
+          setSelectedDay(todayItem);
+        }
       }
     }
-  }, [weeklyData, selectedDay]);
+  }, [weeklyData]); // selectedDay'i buraya eklemedik, böylece döngüye girmez
 
   if (!selectedDay || !weeklyData || weeklyData.length === 0) {
     return <View style={styles.container} />;
@@ -151,6 +158,7 @@ export default function HistoryScreen() {
                     key={index} 
                     activeOpacity={0.8}
                     style={styles.barWrapper}
+                    // Tıklanınca state'i güncelle
                     onPress={() => setSelectedDay(item)}
                   >
                     {isSelected && (
@@ -160,13 +168,7 @@ export default function HistoryScreen() {
                       </Animated.View>
                     )}
 
-                    {/* 
-                       BURAYA DİKKAT: key={animationKey} vererek
-                       her sayfa açılışında bileşeni sıfırlayıp
-                       animasyonun tekrar çalışmasını sağlıyoruz.
-                    */}
                     <Bar 
-                      // animationKey her değiştiğinde Bar yeniden render olur
                       key={`bar-${index}-${animationKey}`} 
                       height={heightPercent * CHART_HEIGHT} 
                       color={isSelected ? COLORS.primaryEnd : "#E0E7FF"}
@@ -189,7 +191,7 @@ export default function HistoryScreen() {
             styles.statsGrid,
             { 
               opacity: fadeAnim, 
-              transform: [{translateY: fadeAnim.interpolate({inputRange:[0,1], outputRange:[40,0]})}] // Biraz daha aşağıdan gelsin
+              transform: [{translateY: fadeAnim.interpolate({inputRange:[0,1], outputRange:[40,0]})}] 
             }
           ]}
         >

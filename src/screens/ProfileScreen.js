@@ -11,14 +11,18 @@ import {
   Animated, 
   Easing, 
   Dimensions, 
-  Image,
-  StatusBar
+  Image, 
+  StatusBar,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import DateTimePicker from '@react-native-community/datetimepicker'; // Saat seçimi için
 
 import { useHydrationStore } from '../storage/useHydrationStore';
 import { BADGES } from '../constants/badges';
@@ -54,10 +58,17 @@ Notifications.setNotificationHandler({
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   
-  // Store
-  const goalMl = useHydrationStore(s => s.goalMl);
-  const setGoalMl = useHydrationStore(s => s.setGoalMl);
-  const badgesMap = useHydrationStore(s => s.badges || {});
+  // --- STORE ENTEGRASYONU ---
+  const { 
+    goalMl, 
+    setGoalMl, 
+    badges, 
+    profile, // Store'daki profil verisi
+    recommendedGoal, // Store'daki hesaplanmış önerilen hedef
+    updateProfile // Profili güncelleme fonksiyonu
+  } = useHydrationStore();
+
+  const badgesMap = badges || {};
 
   // Animasyonlar
   const bgAnim = useRef(new Animated.Value(0)).current;
@@ -67,10 +78,19 @@ export default function ProfileScreen() {
   const [reminderTime, setReminderTime] = useState(new Date());
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [onboardProfile, setOnboardProfile] = useState(null);
-  const [onboardGoal, setOnboardGoal] = useState(null);
+  
+  // Hedef & Modal State'leri
   const [goalEditMl, setGoalEditMl] = useState(goalMl || 2000);
   const [showGoalPicker, setShowGoalPicker] = useState(false);
+  const [showEditProfile, setShowEditProfile] = useState(false);
+
+  // Profil Düzenleme State'leri
+  const [editWeight, setEditWeight] = useState('');
+  const [editHeight, setEditHeight] = useState('');
+  const [editWake, setEditWake] = useState(new Date());
+  const [editSleep, setEditSleep] = useState(new Date());
+  const [showWakePicker, setShowWakePicker] = useState(false);
+  const [showSleepPicker, setShowSleepPicker] = useState(false);
 
   const fact = useMemo(() => waterFacts[Math.floor(Math.random() * waterFacts.length)], []);
   const earnedCount = Object.keys(badgesMap).length;
@@ -85,16 +105,14 @@ export default function ProfileScreen() {
     ).start();
   }, []);
 
-  // Storage Yükleme
+  // Storage Yükleme (Bildirim Ayarları)
   useEffect(() => {
     (async () => {
       try {
-        const [tRaw, notifRaw, soundRaw, [, p], [, g]] = await Promise.all([
+        const [tRaw, notifRaw, soundRaw] = await Promise.all([
           AsyncStorage.getItem(STORAGE_KEYS.reminderTime),
           AsyncStorage.getItem(STORAGE_KEYS.notifications),
           AsyncStorage.getItem(STORAGE_KEYS.sound),
-          AsyncStorage.getItem('ONBOARD_PROFILE').then(res => ['ONBOARD_PROFILE', res]),
-          AsyncStorage.getItem('DAILY_GOAL_ML').then(res => ['DAILY_GOAL_ML', res])
         ]);
 
         if (tRaw) {
@@ -105,15 +123,6 @@ export default function ProfileScreen() {
         }
         if (notifRaw !== null) setNotificationsEnabled(notifRaw === '1');
         if (soundRaw !== null) setSoundEnabled(soundRaw === '1');
-
-        // Onboard verileri
-        if (p) setOnboardProfile(JSON.parse(p));
-        if (g) {
-           const gVal = Number(g);
-           setOnboardGoal(gVal);
-           // Eğer store'da hedef yoksa bunu kullan
-           if (!goalMl) setGoalEditMl(gVal);
-        }
       } catch {}
     })();
   }, []);
@@ -123,6 +132,52 @@ export default function ProfileScreen() {
     if (goalMl) setGoalEditMl(goalMl);
   }, [goalMl]);
 
+  // --- PROFİL DÜZENLEME FONKSİYONLARI ---
+
+  const openEditModal = () => {
+    // Mevcut verileri state'e yükle
+    setEditWeight(String(profile?.weight || 70));
+    setEditHeight(String(profile?.height || 170));
+    
+    // Saatleri Date objesine çevir
+    const wakeDate = new Date();
+    const [wh, wm] = (profile?.wakeAt || "08:00").split(':');
+    wakeDate.setHours(parseInt(wh), parseInt(wm));
+    setEditWake(wakeDate);
+
+    const sleepDate = new Date();
+    const [sh, sm] = (profile?.sleepAt || "23:00").split(':');
+    sleepDate.setHours(parseInt(sh), parseInt(sm));
+    setEditSleep(sleepDate);
+
+    setShowEditProfile(true);
+  };
+
+  const handleSaveProfile = () => {
+    const w = parseInt(editWeight);
+    const h = parseInt(editHeight);
+
+    if (!w || !h || w < 30 || w > 250 || h < 100 || h > 250) {
+      Alert.alert("Hata", "Lütfen geçerli bir kilo ve boy girin.");
+      return;
+    }
+
+    const wakeStr = `${String(editWake.getHours()).padStart(2, '0')}:${String(editWake.getMinutes()).padStart(2, '0')}`;
+    const sleepStr = `${String(editSleep.getHours()).padStart(2, '0')}:${String(editSleep.getMinutes()).padStart(2, '0')}`;
+
+    // Store'daki updateProfile fonksiyonunu çağır (Bu hem profili günceller hem de önerilen hedefi)
+    updateProfile({
+      weight: w,
+      height: h,
+      wakeAt: wakeStr,
+      sleepAt: sleepStr
+    });
+
+    setShowEditProfile(false);
+    Alert.alert("Güncellendi", "Profil bilgilerin ve önerilen hedefin güncellendi! 🚀");
+  };
+
+  // --- AYARLARI KAYDET ---
   const saveSettings = async () => {
     try {
       await AsyncStorage.multiSet([
@@ -139,6 +194,7 @@ export default function ProfileScreen() {
         const { status } = await Notifications.requestPermissionsAsync();
         if (status === 'granted') {
           await Notifications.cancelAllScheduledNotificationsAsync();
+          // Örnek bir genel bildirim (Detaylısı RemindersScreen'de)
           await Notifications.scheduleNotificationAsync({
             content: { title: 'Su Molası', body: 'Hedefini tutturmak için bir bardak su iç!', sound: soundEnabled ? 'default' : null },
             trigger: { hour: reminderTime.getHours(), minute: reminderTime.getMinutes(), repeats: true },
@@ -195,6 +251,10 @@ export default function ProfileScreen() {
               source={{uri: 'https://cdn-icons-png.flaticon.com/128/11478/11478480.png'}} 
               style={styles.avatar} 
             />
+            {/* Avatar üzerindeki kalem ikonu da düzenleme modalını açar */}
+            <TouchableOpacity style={styles.editIconBadge} onPress={openEditModal}>
+               <Ionicons name="pencil" size={14} color="#fff" />
+            </TouchableOpacity>
           </Animated.View>
           
           <Text style={styles.userName}>Su Savaşçısı</Text>
@@ -210,7 +270,7 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* --- BİLGİ KARTLARI (GRID) --- */}
+        {/* --- BİLGİ KARTLARI (GRID) - Store'dan gelen veriler --- */}
         <View style={styles.statsGrid}>
            {/* Kilo */}
            <View style={styles.statCard}>
@@ -219,7 +279,7 @@ export default function ProfileScreen() {
               </View>
               <View>
                  <Text style={styles.statLabel}>Ağırlık</Text>
-                 <Text style={styles.statValue}>{onboardProfile?.weightKg || '--'} kg</Text>
+                 <Text style={styles.statValue}>{profile?.weight || '--'} kg</Text>
               </View>
            </View>
 
@@ -230,7 +290,7 @@ export default function ProfileScreen() {
               </View>
               <View>
                  <Text style={styles.statLabel}>Uyanış</Text>
-                 <Text style={styles.statValue}>{onboardProfile?.wakeAt || '--:--'}</Text>
+                 <Text style={styles.statValue}>{profile?.wakeAt || '--:--'}</Text>
               </View>
            </View>
 
@@ -241,7 +301,7 @@ export default function ProfileScreen() {
               </View>
               <View>
                  <Text style={styles.statLabel}>Uyku</Text>
-                 <Text style={styles.statValue}>{onboardProfile?.sleepAt || '--:--'}</Text>
+                 <Text style={styles.statValue}>{profile?.sleepAt || '--:--'}</Text>
               </View>
            </View>
 
@@ -252,17 +312,18 @@ export default function ProfileScreen() {
               </View>
               <View>
                  <Text style={styles.statLabel}>Boy</Text>
-                 <Text style={styles.statValue}>{onboardProfile?.heightCm || '--'} cm</Text>
+                 <Text style={styles.statValue}>{profile?.height || '--'} cm</Text>
               </View>
            </View>
         </View>
 
+        {/* DÜZENLE BUTONU */}
         <TouchableOpacity 
             style={styles.refreshLink} 
-            onPress={() => Alert.alert("Bilgi", "Bilgilerini güncellemek için 'Onboard Verisini Yenile' butonunu kullanabilirsin.")}
+            onPress={openEditModal}
         >
             <Text style={styles.refreshLinkText}>Bilgileri Düzenle</Text>
-            <Ionicons name="chevron-forward" size={14} color="#90A4AE" />
+            <Ionicons name="create-outline" size={16} color="#90A4AE" />
         </TouchableOpacity>
 
         {/* --- HEDEF AYARI (BÜYÜK KART) --- */}
@@ -271,7 +332,7 @@ export default function ProfileScreen() {
            
            <View style={styles.goalContainer}>
               <View>
-                 <Text style={styles.goalSub}>Önerilen: {onboardGoal || 2500} ml</Text>
+                 <Text style={styles.goalSub}>Önerilen: {recommendedGoal || 2500} ml</Text>
                  <TouchableOpacity style={styles.goalSelector} onPress={() => setShowGoalPicker(true)}>
                     <Text style={styles.goalValueMain}>{goalEditMl}</Text>
                     <Text style={styles.goalUnit}>ml</Text>
@@ -338,25 +399,111 @@ export default function ProfileScreen() {
            <Text style={styles.factText}>{fact}</Text>
         </View>
 
-        {/* --- ONBOARD YENİLEME (ALT BUTON) --- */}
+        {/* --- YARDIMCI RESET BUTONU --- */}
         <TouchableOpacity 
            style={styles.resetOnboardBtn} 
            onPress={async () => {
              try {
-                // Sadece veri çekip logluyoruz, gerçek reset için navigation lazım olabilir
-                const [[, p], [, g]] = await AsyncStorage.multiGet(['ONBOARD_PROFILE', 'DAILY_GOAL_ML']);
-                setOnboardProfile(p ? JSON.parse(p) : null);
-                setOnboardGoal(g ? Number(g) : null);
-                Alert.alert('Yenilendi', 'Veriler AsyncStorage\'dan tekrar çekildi.');
+                // Bu sadece manuel bir tetikleme, artık store otomatik yapıyor
+                Alert.alert('Bilgi', 'Veriler otomatik senkronize ediliyor.');
              } catch {}
            }}
         >
-           <Text style={styles.resetOnboardText}>Onboard Verisini Yenile</Text>
+           <Text style={styles.resetOnboardText}>Senkronizasyon Kontrolü</Text>
         </TouchableOpacity>
 
       </Animated.ScrollView>
 
-      {/* --- HEDEF SEÇİCİ MODAL --- */}
+      {/* --- MODAL: PROFİL DÜZENLEME --- */}
+      <Modal animationType="slide" transparent={true} visible={showEditProfile} onRequestClose={() => setShowEditProfile(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalOverlay}>
+          <View style={styles.editModalContent}>
+            <View style={styles.modalHeaderRow}>
+               <Text style={styles.modalTitle}>Profili Düzenle</Text>
+               <TouchableOpacity onPress={() => setShowEditProfile(false)}>
+                  <Ionicons name="close" size={24} color="#333"/>
+               </TouchableOpacity>
+            </View>
+            
+            {/* Kilo */}
+            <View style={styles.inputGroup}>
+               <Text style={styles.inputLabel}>Kilo (kg)</Text>
+               <TextInput 
+                  style={styles.inputBox} 
+                  value={editWeight} 
+                  onChangeText={setEditWeight} 
+                  keyboardType="numeric" 
+                  placeholder="70" 
+               />
+            </View>
+
+            {/* Boy */}
+            <View style={styles.inputGroup}>
+               <Text style={styles.inputLabel}>Boy (cm)</Text>
+               <TextInput 
+                  style={styles.inputBox} 
+                  value={editHeight} 
+                  onChangeText={setEditHeight} 
+                  keyboardType="numeric" 
+                  placeholder="170" 
+               />
+            </View>
+
+            {/* Uyanma & Uyuma Saatleri */}
+            <View style={styles.rowInputs}>
+               <TouchableOpacity style={styles.timeInput} onPress={() => setShowWakePicker(true)}>
+                  <Text style={styles.inputLabel}>Uyanış</Text>
+                  <Text style={styles.timeValue}>
+                     {String(editWake.getHours()).padStart(2,'0')}:{String(editWake.getMinutes()).padStart(2,'0')}
+                  </Text>
+               </TouchableOpacity>
+               <TouchableOpacity style={styles.timeInput} onPress={() => setShowSleepPicker(true)}>
+                  <Text style={styles.inputLabel}>Uyku</Text>
+                  <Text style={styles.timeValue}>
+                     {String(editSleep.getHours()).padStart(2,'0')}:{String(editSleep.getMinutes()).padStart(2,'0')}
+                  </Text>
+               </TouchableOpacity>
+            </View>
+
+            {/* Time Pickers */}
+            {(showWakePicker || showSleepPicker) && (
+               Platform.OS === 'ios' ? (
+                  <DateTimePicker
+                     value={showWakePicker ? editWake : editSleep}
+                     mode="time"
+                     display="spinner"
+                     onChange={(e, d) => {
+                        if (d) showWakePicker ? setEditWake(d) : setEditSleep(d);
+                     }}
+                     style={{height: 120}}
+                  />
+               ) : (
+                  <DateTimePicker
+                     value={showWakePicker ? editWake : editSleep}
+                     mode="time"
+                     is24Hour
+                     onChange={(e, d) => {
+                        setShowWakePicker(false); setShowSleepPicker(false);
+                        if (d) showWakePicker ? setEditWake(d) : setEditSleep(d);
+                     }}
+                  />
+               )
+            )}
+            
+            {Platform.OS === 'ios' && (showWakePicker || showSleepPicker) && (
+               <TouchableOpacity onPress={() => {setShowWakePicker(false); setShowSleepPicker(false)}} style={{alignItems:'flex-end', padding:10}}>
+                  <Text style={{color:'#0288D1', fontWeight:'700'}}>Tamam</Text>
+               </TouchableOpacity>
+            )}
+
+            <TouchableOpacity style={styles.saveModalBtn} onPress={handleSaveProfile}>
+               <Text style={styles.saveModalBtnText}>Kaydet ve Hesapla</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* --- MODAL: HEDEF SEÇİCİ --- */}
       {showGoalPicker && (
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} onPress={() => setShowGoalPicker(false)} />
@@ -445,9 +592,23 @@ const styles = StyleSheet.create({
   resetOnboardBtn: { alignItems: 'center', padding: 10 },
   resetOnboardText: { color: '#B0BEC5', fontWeight: '600', fontSize: 13 },
 
-  /* Modal */
-  modalOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', zIndex: 100 },
-  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)' },
+  /* Modal Styles */
+  modalOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', zIndex: 100, backgroundColor: 'rgba(0,0,0,0.5)' },
+  modalBackdrop: { ...StyleSheet.absoluteFillObject },
+  
+  /* Edit Modal Specific */
+  editModalContent: { width: '85%', backgroundColor: '#fff', borderRadius: 24, padding: 24, elevation: 10 },
+  modalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  inputGroup: { marginBottom: 16 },
+  inputLabel: { fontSize: 14, fontWeight: '700', color: '#546E7A', marginBottom: 6 },
+  inputBox: { backgroundColor: '#F5F5F5', borderRadius: 12, padding: 14, fontSize: 16, color: '#333', fontWeight: '600' },
+  rowInputs: { flexDirection: 'row', justifyContent: 'space-between' },
+  timeInput: { width: '48%', backgroundColor: '#F5F5F5', borderRadius: 12, padding: 14, alignItems: 'center' },
+  timeValue: { fontSize: 18, fontWeight: '800', color: '#0288D1', marginTop: 4 },
+  saveModalBtn: { backgroundColor: '#29B6F6', paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginTop: 10 },
+  saveModalBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+
+  /* General Modal */
   modalContent: { width: '80%', backgroundColor: '#fff', borderRadius: 24, padding: 24, elevation: 10 },
   modalTitle: { fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 16, color: '#1A237E' },
   modalOption: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F5F5F5', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

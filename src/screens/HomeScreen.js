@@ -101,7 +101,7 @@ export default function HomeScreen({ navigation }) {
   };
 
   const hour = new Date().getHours();
-  const greeting = hour >= 5 && hour < 12 ? "Günaydın" : hour >= 12 && hour < 18 ? "Tünaydın" : "İyi Akşamlar";
+  const greeting = hour >= 5 && hour < 12 ? "Günaydın" : hour >= 12 && hour < 18 ? "İyi Günler" : "İyi Akşamlar";
 
   const bgTopColor = bgAnim.interpolate({
     inputRange: [0, 1],

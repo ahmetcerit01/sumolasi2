@@ -16,33 +16,33 @@ export default function WaterGlass({ totalMl, goalMl }) {
   const waveAnimFront = useRef(new Animated.Value(0)).current;
   const waveAnimBack = useRef(new Animated.Value(0)).current;
 
-  // 1. YÜKSELME ANİMASYONU (HIZLANDIRILDI ⚡️)
+  // 1. YÜKSELME ANİMASYONU (TURBO MOD 🚀)
   useEffect(() => {
     Animated.timing(fillAnim, {
       toValue: percent,
-      duration: 800, // 1.5 saniye yerine 0.8 saniye (Çok daha seri)
-      easing: Easing.out(Easing.cubic), // Yaylanmayı kaldırdık, net duruş.
+      duration: 400, // 800ms -> 400ms'ye düşürüldü (Anında tepki)
+      easing: Easing.out(Easing.cubic), // Hızlı başla, yumuşak dur
       useNativeDriver: true, 
     }).start();
   }, [percent]);
 
-  // 2. DALGA ANİMASYONLARI (SAKİNLEŞTİRİLDİ 🌊)
+  // 2. DALGA ANİMASYONLARI (SAKİN AKIŞ 🌊)
   useEffect(() => {
     const loop = Animated.parallel([
-      // Ön Dalga (Sakin akış)
+      // Ön Dalga
       Animated.loop(
         Animated.timing(waveAnimFront, {
           toValue: 1,
-          duration: 5000, // 2000 yerine 5000 (Daha yavaş ve huzurlu)
+          duration: 5000, 
           easing: Easing.linear,
           useNativeDriver: true,
         })
       ),
-      // Arka Dalga (Daha da yavaş - Derinlik için)
+      // Arka Dalga
       Animated.loop(
         Animated.timing(waveAnimBack, {
           toValue: 1,
-          duration: 4000, // 4000 yerine 9000
+          duration: 9000, // Derinlik için daha yavaş
           easing: Easing.linear,
           useNativeDriver: true,
         })
@@ -55,15 +55,13 @@ export default function WaterGlass({ totalMl, goalMl }) {
 
   // --- INTERPOLASYONLAR ---
 
-  // Dalga Döngüsü (0'dan -180'e kayıp başa saracak)
+  // Dalga Döngüsü
   const xFront = waveAnimFront.interpolate({ inputRange: [0, 1], outputRange: [0, -180] });
   const xBack = waveAnimBack.interpolate({ inputRange: [0, 1], outputRange: [0, -180] });
 
   // Su Yüksekliği (220 piksel bardak boyu)
   const yFill = fillAnim.interpolate({
     inputRange: [0, 0.5, 1], 
-    // Bardak tabanı dar olduğu için seviye ayarlaması:
-    // [Boş, Yarım, Dolu] piksel değerleri
     outputRange: [220, 110, 15], 
   });
 
@@ -96,21 +94,19 @@ export default function WaterGlass({ totalMl, goalMl }) {
           {/* Yükselme Grubu */}
           <AnimatedG style={{ transform: [{ translateY: yFill }] }}>
             
-            {/* A) ARKA DALGA (Daha koyu/opak, yavaş, ters faz) */}
+            {/* A) ARKA DALGA */}
             <AnimatedG style={{ transform: [{ translateX: xBack }] }}>
               <Path
-                fill="#0277BD" // Daha koyu mavi
+                fill="#0277BD" 
                 fillOpacity={0.4}
-                // Geniş dalga deseni
                 d="M0,10 Q45,-15 90,10 T180,10 T270,10 T360,10 V300 H0 Z"
               />
             </AnimatedG>
 
-            {/* B) ÖN DALGA (Parlak, ana dalga) */}
+            {/* B) ÖN DALGA */}
             <AnimatedG style={{ transform: [{ translateX: xFront }] }}>
               <Path
                 fill="url(#waterGrad)"
-                // Arka dalgadan biraz farklı fazda
                 d="M0,15 Q45,35 90,15 T180,15 T270,15 T360,15 V300 H0 Z"
               />
             </AnimatedG>
@@ -118,7 +114,7 @@ export default function WaterGlass({ totalMl, goalMl }) {
           </AnimatedG>
         </G>
 
-        {/* 3. DETAYLAR (Çerçeve ve Parlama) */}
+        {/* 3. DETAYLAR */}
         <Path
           d="M20,10 L35,180 Q40,210 80,210 H80 Q120,210 125,180 L140,10"
           fill="none"
@@ -127,7 +123,6 @@ export default function WaterGlass({ totalMl, goalMl }) {
           strokeLinecap="round"
         />
         
-        {/* Cam Yansıması */}
         <Path
           d="M35,30 L42,160"
           stroke="rgba(255,255,255,0.6)"
@@ -135,7 +130,6 @@ export default function WaterGlass({ totalMl, goalMl }) {
           strokeLinecap="round"
         />
         
-        {/* Bardak Ağzı */}
         <Path
           d="M20,10 Q80,-5 140,10"
           fill="none"
@@ -152,7 +146,6 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     justifyContent: 'center',
-    // Bardağa 3D derinlik katan gölge
     shadowColor: "#0277BD",
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.25,
