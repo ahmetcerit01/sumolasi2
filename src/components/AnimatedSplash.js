@@ -50,7 +50,7 @@ export default function AnimatedSplash({ onAnimationFinish }) {
         }).start(() => {
           if (onAnimationFinish) onAnimationFinish();
         });
-      }, 1500); // Yazı geldikten 1.5sn sonra uygulamayı aç
+      }, 1600); // Yazı geldikten 1.5sn sonra uygulamayı aç
     });
   }, []);
 
@@ -124,7 +124,7 @@ export default function AnimatedSplash({ onAnimationFinish }) {
 
         {/* --- LOGO YAZISI --- */}
         <Animated.View style={{ opacity: textOpacity, transform: [{ translateY: 20 }] }}>
-          <Text style={styles.brandName}>SuMolası</Text>
+          <Text style={styles.brandName}>  Su Molası</Text>
           <Text style={styles.tagline}>Sağlıklı bir mola zamanı.</Text>
         </Animated.View>
       </View>

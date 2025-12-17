@@ -22,7 +22,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import DateTimePicker from '@react-native-community/datetimepicker'; // Saat seçimi için
+import DateTimePicker from '@react-native-community/datetimepicker'; 
 
 import { useHydrationStore } from '../storage/useHydrationStore';
 import { BADGES } from '../constants/badges';
@@ -63,9 +63,15 @@ export default function ProfileScreen() {
     goalMl, 
     setGoalMl, 
     badges, 
-    profile, // Store'daki profil verisi
-    recommendedGoal, // Store'daki hesaplanmış önerilen hedef
-    updateProfile // Profili güncelleme fonksiyonu
+    profile, 
+    recommendedGoal, 
+    updateProfile,
+    // Eğer store'da bu fonksiyonlar yoksa (önceki adımlarda eklemediysek) 
+    // aşağıda manuel yöneteceğiz, varsa kullanacağız.
+    setNotifications, 
+    setSound,
+    notificationsEnabled: storeNotifEnabled,
+    soundEnabled: storeSoundEnabled
   } = useHydrationStore();
 
   const badgesMap = badges || {};
@@ -75,12 +81,11 @@ export default function ProfileScreen() {
   const scrollY = useRef(new Animated.Value(0)).current;
 
   // UI state
-  const [reminderTime, setReminderTime] = useState(new Date());
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
   
   // Hedef & Modal State'leri
-  const [goalEditMl, setGoalEditMl] = useState(goalMl || 2000);
+  const [goalEditMl, setGoalEditMl] = useState(goalMl || 2500);
   const [showGoalPicker, setShowGoalPicker] = useState(false);
   const [showEditProfile, setShowEditProfile] = useState(false);
 
@@ -105,41 +110,73 @@ export default function ProfileScreen() {
     ).start();
   }, []);
 
-  // Storage Yükleme (Bildirim Ayarları)
+  // Storage Yükleme (Açılışta ayarları çek)
   useEffect(() => {
     (async () => {
       try {
-        const [tRaw, notifRaw, soundRaw] = await Promise.all([
-          AsyncStorage.getItem(STORAGE_KEYS.reminderTime),
-          AsyncStorage.getItem(STORAGE_KEYS.notifications),
-          AsyncStorage.getItem(STORAGE_KEYS.sound),
-        ]);
-
-        if (tRaw) {
-          const parsed = JSON.parse(tRaw);
-          const d = new Date();
-          d.setHours(parsed.h ?? 9, parsed.m ?? 0, 0, 0);
-          setReminderTime(d);
+        // Store'da varsa oradan al, yoksa Storage'dan
+        if (storeNotifEnabled !== undefined) {
+            setNotificationsEnabled(storeNotifEnabled);
+        } else {
+            const notifRaw = await AsyncStorage.getItem(STORAGE_KEYS.notifications);
+            if (notifRaw !== null) setNotificationsEnabled(notifRaw === '1');
         }
-        if (notifRaw !== null) setNotificationsEnabled(notifRaw === '1');
-        if (soundRaw !== null) setSoundEnabled(soundRaw === '1');
+
+        if (storeSoundEnabled !== undefined) {
+            setSoundEnabled(storeSoundEnabled);
+        } else {
+            const soundRaw = await AsyncStorage.getItem(STORAGE_KEYS.sound);
+            if (soundRaw !== null) setSoundEnabled(soundRaw === '1');
+        }
       } catch {}
     })();
-  }, []);
+  }, [storeNotifEnabled, storeSoundEnabled]);
 
-  // Hedef Store ile senkronize olsun (açılışta)
+  // Hedef Store ile senkronize olsun
   useEffect(() => {
     if (goalMl) setGoalEditMl(goalMl);
   }, [goalMl]);
 
-  // --- PROFİL DÜZENLEME FONKSİYONLARI ---
+  // --- DİNAMİK FONKSİYONLAR ---
+
+  const toggleNotifications = async (value) => {
+    setNotificationsEnabled(value);
+    
+    // 1. Store varsa güncelle
+    if (setNotifications) setNotifications(value);
+    
+    // 2. Storage'a yaz (Kalıcılık için)
+    await AsyncStorage.setItem(STORAGE_KEYS.notifications, value ? '1' : '0');
+
+    // 3. Mantıksal İşlem
+    if (!value) {
+      // Kapatıldıysa tüm planları iptal et
+      await Notifications.cancelAllScheduledNotificationsAsync();
+    } else {
+      // Açıldıysa izin iste
+      const { status } = await Notifications.getPermissionsAsync();
+      if (status !== 'granted') {
+        await Notifications.requestPermissionsAsync();
+      }
+    }
+  };
+
+  const toggleSound = async (value) => {
+    setSoundEnabled(value);
+    
+    // 1. Store varsa güncelle
+    if (setSound) setSound(value);
+
+    // 2. Storage'a yaz
+    await AsyncStorage.setItem(STORAGE_KEYS.sound, value ? '1' : '0');
+  };
+
+  // --- PROFİL DÜZENLEME ---
 
   const openEditModal = () => {
-    // Mevcut verileri state'e yükle
     setEditWeight(String(profile?.weight || 70));
     setEditHeight(String(profile?.height || 170));
     
-    // Saatleri Date objesine çevir
     const wakeDate = new Date();
     const [wh, wm] = (profile?.wakeAt || "08:00").split(':');
     wakeDate.setHours(parseInt(wh), parseInt(wm));
@@ -165,7 +202,6 @@ export default function ProfileScreen() {
     const wakeStr = `${String(editWake.getHours()).padStart(2, '0')}:${String(editWake.getMinutes()).padStart(2, '0')}`;
     const sleepStr = `${String(editSleep.getHours()).padStart(2, '0')}:${String(editSleep.getMinutes()).padStart(2, '0')}`;
 
-    // Store'daki updateProfile fonksiyonunu çağır (Bu hem profili günceller hem de önerilen hedefi)
     updateProfile({
       weight: w,
       height: h,
@@ -177,62 +213,27 @@ export default function ProfileScreen() {
     Alert.alert("Güncellendi", "Profil bilgilerin ve önerilen hedefin güncellendi! 🚀");
   };
 
-  // --- AYARLARI KAYDET ---
-  const saveSettings = async () => {
+  // --- SADECE HEDEFİ KAYDET ---
+  const saveGoalSettings = async () => {
     try {
-      await AsyncStorage.multiSet([
-        [STORAGE_KEYS.reminderTime, JSON.stringify({ h: reminderTime.getHours(), m: reminderTime.getMinutes() })],
-        [STORAGE_KEYS.notifications, notificationsEnabled ? '1' : '0'],
-        [STORAGE_KEYS.sound, soundEnabled ? '1' : '0'],
-        ['DAILY_GOAL_ML', String(goalEditMl)]
-      ]);
-
-      setGoalMl(goalEditMl); // Store güncelle
-
-      // Bildirim Ayarla
-      if (notificationsEnabled) {
-        const { status } = await Notifications.requestPermissionsAsync();
-        if (status === 'granted') {
-          await Notifications.cancelAllScheduledNotificationsAsync();
-          // Örnek bir genel bildirim (Detaylısı RemindersScreen'de)
-          await Notifications.scheduleNotificationAsync({
-            content: { title: 'Su Molası', body: 'Hedefini tutturmak için bir bardak su iç!', sound: soundEnabled ? 'default' : null },
-            trigger: { hour: reminderTime.getHours(), minute: reminderTime.getMinutes(), repeats: true },
-          });
-        } else {
-          Alert.alert('İzin Gerekli', 'Bildirim izni verilmedi.');
-        }
-      } else {
-        await Notifications.cancelAllScheduledNotificationsAsync();
-      }
-
-      Alert.alert('Başarılı', 'Profil ayarların güncellendi! 🎉');
+      await AsyncStorage.setItem('DAILY_GOAL_ML', String(goalEditMl));
+      setGoalMl(goalEditMl);
+      Alert.alert('Başarılı', 'Günlük hedefin güncellendi! 🎉');
     } catch (e) {
       Alert.alert('Hata', 'Kaydedilirken sorun oluştu.');
     }
   };
 
-  // Animasyonlu Arkaplan Renkleri
   const bgTopColor = bgAnim.interpolate({ inputRange: [0, 1], outputRange: ['#E3F2FD', '#F3E5F5'] });
-
-  // Header Animasyonu
-  const headerScale = scrollY.interpolate({
-    inputRange: [-100, 0],
-    outputRange: [1.5, 1],
-    extrapolate: 'clamp'
-  });
+  const headerScale = scrollY.interpolate({ inputRange: [-100, 0], outputRange: [1.5, 1], extrapolate: 'clamp' });
 
   return (
     <View style={styles.container}>
       <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
-      {/* CANLI ARKAPLAN */}
+      {/* ARKAPLAN */}
       <Animated.View style={[styles.animatedBg, { backgroundColor: bgTopColor }]}>
-        <LinearGradient
-          colors={['rgba(255,255,255,0.2)', 'rgba(255,255,255,0.9)']}
-          style={StyleSheet.absoluteFill}
-        />
-        {/* Dekoratif */}
+        <LinearGradient colors={['rgba(255,255,255,0.2)', 'rgba(255,255,255,0.9)']} style={StyleSheet.absoluteFill} />
         <View style={[styles.bubble, { top: -50, right: -50, width: 300, height: 300, backgroundColor: '#BBDEFB', opacity: 0.2 }]} />
         <View style={[styles.bubble, { top: height * 0.5, left: -50, width: 200, height: 200, backgroundColor: '#E1BEE7', opacity: 0.15 }]} />
       </Animated.View>
@@ -244,14 +245,13 @@ export default function ProfileScreen() {
         scrollEventThrottle={16}
       >
         
-        {/* --- PROFİL HEADER --- */}
+        {/* HEADER */}
         <View style={[styles.headerContainer, { paddingTop: insets.top + 20 }]}>
           <Animated.View style={[styles.avatarContainer, { transform: [{ scale: headerScale }] }]}>
             <Image 
               source={{uri: 'https://cdn-icons-png.flaticon.com/128/11478/11478480.png'}} 
               style={styles.avatar} 
             />
-            {/* Avatar üzerindeki kalem ikonu da düzenleme modalını açar */}
             <TouchableOpacity style={styles.editIconBadge} onPress={openEditModal}>
                <Ionicons name="pencil" size={14} color="#fff" />
             </TouchableOpacity>
@@ -270,63 +270,32 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* --- BİLGİ KARTLARI (GRID) - Store'dan gelen veriler --- */}
+        {/* BİLGİ KARTLARI */}
         <View style={styles.statsGrid}>
-           {/* Kilo */}
            <View style={styles.statCard}>
-              <View style={[styles.iconBox, {backgroundColor: '#E8F5E9'}]}>
-                 <Ionicons name="fitness" size={20} color="#2E7D32" />
-              </View>
-              <View>
-                 <Text style={styles.statLabel}>Ağırlık</Text>
-                 <Text style={styles.statValue}>{profile?.weight || '--'} kg</Text>
-              </View>
+              <View style={[styles.iconBox, {backgroundColor: '#E8F5E9'}]}><Ionicons name="fitness" size={20} color="#2E7D32" /></View>
+              <View><Text style={styles.statLabel}>Ağırlık</Text><Text style={styles.statValue}>{profile?.weight || '--'} kg</Text></View>
            </View>
-
-           {/* Uyanma */}
            <View style={styles.statCard}>
-              <View style={[styles.iconBox, {backgroundColor: '#FFF3E0'}]}>
-                 <Ionicons name="sunny" size={20} color="#EF6C00" />
-              </View>
-              <View>
-                 <Text style={styles.statLabel}>Uyanış</Text>
-                 <Text style={styles.statValue}>{profile?.wakeAt || '--:--'}</Text>
-              </View>
+              <View style={[styles.iconBox, {backgroundColor: '#E3F2FD'}]}><Ionicons name="resize" size={20} color="#1565C0" /></View>
+              <View><Text style={styles.statLabel}>Boy</Text><Text style={styles.statValue}>{profile?.height || '--'} cm</Text></View>
            </View>
-
-           {/* Uyku */}
            <View style={styles.statCard}>
-              <View style={[styles.iconBox, {backgroundColor: '#F3E5F5'}]}>
-                 <Ionicons name="moon" size={20} color="#8E24AA" />
-              </View>
-              <View>
-                 <Text style={styles.statLabel}>Uyku</Text>
-                 <Text style={styles.statValue}>{profile?.sleepAt || '--:--'}</Text>
-              </View>
+              <View style={[styles.iconBox, {backgroundColor: '#FFF3E0'}]}><Ionicons name="sunny" size={20} color="#EF6C00" /></View>
+              <View><Text style={styles.statLabel}>Uyanış</Text><Text style={styles.statValue}>{profile?.wakeAt || '--:--'}</Text></View>
            </View>
-
-           {/* Boy */}
            <View style={styles.statCard}>
-              <View style={[styles.iconBox, {backgroundColor: '#E3F2FD'}]}>
-                 <Ionicons name="resize" size={20} color="#1565C0" />
-              </View>
-              <View>
-                 <Text style={styles.statLabel}>Boy</Text>
-                 <Text style={styles.statValue}>{profile?.height || '--'} cm</Text>
-              </View>
+              <View style={[styles.iconBox, {backgroundColor: '#F3E5F5'}]}><Ionicons name="moon" size={20} color="#8E24AA" /></View>
+              <View><Text style={styles.statLabel}>Uyku</Text><Text style={styles.statValue}>{profile?.sleepAt || '--:--'}</Text></View>
            </View>
         </View>
 
-        {/* DÜZENLE BUTONU */}
-        <TouchableOpacity 
-            style={styles.refreshLink} 
-            onPress={openEditModal}
-        >
+        <TouchableOpacity style={styles.refreshLink} onPress={openEditModal}>
             <Text style={styles.refreshLinkText}>Bilgileri Düzenle</Text>
             <Ionicons name="create-outline" size={16} color="#90A4AE" />
         </TouchableOpacity>
 
-        {/* --- HEDEF AYARI (BÜYÜK KART) --- */}
+        {/* HEDEF & AYARLAR */}
         <View style={styles.sectionCard}>
            <Text style={styles.sectionTitle}>Günlük Hedef</Text>
            
@@ -339,142 +308,88 @@ export default function ProfileScreen() {
                     <Ionicons name="chevron-down" size={20} color="#374151" style={{marginLeft: 5}} />
                  </TouchableOpacity>
               </View>
-              <View style={styles.goalIconCircle}>
-                 <Ionicons name="trophy" size={32} color="#FFB300" />
-              </View>
+              <View style={styles.goalIconCircle}><Ionicons name="trophy" size={32} color="#FFB300" /></View>
            </View>
 
            <View style={styles.divider} />
 
-           {/* AYARLAR */}
+           {/* Bildirimler */}
            <View style={styles.settingRow}>
               <View style={styles.settingLeft}>
-                 <View style={[styles.settingIcon, {backgroundColor: '#E0F2F1'}]}>
-                    <Ionicons name="notifications" size={18} color="#00695C" />
-                 </View>
+                 <View style={[styles.settingIcon, {backgroundColor: '#E0F2F1'}]}><Ionicons name="notifications" size={18} color="#00695C" /></View>
                  <Text style={styles.settingText}>Bildirimler</Text>
               </View>
               <Switch 
                 value={notificationsEnabled} 
-                onValueChange={setNotificationsEnabled} 
+                onValueChange={toggleNotifications} 
                 trackColor={{ true: '#4DB6AC', false: '#E0E0E0' }} 
                 thumbColor={'#fff'}
               />
            </View>
 
+           {/* Sesler */}
            <View style={styles.settingRow}>
               <View style={styles.settingLeft}>
-                 <View style={[styles.settingIcon, {backgroundColor: '#EDE7F6'}]}>
-                    <Ionicons name="musical-notes" size={18} color="#5E35B1" />
-                 </View>
+                 <View style={[styles.settingIcon, {backgroundColor: '#EDE7F6'}]}><Ionicons name="musical-notes" size={18} color="#5E35B1" /></View>
                  <Text style={styles.settingText}>Ses Efektleri</Text>
               </View>
               <Switch 
                 value={soundEnabled} 
-                onValueChange={setSoundEnabled} 
+                onValueChange={toggleSound} 
                 trackColor={{ true: '#7E57C2', false: '#E0E0E0' }} 
                 thumbColor={'#fff'}
               />
            </View>
         </View>
 
-        {/* --- KAYDET BUTONU --- */}
-        <TouchableOpacity style={styles.saveBtn} onPress={saveSettings} activeOpacity={0.9}>
-           <LinearGradient
-             colors={['#29B6F6', '#0288D1']}
-             style={styles.saveBtnGradient}
-             start={{x:0, y:0}} end={{x:1, y:0}}
-           >
-              <Text style={styles.saveBtnText}>Değişiklikleri Kaydet</Text>
+        {/* KAYDET (Sadece Hedef) */}
+        <TouchableOpacity style={styles.saveBtn} onPress={saveGoalSettings} activeOpacity={0.9}>
+           <LinearGradient colors={['#29B6F6', '#0288D1']} style={styles.saveBtnGradient} start={{x:0, y:0}} end={{x:1, y:0}}>
+              <Text style={styles.saveBtnText}>Hedefi Güncelle</Text>
               <Ionicons name="checkmark-circle" size={20} color="#fff" style={{marginLeft: 8}} />
            </LinearGradient>
         </TouchableOpacity>
 
-        {/* --- SU GERÇEĞİ (BİLGİ) --- */}
         <View style={styles.factCard}>
-           <View style={styles.factHeader}>
-              <Ionicons name="bulb" size={20} color="#FBC02D" />
-              <Text style={styles.factTitle}>Biliyor muydun?</Text>
-           </View>
+           <View style={styles.factHeader}><Ionicons name="bulb" size={20} color="#FBC02D" /><Text style={styles.factTitle}>İpucu</Text></View>
            <Text style={styles.factText}>{fact}</Text>
         </View>
 
-        {/* --- YARDIMCI RESET BUTONU --- */}
-        <TouchableOpacity 
-           style={styles.resetOnboardBtn} 
-           onPress={async () => {
-             try {
-                // Bu sadece manuel bir tetikleme, artık store otomatik yapıyor
-                Alert.alert('Bilgi', 'Veriler otomatik senkronize ediliyor.');
-             } catch {}
-           }}
-        >
-           <Text style={styles.resetOnboardText}>Senkronizasyon Kontrolü</Text>
-        </TouchableOpacity>
-
       </Animated.ScrollView>
 
-      {/* --- MODAL: PROFİL DÜZENLEME --- */}
+      {/* --- PROFİL DÜZENLEME MODALI --- */}
       <Modal animationType="slide" transparent={true} visible={showEditProfile} onRequestClose={() => setShowEditProfile(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalOverlay}>
           <View style={styles.editModalContent}>
             <View style={styles.modalHeaderRow}>
                <Text style={styles.modalTitle}>Profili Düzenle</Text>
-               <TouchableOpacity onPress={() => setShowEditProfile(false)}>
-                  <Ionicons name="close" size={24} color="#333"/>
-               </TouchableOpacity>
+               <TouchableOpacity onPress={() => setShowEditProfile(false)}><Ionicons name="close" size={24} color="#333"/></TouchableOpacity>
             </View>
-            
-            {/* Kilo */}
             <View style={styles.inputGroup}>
                <Text style={styles.inputLabel}>Kilo (kg)</Text>
-               <TextInput 
-                  style={styles.inputBox} 
-                  value={editWeight} 
-                  onChangeText={setEditWeight} 
-                  keyboardType="numeric" 
-                  placeholder="70" 
-               />
+               <TextInput style={styles.inputBox} value={editWeight} onChangeText={setEditWeight} keyboardType="numeric" placeholder="70" />
             </View>
-
-            {/* Boy */}
             <View style={styles.inputGroup}>
                <Text style={styles.inputLabel}>Boy (cm)</Text>
-               <TextInput 
-                  style={styles.inputBox} 
-                  value={editHeight} 
-                  onChangeText={setEditHeight} 
-                  keyboardType="numeric" 
-                  placeholder="170" 
-               />
+               <TextInput style={styles.inputBox} value={editHeight} onChangeText={setEditHeight} keyboardType="numeric" placeholder="170" />
             </View>
-
-            {/* Uyanma & Uyuma Saatleri */}
             <View style={styles.rowInputs}>
                <TouchableOpacity style={styles.timeInput} onPress={() => setShowWakePicker(true)}>
                   <Text style={styles.inputLabel}>Uyanış</Text>
-                  <Text style={styles.timeValue}>
-                     {String(editWake.getHours()).padStart(2,'0')}:{String(editWake.getMinutes()).padStart(2,'0')}
-                  </Text>
+                  <Text style={styles.timeValue}>{String(editWake.getHours()).padStart(2,'0')}:{String(editWake.getMinutes()).padStart(2,'0')}</Text>
                </TouchableOpacity>
                <TouchableOpacity style={styles.timeInput} onPress={() => setShowSleepPicker(true)}>
                   <Text style={styles.inputLabel}>Uyku</Text>
-                  <Text style={styles.timeValue}>
-                     {String(editSleep.getHours()).padStart(2,'0')}:{String(editSleep.getMinutes()).padStart(2,'0')}
-                  </Text>
+                  <Text style={styles.timeValue}>{String(editSleep.getHours()).padStart(2,'0')}:{String(editSleep.getMinutes()).padStart(2,'0')}</Text>
                </TouchableOpacity>
             </View>
-
-            {/* Time Pickers */}
             {(showWakePicker || showSleepPicker) && (
                Platform.OS === 'ios' ? (
                   <DateTimePicker
                      value={showWakePicker ? editWake : editSleep}
                      mode="time"
                      display="spinner"
-                     onChange={(e, d) => {
-                        if (d) showWakePicker ? setEditWake(d) : setEditSleep(d);
-                     }}
+                     onChange={(e, d) => { if (d) showWakePicker ? setEditWake(d) : setEditSleep(d); }}
                      style={{height: 120}}
                   />
                ) : (
@@ -482,20 +397,15 @@ export default function ProfileScreen() {
                      value={showWakePicker ? editWake : editSleep}
                      mode="time"
                      is24Hour
-                     onChange={(e, d) => {
-                        setShowWakePicker(false); setShowSleepPicker(false);
-                        if (d) showWakePicker ? setEditWake(d) : setEditSleep(d);
-                     }}
+                     onChange={(e, d) => { setShowWakePicker(false); setShowSleepPicker(false); if (d) showWakePicker ? setEditWake(d) : setEditSleep(d); }}
                   />
                )
             )}
-            
             {Platform.OS === 'ios' && (showWakePicker || showSleepPicker) && (
                <TouchableOpacity onPress={() => {setShowWakePicker(false); setShowSleepPicker(false)}} style={{alignItems:'flex-end', padding:10}}>
                   <Text style={{color:'#0288D1', fontWeight:'700'}}>Tamam</Text>
                </TouchableOpacity>
             )}
-
             <TouchableOpacity style={styles.saveModalBtn} onPress={handleSaveProfile}>
                <Text style={styles.saveModalBtnText}>Kaydet ve Hesapla</Text>
             </TouchableOpacity>
@@ -503,7 +413,7 @@ export default function ProfileScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* --- MODAL: HEDEF SEÇİCİ --- */}
+      {/* --- HEDEF SEÇİCİ MODAL --- */}
       {showGoalPicker && (
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} onPress={() => setShowGoalPicker(false)} />
@@ -538,8 +448,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8F9FA' },
   animatedBg: { ...StyleSheet.absoluteFillObject },
   bubble: { position: 'absolute', borderRadius: 999 },
-
-  /* Header */
   headerContainer: { alignItems: 'center', marginBottom: 24 },
   avatarContainer: { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 10, elevation: 8, marginBottom: 12, position: 'relative' },
   avatar: { width: 100, height: 100, borderRadius: 50, borderWidth: 4, borderColor: '#fff' },
@@ -548,55 +456,37 @@ const styles = StyleSheet.create({
   badgeRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
   miniBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF8E1', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   miniBadgeText: { fontSize: 12, fontWeight: '700', color: '#FF8F00', marginLeft: 4 },
-
-  /* Grid Stats */
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 12, justifyContent: 'space-between' },
   statCard: { width: '48%', backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 12, flexDirection: 'row', alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
   iconBox: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   statLabel: { fontSize: 12, color: '#90A4AE', fontWeight: '600' },
   statValue: { fontSize: 16, fontWeight: '800', color: '#374151' },
-
   refreshLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 24 },
   refreshLinkText: { color: '#90A4AE', fontSize: 13, fontWeight: '600', marginRight: 4 },
-
-  /* Main Settings Card */
   sectionCard: { backgroundColor: '#fff', marginHorizontal: 16, borderRadius: 24, padding: 20, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, elevation: 3, marginBottom: 20 },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: '#90A4AE', marginBottom: 16, textTransform: 'uppercase', letterSpacing: 0.5 },
-  
   goalContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   goalSub: { fontSize: 13, color: '#90A4AE', fontWeight: '500', marginBottom: 4 },
   goalSelector: { flexDirection: 'row', alignItems: 'baseline' },
   goalValueMain: { fontSize: 32, fontWeight: '800', color: '#1A237E' },
   goalUnit: { fontSize: 16, fontWeight: '600', color: '#90A4AE', marginLeft: 4 },
   goalIconCircle: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#FFF8E1', alignItems: 'center', justifyContent: 'center' },
-
   divider: { height: 1, backgroundColor: '#F5F5F5', marginVertical: 20 },
-
   settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   settingLeft: { flexDirection: 'row', alignItems: 'center' },
   settingIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   settingText: { fontSize: 16, fontWeight: '600', color: '#374151' },
-
-  /* Save Button */
   saveBtn: { marginHorizontal: 16, marginBottom: 24, borderRadius: 20, shadowColor: '#0288D1', shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
   saveBtnGradient: { paddingVertical: 18, borderRadius: 20, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
   saveBtnText: { color: '#fff', fontSize: 18, fontWeight: '800' },
-
-  /* Fact Card */
   factCard: { marginHorizontal: 16, backgroundColor: '#FFFDE7', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#FFF59D', marginBottom: 24 },
   factHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   factTitle: { fontSize: 14, fontWeight: '700', color: '#F9A825', marginLeft: 6 },
   factText: { fontSize: 14, color: '#F57F17', lineHeight: 20 },
-
-  /* Reset Text */
   resetOnboardBtn: { alignItems: 'center', padding: 10 },
   resetOnboardText: { color: '#B0BEC5', fontWeight: '600', fontSize: 13 },
-
-  /* Modal Styles */
   modalOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', zIndex: 100, backgroundColor: 'rgba(0,0,0,0.5)' },
   modalBackdrop: { ...StyleSheet.absoluteFillObject },
-  
-  /* Edit Modal Specific */
   editModalContent: { width: '85%', backgroundColor: '#fff', borderRadius: 24, padding: 24, elevation: 10 },
   modalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   inputGroup: { marginBottom: 16 },
@@ -607,8 +497,6 @@ const styles = StyleSheet.create({
   timeValue: { fontSize: 18, fontWeight: '800', color: '#0288D1', marginTop: 4 },
   saveModalBtn: { backgroundColor: '#29B6F6', paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginTop: 10 },
   saveModalBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-
-  /* General Modal */
   modalContent: { width: '80%', backgroundColor: '#fff', borderRadius: 24, padding: 24, elevation: 10 },
   modalTitle: { fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 16, color: '#1A237E' },
   modalOption: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F5F5F5', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
