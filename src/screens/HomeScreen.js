@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useState, useRef, useEffect, useMemo, useContext } from "react";
 import {
   View,
   Text,
@@ -14,7 +14,8 @@ import {
   KeyboardAvoidingView,
   Alert,
   Dimensions,
-  Easing
+  Easing,
+  NativeModules
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -30,10 +31,16 @@ import subardagi from "../../assets/subardagi.png";
 import susisesi from "../../assets/susisesi.png";
 import fincan from "../../assets/fincan.png";
 
+// Profil avatarları (lokal dosyalar)
+const MALE_AVATAR = require('../../assets/illustrations/male.png');
+const FEMALE_AVATAR = require('../../assets/illustrations/female.png');
+
+import { LanguageContext } from "../../App";
+
 const { width, height } = Dimensions.get("window");
 
 // --- İPUÇLARI HAVUZU ---
-const WATER_TIPS = [
+const WATER_TIPS_TR = [
   "Sabah uyanınca bir bardak su içmek metabolizmanı %24 hızlandırır.",
   "Beyninin %75'i sudan oluşur. Odaklanmak için su iç!",
   "Yemeklerden 30 dakika önce su içmek sindirimi kolaylaştırır.",
@@ -43,16 +50,30 @@ const WATER_TIPS = [
   "Soğuk su içmek vücudun ısısını dengelemeye yardımcı olur."
 ];
 
+const WATER_TIPS_EN = [
+  "Drinking a glass of water after waking up can boost metabolism.",
+  "Your brain is mostly water—drink to stay focused.",
+  "Drinking water 30 minutes before meals can help digestion.",
+  "One of the most common causes of headaches is dehydration.",
+  "For glowing skin, water matters more than expensive creams.",
+  "Hydration can reduce muscle fatigue and improve performance.",
+  "Cold water may help regulate body temperature."
+];
+
 export default function HomeScreen({ navigation }) {
   const insets = useSafeAreaInsets();
-  
+
+  const { locale, t } = useContext(LanguageContext);
+
   const totalMl = useHydrationStore((s) => s.totalMl);
   const goalMl = useHydrationStore((s) => s.goalMl);
   const add = useHydrationStore((s) => s.add);
   const resetToday = useHydrationStore((s) => s.resetToday);
   const resetAll = useHydrationStore((s) => s.resetAll);
   const streakDays = useHydrationStore((s) => s.streakDays);
-  
+  // Profil bilgisi (store'da varsa). Yoksa default male gösterir.
+  const profile = useHydrationStore((s) => s.profile);
+
   // Ses Ayarını Kontrol Et
   const soundEnabled = useHydrationStore((s) => s.soundEnabled);
 
@@ -63,7 +84,8 @@ export default function HomeScreen({ navigation }) {
   const [customAmount, setCustomAmount] = useState("");
 
   // Rastgele İpucu Seç (Her açılışta değişmemesi için useMemo)
-  const dailyTip = useMemo(() => WATER_TIPS[Math.floor(Math.random() * WATER_TIPS.length)], []);
+  const tipsPool = useMemo(() => (locale === 'tr' ? WATER_TIPS_TR : WATER_TIPS_EN), [locale]);
+  const dailyTip = useMemo(() => tipsPool[Math.floor(Math.random() * tipsPool.length)], [tipsPool]);
 
   const scrollY = useRef(new Animated.Value(0)).current;
   const bgAnim = useRef(new Animated.Value(0)).current;
@@ -90,7 +112,37 @@ export default function HomeScreen({ navigation }) {
   });
 
   const soundRef = useRef(null);
-  
+
+  // iOS Widget/App Group senkronu (Native Module)
+  // Not: SharedWaterStore native modülü iOS tarafında ekli olmalı.
+  const { SharedWaterStore } = NativeModules;
+
+  // DEBUG: Native module bağlantısı geliyor mu?
+  useEffect(() => {
+    if (Platform.OS === "ios") {
+      // Bu log Xcode console'a düşer
+      console.log("SharedWaterStore module:", SharedWaterStore);
+
+      // Fonksiyonlar varsa bugünkü değeri de çekelim
+      if (SharedWaterStore && typeof SharedWaterStore.getTodayWater === "function") {
+        SharedWaterStore.getTodayWater((value) => {
+          console.log("SharedWaterStore getTodayWater:", value);
+        });
+      }
+    }
+  }, []);
+
+  const syncTodayWaterToWidget = (nextTotalMl) => {
+    if (Platform.OS !== "ios") return;
+    try {
+      if (SharedWaterStore && typeof SharedWaterStore.setTodayWater === "function") {
+        SharedWaterStore.setTodayWater(nextTotalMl);
+      }
+    } catch (e) {
+      // Sessiz geç: widget senkronu opsiyonel
+    }
+  };
+
   const playWaterSound = async () => {
     // Ses kapalıysa çalma
     if (soundEnabled === false) return;
@@ -104,14 +156,20 @@ export default function HomeScreen({ navigation }) {
         staysActiveInBackground: false,
         shouldDuckAndroid: true,
       });
-      const { sound } = await Audio.Sound.createAsync(require("../../assets/sounds/drink.mp3"));
+      const { sound } = await Audio.Sound.createAsync(require("../../assets/sounds/water.mp3"));
       soundRef.current = sound;
       await sound.playAsync();
     } catch (error) {}
   };
 
   const quickAdd = async (ml) => {
+    // Store güncellemesi
     add(ml);
+
+    // Widget için App Group'a bugünkü toplamı yaz (store async olabileceği için tahmini next değeri gönderiyoruz)
+    const nextTotal = (Number(totalMl) || 0) + (Number(ml) || 0);
+    syncTodayWaterToWidget(nextTotal);
+
     playWaterSound();
   };
 
@@ -122,12 +180,17 @@ export default function HomeScreen({ navigation }) {
       setCustomAmount("");
       setModalVisible(false);
     } else {
-      Alert.alert("Hata", "Lütfen geçerli bir miktar girin.");
+      Alert.alert(t('alert.error'), t('alert.validAmount'));
     }
   };
 
   const hour = new Date().getHours();
-  const greeting = hour >= 5 && hour < 12 ? "Günaydın" : hour >= 11 && hour < 19 ? "İyi günler" : "İyi Akşamlar";
+  const greeting =
+    hour >= 5 && hour < 12
+      ? t('home.goodMorning')
+      : hour >= 11 && hour < 19
+      ? t('home.goodDay')
+      : t('home.goodEvening');
 
   const bgTopColor = bgAnim.interpolate({
     inputRange: [0, 1],
@@ -148,7 +211,7 @@ export default function HomeScreen({ navigation }) {
       </Animated.View>
 
       <Animated.View style={[styles.stickyHeader, { height: insets.top + 60, opacity: headerOpacity, paddingTop: insets.top }]}>
-        <Text style={styles.stickyTitle}>Bugün</Text>
+        <Text style={styles.stickyTitle}>{t('home.today')}</Text>
       </Animated.View>
 
       <Animated.ScrollView
@@ -161,10 +224,17 @@ export default function HomeScreen({ navigation }) {
         <View style={styles.headerContainer}>
           <Animated.View style={{ transform: [{ scale: titleScale }] }}>
             <Text style={styles.greeting}>{greeting},</Text>
-            <Text style={styles.subGreeting}>Su molası vermeye hazır mısın?</Text>
+            <Text style={styles.subGreeting}>{t('home.ready')}</Text>
           </Animated.View>
           <TouchableOpacity style={styles.profileBtn} onPress={() => navigation.navigate("Profil")}>
-             <Image source={{uri: 'https://cdn-icons-png.flaticon.com/128/11478/11478480.png'}}  style={styles.avatar} />
+            <Image
+              source={
+                (profile?.gender === 'female' || profile?.gender === 'woman' || profile?.gender === 'kadın')
+                  ? FEMALE_AVATAR
+                  : MALE_AVATAR
+              }
+              style={styles.avatar}
+            />
           </TouchableOpacity>
         </View>
 
@@ -173,7 +243,7 @@ export default function HomeScreen({ navigation }) {
           
           <View style={styles.counterRow}>
              <View>
-                <Text style={styles.goalLabel}>Günlük Hedef</Text>
+                <Text style={styles.goalLabel}>{t('home.dailyGoal')}</Text>
                 <Text style={styles.goalValue}>{safeGoal} ml</Text>
              </View>
              <View style={styles.percentBadge}>
@@ -198,24 +268,26 @@ export default function HomeScreen({ navigation }) {
                   color={streakDays > 0 ? "#FF5722" : "#BDBDBD"} 
                 />
                 <Text style={[styles.streakText, { color: streakDays > 0 ? "#E64A19" : "#9E9E9E" }]}>
-                  {streakDays > 0 ? `${streakDays} Günlük Seri!` : "Seri başlatmak için hedefini tamamla"}
+                  {streakDays > 0
+                    ? t('home.streakDone', { days: streakDays })
+                    : t('home.streakHint')}
                 </Text>
              </View>
           </View>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Hızlı Ekle</Text>
+          <Text style={styles.sectionTitle}>{t('home.quickAdd')}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickAddScroll}>
-            <QuickAddButton ml={200} icon={subardagi} label="Bardak" onPress={() => quickAdd(200)} color="#4FC3F7" />
-            <QuickAddButton ml={300} icon={fincan} label="Fincan" onPress={() => quickAdd(300)} color="#FFB74D" />
-            <QuickAddButton ml={500} icon={susisesi} label="Şişe" onPress={() => quickAdd(500)} color="#9575CD" />
+            <QuickAddButton ml={200} icon={subardagi} label={t('quickAdd.cup')} onPress={() => quickAdd(200)} color="#4FC3F7" />
+            <QuickAddButton ml={300} icon={fincan} label={t('quickAdd.espresso')} onPress={() => quickAdd(300)} color="#FFB74D" />
+            <QuickAddButton ml={500} icon={susisesi} label={t('quickAdd.bottle')} onPress={() => quickAdd(500)} color="#9575CD" />
             
             <TouchableOpacity style={styles.customAddBtn} onPress={() => setModalVisible(true)}>
               <View style={styles.plusCircle}>
                 <Ionicons name="add" size={28} color="#fff" />
               </View>
-              <Text style={styles.customAddText}>Özel</Text>
+              <Text style={styles.customAddText}>{t('home.custom')}</Text>
             </TouchableOpacity>
           </ScrollView>
         </View>
@@ -224,25 +296,25 @@ export default function HomeScreen({ navigation }) {
         <View style={styles.tipCard}>
            <View style={styles.tipHeader}>
               <Ionicons name="bulb" size={20} color="#FBC02D" />
-              <Text style={styles.tipTitle}>Günün İpucu</Text>
+              <Text style={styles.tipTitle}>{t('home.tipOfDay')}</Text>
            </View>
            <Text style={styles.tipText}>{dailyTip}</Text>
         </View>
 
         <View style={styles.gridContainer}>
-            <MenuCard title="Geçmiş" icon="calendar-outline" color="#4DB6AC" onPress={() => navigation.navigate("Geçmiş")} />
-            <MenuCard title="Hatırlatıcı" icon="alarm-outline" color="#E57373" onPress={() => navigation.navigate("Hatırlatıcılar")} />
-            <MenuCard title="Rozetler" icon="ribbon-outline" color="#F06292" onPress={() => navigation.navigate("Rozetler")} />
-            <MenuCard title="Profil" icon="person-outline" color="#7986CB" onPress={() => navigation.navigate("Profil")} />
+            <MenuCard title={t('menu.history')} icon="calendar-outline" color="#4DB6AC" onPress={() => navigation.navigate("Geçmiş")} />
+            <MenuCard title={t('menu.reminders')} icon="alarm-outline" color="#E57373" onPress={() => navigation.navigate("Hatırlatıcılar")} />
+            <MenuCard title={t('menu.badges')} icon="ribbon-outline" color="#F06292" onPress={() => navigation.navigate("Rozetler")} />
+            <MenuCard title={t('menu.profile')} icon="person-outline" color="#7986CB" onPress={() => navigation.navigate("Profil")} />
         </View>
 
         {/* --- Geliştirici Paneli (En Altta Gizli Gibi) --- */}
         <View style={styles.devPanel}>
-           <Text style={styles.devTitle}>Geliştirici</Text>
+           <Text style={styles.devTitle}>{t('dev.title')}</Text>
            <View style={styles.devRow}>
-             <TouchableOpacity onPress={resetToday}><Text style={styles.devLink}>Sıfırla</Text></TouchableOpacity>
+           <TouchableOpacity onPress={() => { resetToday(); syncTodayWaterToWidget(0); }}><Text style={styles.devLink}>{t('dev.reset')}</Text></TouchableOpacity>
              <Text style={{color:'#ccc', marginHorizontal: 8}}>|</Text>
-             <TouchableOpacity onPress={resetAll}><Text style={[styles.devLink, {color:'#E57373'}]}>Sil</Text></TouchableOpacity>
+           <TouchableOpacity onPress={() => { resetAll(); syncTodayWaterToWidget(0); }}><Text style={[styles.devLink, {color:'#E57373'}]}>{t('dev.delete')}</Text></TouchableOpacity>
            </View>
         </View>
 
@@ -253,11 +325,11 @@ export default function HomeScreen({ navigation }) {
           <TouchableOpacity style={{flex:1}} onPress={() => setModalVisible(false)} />
           <View style={styles.modalContent}>
             <View style={styles.modalIndicator} />
-            <Text style={styles.modalTitle}>Miktar Girin</Text>
+            <Text style={styles.modalTitle}>{t('modal.enterAmount')}</Text>
             <View style={styles.inputWrapper}>
               <TextInput
                 style={styles.input}
-                placeholder="Örn: 150"
+                placeholder={t('modal.placeholderAmount')}
                 keyboardType="numeric"
                 autoFocus
                 value={customAmount}
@@ -267,7 +339,7 @@ export default function HomeScreen({ navigation }) {
               <Text style={styles.unitText}>ml</Text>
             </View>
             <TouchableOpacity style={styles.saveBtn} onPress={handleCustomAdd}>
-              <Text style={styles.saveBtnText}>Ekle</Text>
+              <Text style={styles.saveBtnText}>{t('modal.add')}</Text>
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>

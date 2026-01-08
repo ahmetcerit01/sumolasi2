@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useContext } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Switch, KeyboardAvoidingView, Platform, ScrollView, Alert, DeviceEventEmitter } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -8,6 +8,8 @@ import { S } from '../theme/spacing';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
+
+import { LanguageContext } from '../../App';
 
 // ------- SABİTLER -------
 const REMINDER_IDS_KEY = 'SUMOLASI_REMINDER_IDS_V1';
@@ -114,6 +116,8 @@ export default function RemindersScreen() {
   const goalMl = useHydrationStore(s => s.goalMl);
   const todayTotal = useHydrationStore(s => s.totalMl);
 
+  const { t } = useContext(LanguageContext);
+
   const [enabled, setEnabled] = useState(true);
   const [intervalHours, setIntervalHours] = useState(2);
   const [wakeTime, setWakeTime] = useState({ h: 9, m: 0 });
@@ -184,12 +188,12 @@ export default function RemindersScreen() {
     if (!enabled) {
       await cancelExistingReminders();
       await AsyncStorage.setItem(REMINDER_ENABLED_KEY, '0');
-      Alert.alert('Kaydedildi', 'Hatırlatıcılar kapatıldı.');
+      Alert.alert(t('reminders.savedTitle'), t('reminders.disabledMsg'));
       return;
     }
     if (todayTotal >= goalMl) {
       await cancelExistingReminders();
-      Alert.alert('Harika!', 'Bugünkü hedefini zaten tamamladın.');
+      Alert.alert(t('reminders.greatTitle'), t('reminders.goalAlreadyDone'));
       return;
     }
 
@@ -225,7 +229,7 @@ export default function RemindersScreen() {
         [REMINDER_INTERVAL_HOURS_KEY, String(intervalHours)],
         [REMINDER_ENABLED_KEY, '1'],
       ]);
-      Alert.alert("Kaydedildi", "Bugün için planlanacak saat kalmadı. Yarın sabah başlayacak.");
+      Alert.alert(t('reminders.savedTitle'), t('reminders.noTimeLeftToday'));
       return;
     }
 
@@ -236,9 +240,9 @@ export default function RemindersScreen() {
         [REMINDER_ENABLED_KEY, '1'],
         ...(IS_EXPO_GO ? [[LAST_SCHEDULED_DATE_KEY, todayKey()]] : []),
       ]);
-      Alert.alert('Kaydedildi', `${count} hatırlatıcı planlandı.`);
+      Alert.alert(t('reminders.savedTitle'), t('reminders.scheduledCount', { count }));
     } catch (e) {
-      Alert.alert('Hata', 'Planlama yapılamadı.');
+      Alert.alert(t('reminders.errorTitle'), t('reminders.scheduleFailed'));
     }
   };
 
@@ -246,7 +250,7 @@ export default function RemindersScreen() {
   const onTestInOneMinute = async () => {
     await ensureAndroidChannel();
     await scheduleOneExactDate(new Date(Date.now() + 60 * 1000));
-    Alert.alert('Planlandı', '1 dk sonra bildirim gelecek.');
+    Alert.alert(t('reminders.plannedTitle'), t('reminders.testInOneMinuteMsg'));
   };
 
   const wakeStr = `${pad(wakeTime.h)}:${pad(wakeTime.m)}`;
@@ -257,13 +261,13 @@ export default function RemindersScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: '#f7f7f7' }} edges={['top']}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={[styles.container, { paddingTop: 12, paddingBottom: 32 }]}>
-          <Text style={styles.title}>Hatırlatıcılar</Text>
+          <Text style={styles.title}>{t('reminders.title')}</Text>
 
           {/* Aralık Bilgisi */}
           <View style={styles.block}>
             <View style={styles.rowBetween}>
               <View>
-                <Text style={styles.label}>Bildirim Aralığı</Text>
+                <Text style={styles.label}>{t('reminders.intervalTitle')}</Text>
                 <Text style={styles.subLabel}>({wakeStr} – {sleepStr})</Text>
               </View>
               <Switch value={enabled} onValueChange={setEnabled} trackColor={{true:COLORS.primaryEnd}} />
@@ -272,7 +276,7 @@ export default function RemindersScreen() {
             <View style={styles.infoBox}>
               <Ionicons name="information-circle" size={18} color="#3B82F6" style={{marginRight:6}} />
               <Text style={styles.infoText}>
-                Bu saatler profil ayarlarından (uyanma/uyuma) otomatik alınır.
+                {t('reminders.profileTimesInfo')}
               </Text>
             </View>
           </View>
@@ -280,7 +284,7 @@ export default function RemindersScreen() {
           {/* Sıklık & Timeline */}
           <View style={styles.block}>
             <View style={frequencyDisabled ? styles.frequencyDisabled : null} pointerEvents={frequencyDisabled ? 'none' : 'auto'}>
-              <Text style={[styles.label, { marginBottom: 12 }]}>Bildirim Sıklığı</Text>
+              <Text style={[styles.label, { marginBottom: 12 }]}>{t('reminders.frequencyTitle')}</Text>
               
               {/* Butonlar */}
               <View style={[styles.row, { flexWrap: 'wrap', marginBottom: 20 }]}>
@@ -294,7 +298,7 @@ export default function RemindersScreen() {
                     ]}
                   >
                     <Text style={[styles.badgeTxt, intervalHours === h && styles.badgeTxtActive]}>
-                      {h} sa
+                      {t('reminders.everyXHours', { hours: h })}
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -302,11 +306,11 @@ export default function RemindersScreen() {
 
               {/* TIMELINE ÇİZELGESİ */}
               <View style={styles.timelineWrapper}>
-                <Text style={styles.timelineTitle}>Örnek Günlük Plan</Text>
+                <Text style={styles.timelineTitle}>{t('reminders.previewTitle')}</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.timelineScroll}>
                   {/* Başlangıç (Uyanma) */}
                   <View style={styles.timelineNode}>
-                    <Text style={styles.nodeLabel}>Uyanış</Text>
+                    <Text style={styles.nodeLabel}>{t('reminders.wake')}</Text>
                     <View style={[styles.nodeDot, { backgroundColor:'#F59E0B' }]} />
                     <Text style={styles.nodeTime}>{wakeStr}</Text>
                   </View>
@@ -328,7 +332,7 @@ export default function RemindersScreen() {
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                       <View style={styles.line} />
                       <View style={styles.timelineNode}>
-                        <Text style={styles.nodeLabel}>Uyku</Text>
+                        <Text style={styles.nodeLabel}>{t('reminders.sleep')}</Text>
                         <View style={[styles.nodeDot, { backgroundColor:'#6366F1' }]} />
                         <Text style={styles.nodeTime}>{sleepStr}</Text>
                       </View>
@@ -338,30 +342,30 @@ export default function RemindersScreen() {
               </View>
 
             </View>
-            {frequencyDisabled && <Text style={styles.disabledText}>Hatırlatıcı kapalı.</Text>}
+            {frequencyDisabled && <Text style={styles.disabledText}>{t('reminders.disabledInline')}</Text>}
           </View>
 
           {/* Kaydet */}
           <TouchableOpacity style={styles.save} onPress={onSave}>
-            <Text style={styles.saveTxt}>Kaydet</Text>
+            <Text style={styles.saveTxt}>{t('reminders.save')}</Text>
           </TouchableOpacity>
 
           {/* Test */}
           <View style={styles.testArea}>
-            <Text style={styles.testTitle}>Test Paneli</Text>
+            <Text style={styles.testTitle}>{t('reminders.testPanel')}</Text>
             <View style={{flexDirection:'row', gap:10}}>
               <TouchableOpacity style={[styles.testBtn, {backgroundColor:'#0ea5e9', flex:1}]} onPress={onTestInOneMinute}>
-                <Text style={styles.saveTxt}>1 Dk Test</Text>
+                <Text style={styles.saveTxt}>{t('reminders.test1m')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.testBtn, {backgroundColor:'#374151', flex:1}]} onPress={() => DeviceEventEmitter.emit('OPEN_ONBOARD')}>
-                <Text style={styles.saveTxt}>Onboard</Text>
+                <Text style={styles.saveTxt}>{t('reminders.onboard')}</Text>
               </TouchableOpacity>
             </View>
             <TouchableOpacity style={[styles.testBtn, styles.cancel, {marginTop:10}]} onPress={async () => {
                 await Notifications.cancelAllScheduledNotificationsAsync();
-                Alert.alert('Temizlendi');
+                Alert.alert(t('reminders.clearedTitle'));
             }}>
-              <Text style={[styles.saveTxt, {color:'#B45309'}]}>Hepsini İptal Et</Text>
+              <Text style={[styles.saveTxt, {color:'#B45309'}]}>{t('reminders.cancelAll')}</Text>
             </TouchableOpacity>
           </View>
 

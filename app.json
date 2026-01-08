@@ -17,7 +17,9 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.alfacode.sumolasi",
       "infoPlist": {
-        "UIBackgroundModes": ["remote-notification"]
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
       }
     },
     "android": {
@@ -41,12 +43,15 @@
         "expo-notifications",
         {
           "icon": "./assets/icon.png",
-          "color": "#5081E5",
-          "sounds": [
-            "./assets/sounds/notify.wav"
-          ]
+          "color": "#5081E5"
         }
-      ]
-    ]
+      ],
+      "expo-localization"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "2eb1305c-1314-4715-bd1f-8f7d73ed7a57"
+      }
+    }
   }
 }

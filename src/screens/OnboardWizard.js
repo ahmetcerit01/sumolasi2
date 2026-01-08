@@ -7,7 +7,7 @@ import {
   TouchableOpacity, 
   Platform, 
   Animated, 
-  Easing,
+  Easing, 
   Dimensions,
   LayoutAnimation,
   UIManager,
@@ -22,14 +22,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useHydrationStore } from '../storage/useHydrationStore';
 
-// Android Animasyon Desteği
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
 const { width, height } = Dimensions.get('window');
 
-// Görseller (Yolları kontrol et)
+// Görseller
 const IMG_MALE = require('../../assets/illustrations/male.png');
 const IMG_FEMALE = require('../../assets/illustrations/female.png');
 const WAVE_JSON = require('../../assets/lottie/wave.json');
@@ -39,37 +38,50 @@ const IMG_NAP_FEMALE = require('../../assets/illustrations/nap-female.png');
 const IMG_MALE_LENGTH = require('../../assets/illustrations/male-length.png');
 const IMG_FEMALE_LENGTH = require('../../assets/illustrations/female-length.png');
 
-const STEPS = ['gender', 'weight','height', 'wake', 'sleep', 'loading'];
+const STEPS = ['gender', 'weight','height', 'wake', 'sleep', 'loading', 'result'];
 
-export default function OnboardWizard({ onDone }) {
+export default function OnboardWizard({ onDone, onShowPaywall, t: tProp, locale: localeProp, setLanguage: setLanguageProp }) {
   const insets = useSafeAreaInsets();
+  // NOTE: App.js ile döngü (require cycle) olmaması için artık LanguageContext'i buradan import etmiyoruz.
+  // App.js bu ekrana t / locale / setLanguage prop'larını geçmeli.
+  const t = tProp || ((key) => key);
+  const locale = localeProp || 'en';
+  const setLanguage = setLanguageProp || (() => {});
   
-  // --- STATE ---
+  const getInitialDate = (h, m) => {
+    const d = new Date();
+    d.setHours(h, m, 0, 0);
+    return d;
+  };
+
   const [stepIndex, setStepIndex] = useState(0);
   const [gender, setGender] = useState('male');
   const [weight, setWeight] = useState(70);
   const [height, setHeight] = useState(170);
-  const [wakeAt, setWakeAt] = useState(new Date(2000, 0, 1, 8, 0, 0));
-  const [sleepAt, setSleepAt] = useState(new Date(2000, 0, 1, 23, 0, 0));
+  const [wakeAt, setWakeAt] = useState(getInitialDate(8, 0));
+  const [sleepAt, setSleepAt] = useState(getInitialDate(23, 0));
   const [unit, setUnit] = useState('kg'); 
+  const [calculatedGoalMl, setCalculatedGoalMl] = useState(null);
 
   const [showWake, setShowWake] = useState(Platform.OS === 'ios');
   const [showSleep, setShowSleep] = useState(Platform.OS === 'ios');
 
-  // Animasyonlar
   const [loadingIdx, setLoadingIdx] = useState(0);
   const bgAnim = useRef(new Animated.Value(0)).current;
   const progress = useRef(new Animated.Value(0)).current;
   const pulse = useRef(new Animated.Value(1)).current;
   const spinVal = useRef(new Animated.Value(0)).current;
 
-  const loadingPhrases = useMemo(() => ['Vücut kitle indeksin analiz ediliyor...', 'Günlük su ihtiyacın hesaplanıyor...', 'Sana özel plan hazırlanıyor...'], []);
+  const loadingPhrases = useMemo(() => [
+    t('onboard.loading.bmi'),
+    t('onboard.loading.water'),
+    t('onboard.loading.plan'),
+  ], [t]);
 
   const isFirst = stepIndex === 0;
   const isLast  = stepIndex === STEPS.length - 1;
   const step = STEPS[stepIndex];
 
-  // Arkaplan Nefes Alma
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
@@ -79,13 +91,11 @@ export default function OnboardWizard({ onDone }) {
     ).start();
   }, []);
 
-  // Progress Bar Animasyonu
   useEffect(() => {
-    const target = Math.min(stepIndex / (STEPS.length - 2), 1); // Loading hariç
+    const target = Math.min(stepIndex / (STEPS.length - 2), 1); 
     Animated.timing(progress, { toValue: target, duration: 500, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
   }, [stepIndex]);
 
-  // Loading Loop
   useEffect(() => {
     if (step !== 'loading') return;
     
@@ -113,120 +123,172 @@ export default function OnboardWizard({ onDone }) {
   }, [step]);
 
   const animateTransition = (callback) => {
-    // Sayfa geçiş efekti
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     callback();
   };
 
   const next = () => {
+    // Sonuç ekranındayken (result) buton artık onboarding'i bitirmeli.
+    // NOT: result son adım olduğu için `isLast` kontrolü önce gelirse buton çalışmaz.
+    if (step === 'result') {
+      onDone?.();
+      return;
+    }
+
     if (isLast) return;
+
     const nextStep = stepIndex + 1;
 
     animateTransition(() => {
       setStepIndex(nextStep);
     });
 
-    // HESAPLAMA VE KAYIT
     if (STEPS[nextStep] === 'loading') {
       setTimeout(async () => {
         try {
           const weightKg = unit === 'kg' ? weight : Math.round(weight / 2.20462);
-          
-          // Basit bir hesaplama formülü (Daha detaylısı Store içinde calculateGoal ile yapılıyor)
-          let dailyGoalMl = weightKg * 35; 
+          let dailyGoalMl = weightKg * 35;
           if (height > 170) dailyGoalMl += (height - 170) * 10;
           if (height < 160) dailyGoalMl -= (160 - height) * 10;
           dailyGoalMl = Math.max(1200, Math.min(5000, Math.round(dailyGoalMl)));
+          setCalculatedGoalMl(dailyGoalMl);
 
           const profileData = {
-            gender, 
-            unit, 
-            weight: weightKg, // Store ile uyumlu isim (weight)
-            weightKg: weightKg, // Geriye dönük uyumluluk
-            height: height,   // Store ile uyumlu isim (height)
-            heightCm: height, // Geriye dönük uyumluluk
+            gender,
+            unit,
+            weight: weightKg,
+            weightKg: weightKg,
+            height: height,
+            heightCm: height,
             wakeAt: `${String(wakeAt.getHours()).padStart(2,'0')}:${String(wakeAt.getMinutes()).padStart(2,'0')}`,
             sleepAt: `${String(sleepAt.getHours()).padStart(2,'0')}:${String(sleepAt.getMinutes()).padStart(2,'0')}`,
           };
 
-          // 1. AsyncStorage'a yedekle
           await AsyncStorage.multiSet([
             ['ONBOARD_PROFILE', JSON.stringify(profileData)],
             ['DAILY_GOAL_ML', String(dailyGoalMl)],
             ['HAS_ONBOARDED', '1'],
           ]);
 
-          // 2. STORE'U GÜNCELLE (Store'un hazır fonksiyonlarını kullanıyoruz)
           const store = useHydrationStore.getState();
-          
-          // Profili güncelle
           await store.updateProfile({
-             weight: weightKg, 
-             height: height, 
-             wakeAt: profileData.wakeAt, 
-             sleepAt: profileData.sleepAt,
-             gender: gender
+            weight: weightKg,
+            height: height,
+            wakeAt: profileData.wakeAt,
+            sleepAt: profileData.sleepAt,
+            gender: gender
           });
-
-          // Hedefi güncelle (Hesaplanan hedefi zorla)
           await store.setGoalMl(dailyGoalMl);
 
-          console.log('Onboard completed. Goal:', dailyGoalMl);
         } catch (e) {
           console.warn('Save failed', e);
         } finally {
-          onDone?.();
+          // Sonuç ekranına geç (kullanıcı hedefi görsün)
+          animateTransition(() => {
+            setStepIndex(prevIdx => {
+              const resultIdx = STEPS.indexOf('result');
+              return resultIdx > -1 ? resultIdx : prevIdx;
+            });
+          });
         }
       }, 3000);
     }
   };
+  useEffect(() => {
+    if (step !== 'result') return;
+
+    const run = async () => {
+      try {
+        const shown = await AsyncStorage.getItem('PAYWALL_SHOWN_AFTER_ONBOARD');
+        if (shown === '1') return;
+
+        // Kullanıcı günlük hedefi görsün diye kısa bir gecikme
+        setTimeout(() => {
+          onShowPaywall?.();
+        }, 600);
+
+        await AsyncStorage.setItem('PAYWALL_SHOWN_AFTER_ONBOARD', '1');
+      } catch (e) {
+        // Sessiz geç
+      }
+    };
+
+    run();
+  }, [step, onShowPaywall]);
 
   const prev = () => { 
     if (!isFirst) animateTransition(() => setStepIndex(stepIndex - 1)); 
   };
 
-  // Başlıklar
   const getTitle = () => {
     switch (step) {
-      case 'gender': return 'Cinsiyetini Seç';
-      case 'weight': return 'Kilon Kaç?';
-      case 'height': return 'Boyun Kaç?';
-      case 'wake':   return 'Kaçta Uyanırsın?';
-      case 'sleep':  return 'Kaçta Uyursun?';
+      case 'gender': return t('onboard.gender.title');
+      case 'weight': return t('onboard.weight.title');
+      case 'height': return t('onboard.height.title');
+      case 'wake':   return t('onboard.wake.title');
+      case 'sleep':  return t('onboard.sleep.title');
       default: return '';
     }
   };
 
   const getSubtitle = () => {
     switch (step) {
-      case 'gender': return 'Sana en uygun su ihtiyacını hesaplayabilmemiz için gerekli.';
-      case 'weight': return 'Kilo, su ihtiyacını belirleyen en önemli faktördür.';
-      case 'height': return 'Boy uzunluğu metabolizma hızını etkiler.';
-      case 'wake':   return 'Güne ne zaman başladığını bilmeliyiz.';
-      case 'sleep':  return 'Seni uykunda rahatsız etmemek için önemli.';
+      case 'gender': return t('onboard.gender.subtitle');
+      case 'weight': return t('onboard.weight.subtitle');
+      case 'height': return t('onboard.height.subtitle');
+      case 'wake':   return t('onboard.wake.subtitle');
+      case 'sleep':  return t('onboard.sleep.subtitle');
       default: return '';
     }
   };
 
-  // Dinamik Arkaplan Rengi
+  // i18n: Bazı çeviri kütüphaneleri key yoksa "[missing ... translation]" gibi bir string döndürür.
+  // Bu string truthy olduğu için `||` fallback çalışmaz. Bu yardımcı ile temiz fallback yapıyoruz.
+  const safeT = (key, fallback) => {
+    const value = t?.(key);
+    if (!value) return fallback;
+    if (typeof value === 'string' && value.toLowerCase().includes('missing') && value.toLowerCase().includes('translation')) {
+      return fallback;
+    }
+    return value;
+  };
+
   const bgTopColor = bgAnim.interpolate({ inputRange: [0, 1], outputRange: ['#E3F2FD', '#F3E5F5'] });
 
   return (
     <View style={styles.container}>
       <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
 
-      {/* CANLI ARKAPLAN */}
       <Animated.View style={[styles.animatedBg, { backgroundColor: bgTopColor }]}>
         <LinearGradient colors={['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.9)']} style={StyleSheet.absoluteFill} />
-        {/* Dekoratif Baloncuklar */}
         <View style={[styles.bubble, { top: 100, left: -30, width: 200, height: 200, backgroundColor: '#B3E5FC', opacity: 0.2 }]} />
         <View style={[styles.bubble, { bottom: 100, right: -50, width: 250, height: 250, backgroundColor: '#E1BEE7', opacity: 0.15 }]} />
       </Animated.View>
 
       <SafeAreaView style={[styles.safe, { paddingTop: insets.top }]} edges={['top']}>
         
-        {/* --- HEADER & PROGRESS --- */}
-        {step !== 'loading' && (
+        {/* --- LANGUAGE TOGGLE (Step 1 Only) --- */}
+        {isFirst && (
+          <View style={[styles.langToggle, { top: insets.top + 15 }]}>
+            <TouchableOpacity 
+              onPress={() => setLanguage('en')}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Text style={[styles.langText, locale === 'en' && styles.langActive]}>English</Text>
+            </TouchableOpacity>
+            
+            <Text style={styles.langSep}>|</Text>
+            
+            <TouchableOpacity 
+              onPress={() => setLanguage('tr')}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Text style={[styles.langText, locale === 'tr' && styles.langActive]}>Türkçe</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {step !== 'loading' && step !== 'result' && (
           <View style={styles.header}>
             <View style={styles.progressContainer}>
               <Animated.View style={[styles.progressBar, { 
@@ -238,20 +300,17 @@ export default function OnboardWizard({ onDone }) {
           </View>
         )}
 
-        {/* --- İÇERİK ALANI (GLASSMORPHISM KART) --- */}
         <View style={styles.contentContainer}>
-          {step !== 'loading' && (
+          {step !== 'loading' && step !== 'result' && (
             <View style={styles.glassCard}>
               
-              {/* CİNSİYET */}
               {step === 'gender' && (
                 <View style={styles.genderRow}>
-                  <Avatar label="Erkek" active={gender==='male'} img={IMG_MALE} onPress={()=>setGender('male')} color="#42A5F5" />
-                  <Avatar label="Kadın" active={gender==='female'} img={IMG_FEMALE} onPress={()=>setGender('female')} color="#EC407A" />
+                  <Avatar label={t('onboard.gender.male')} active={gender==='male'} img={IMG_MALE} onPress={()=>setGender('male')} color="#42A5F5" />
+                  <Avatar label={t('onboard.gender.female')} active={gender==='female'} img={IMG_FEMALE} onPress={()=>setGender('female')} color="#EC407A" />
                 </View>
               )}
 
-              {/* KİLO */}
               {step === 'weight' && (
                 <View style={styles.centerContent}>
                   <Image source={gender==='male'?IMG_MALE:IMG_FEMALE} style={styles.illustration} />
@@ -266,7 +325,6 @@ export default function OnboardWizard({ onDone }) {
                 </View>
               )}
 
-              {/* BOY */}
               {step === 'height' && (
                 <View style={styles.centerContent}>
                   <Image source={gender==='male'?IMG_MALE_LENGTH:IMG_FEMALE_LENGTH} style={styles.illustration} />
@@ -281,7 +339,6 @@ export default function OnboardWizard({ onDone }) {
                 </View>
               )}
 
-              {/* UYANMA & UYKU (Time) */}
               {(step === 'wake' || step === 'sleep') && (
                 <View style={styles.centerContent}>
                   <Image source={step==='wake'?IMG_WAKE:(gender==='male'?IMG_NAP_MALE:IMG_NAP_FEMALE)} style={styles.illustration} />
@@ -322,7 +379,6 @@ export default function OnboardWizard({ onDone }) {
             </View>
           )}
 
-          {/* LOADING SCREEN */}
           {step === 'loading' && (
             <View style={styles.loadingContainer}>
               <LottieView source={WAVE_JSON} autoPlay loop style={styles.lottieBg} resizeMode="cover" />
@@ -341,22 +397,49 @@ export default function OnboardWizard({ onDone }) {
               </View>
             </View>
           )}
+          {step === 'result' && (
+            <View style={styles.resultContainer}>
+              <View style={styles.resultCard}>
+                <Text style={styles.resultTitle}>{safeT('onboard.result.title', 'Günlük Su Hedefin')}</Text>
+                <Text style={styles.resultValue}>
+                  {calculatedGoalMl ? `${calculatedGoalMl} ml` : '-- ml'}
+                </Text>
+                <Text style={styles.resultSub}>
+                  {safeT('onboard.result.subtitle', 'Bu hedefe göre günlük su takibini başlatabilirsin.')}
+                </Text>
+              </View>
+            </View>
+          )}
         </View>
 
-        {/* --- ALT BUTONLAR --- */}
+        {/* --- ALT BUTONLAR (ABSOLUTE POSITION) --- */}
         {step !== 'loading' && (
-          <View style={[styles.bottomNav, {paddingBottom: insets.bottom + 20}]}>
-            <TouchableOpacity onPress={prev} disabled={isFirst} style={[styles.backBtn, isFirst && {opacity:0}]}>
-              <Ionicons name="arrow-back" size={24} color="#546E7A" />
-            </TouchableOpacity>
+          <View style={[styles.bottomNav, { 
+             bottom: insets.bottom + 20, 
+             justifyContent: (isFirst || step === 'result') ? 'center' : 'space-between'
+          }]}>
             
-            <TouchableOpacity onPress={next} style={styles.nextBtn}>
+            {!isFirst && step !== 'result' && (
+              <TouchableOpacity onPress={prev} style={styles.backBtn}>
+                <Ionicons name="arrow-back" size={24} color="#546E7A" />
+              </TouchableOpacity>
+            )}
+            
+            <TouchableOpacity 
+              onPress={next} 
+              style={[styles.nextBtn, !isFirst && step !== 'result' && { marginLeft: 20 }]}
+              activeOpacity={0.8}
+            >
               <LinearGradient
                 colors={['#29B6F6', '#0288D1']}
                 style={styles.nextBtnGradient}
                 start={{x:0, y:0}} end={{x:1, y:0}}
               >
-                <Text style={styles.nextBtnText}>{isLast ? 'TAMAMLA' : 'DEVAM ET'}</Text>
+                <Text style={styles.nextBtnText}>
+                  {step === 'result'
+                    ? safeT('common.done', 'FINISH')
+                    : (isLast ? safeT('common.done', 'DONE') : safeT('common.next', 'NEXT'))}
+                </Text>
                 <Ionicons name="arrow-forward" size={20} color="#fff" />
               </LinearGradient>
             </TouchableOpacity>
@@ -368,7 +451,6 @@ export default function OnboardWizard({ onDone }) {
   );
 }
 
-// Avatar Bileşeni
 const Avatar = ({label, active, img, onPress, color}) => (
   <TouchableOpacity onPress={onPress} activeOpacity={0.9} style={[styles.avatarCard, active && {borderColor: color, transform:[{scale:1.05}]}]}>
     <View style={[styles.avatarCircle, active && {backgroundColor: color+'20'}]}>
@@ -385,15 +467,41 @@ const styles = StyleSheet.create({
   bubble: { position: 'absolute', borderRadius: 999 },
   safe: { flex: 1 },
 
-  /* Header */
+  // --- NEW STYLES FOR LANGUAGE TOGGLE ---
+  langToggle: {
+    position: 'absolute',
+    right: 30,
+    zIndex: 100,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.5)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  langText: {
+    fontSize: 13,
+    color: '#90A4AE',
+    fontWeight: '600',
+  },
+  langActive: {
+    color: '#1565C0',
+    fontWeight: '800',
+  },
+  langSep: {
+    marginHorizontal: 8,
+    color: '#B0BEC5',
+    fontSize: 12,
+  },
+  // --------------------------------------
+
   header: { paddingHorizontal: 24, marginTop: 20, marginBottom: 10 },
   progressContainer: { height: 6, backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 3, overflow: 'hidden', marginBottom: 20 },
   progressBar: { height: '100%', backgroundColor: '#29B6F6', borderRadius: 3 },
   title: { fontSize: 32, fontWeight: '800', color: '#1A237E', marginBottom: 8 },
   subtitle: { fontSize: 16, color: '#546E7A', lineHeight: 22 },
 
-  /* Content Area */
-  contentContainer: { flex: 1, justifyContent: 'center', paddingHorizontal: 20 },
+  contentContainer: { flex: 1, justifyContent: 'center', paddingHorizontal: 20, paddingBottom: 100 },
   glassCard: {
     backgroundColor: 'rgba(255,255,255,0.7)',
     borderRadius: 30,
@@ -408,7 +516,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center'
   },
 
-  /* Gender */
   genderRow: { flexDirection: 'row', justifyContent: 'space-around' },
   avatarCard: { alignItems: 'center', padding: 15, borderRadius: 20, borderWidth: 2, borderColor: 'transparent', backgroundColor: 'rgba(255,255,255,0.5)' },
   avatarCircle: { width: 120, height: 120, borderRadius: 60, backgroundColor: '#F5F5F5', alignItems: 'center', justifyContent: 'center', marginBottom: 15 },
@@ -416,7 +523,6 @@ const styles = StyleSheet.create({
   avatarLabel: { fontSize: 18, fontWeight: '600', color: '#78909C' },
   checkBadge: { position: 'absolute', top: 10, right: 10, width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
 
-  /* Weight / Height */
   centerContent: { alignItems: 'center', justifyContent: 'center' },
   illustration: { width: 200, height: 200, resizeMode: 'contain', marginBottom: 20 },
   pickerWrapper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
@@ -425,13 +531,11 @@ const styles = StyleSheet.create({
   pickerItem: { fontSize: 32, fontWeight: 'bold', color: '#1A237E' },
   unitText: { fontSize: 24, fontWeight: '700', color: '#90A4AE', marginLeft: 15 },
 
-  /* Time */
   timeCard: { backgroundColor: '#E3F2FD', padding: 10, borderRadius: 20, alignItems: 'center', justifyContent: 'center', minWidth: 200 },
   iosPicker: { width: 200 },
   androidTimeBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#29B6F6', paddingVertical: 15, paddingHorizontal: 30, borderRadius: 15, elevation: 5 },
   androidTimeTxt: { fontSize: 36, fontWeight: '800', color: '#fff', marginRight: 10 },
 
-  /* Loading */
   loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   lottieBg: { position: 'absolute', width: width, height: height, top:0 },
   loadingGlassCard: { width: width*0.8, padding: 30, backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 30, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 20, elevation: 10 },
@@ -440,10 +544,33 @@ const styles = StyleSheet.create({
   loadingDots: { flexDirection: 'row', gap: 8 },
   dot: { width: 10, height: 10, borderRadius: 5 },
 
-  /* Bottom Nav */
-  bottomNav: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24 },
+  bottomNav: { 
+    position: 'absolute', 
+    left: 24, 
+    right: 24, 
+    flexDirection: 'row', 
+    alignItems: 'center',
+    zIndex: 999 
+  },
   backBtn: { width: 50, height: 50, borderRadius: 15, backgroundColor: '#ECEFF1', alignItems: 'center', justifyContent: 'center' },
-  nextBtn: { flex: 1, marginLeft: 20, shadowColor: '#0288D1', shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
+  nextBtn: { flex: 1, shadowColor: '#0288D1', shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
   nextBtnGradient: { height: 60, borderRadius: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   nextBtnText: { color: '#fff', fontSize: 18, fontWeight: '800', marginRight: 10, letterSpacing: 1 },
+  resultContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20 },
+  resultCard: {
+    width: '100%',
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderRadius: 30,
+    padding: 26,
+    borderWidth: 1,
+    borderColor: '#fff',
+    shadowColor: '#29B6F6',
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    elevation: 10,
+    alignItems: 'center',
+  },
+  resultTitle: { fontSize: 22, fontWeight: '800', color: '#1A237E', textAlign: 'center', marginBottom: 10 },
+  resultValue: { fontSize: 44, fontWeight: '900', color: '#0288D1', textAlign: 'center', marginBottom: 12 },
+  resultSub: { fontSize: 15, color: '#546E7A', textAlign: 'center', lineHeight: 22 },
 });

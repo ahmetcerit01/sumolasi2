@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useRef } from 'react';
+import React, { useEffect, useMemo, useState, useRef, useContext } from 'react';
 import { 
   View, 
   Text, 
@@ -27,8 +27,15 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { useHydrationStore } from '../storage/useHydrationStore';
 import { BADGES } from '../constants/badges';
 import BadgeIcon from '../components/BadgeIcon';
+import { LanguageContext } from '../../App';
+
+
 
 const { width, height } = Dimensions.get('window');
+// Profil avatarları (lokal dosyalar)
+// Not: assets klasörünün proje kökünde olduğunu varsayıyoruz.
+const MALE_AVATAR = require('../../assets/illustrations/male.png');
+const FEMALE_AVATAR = require('../../assets/illustrations/female.png');
 
 const STORAGE_KEYS = {
   reminderTime: 'SUMOLASI_REMINDER_TIME',
@@ -56,6 +63,7 @@ Notifications.setNotificationHandler({
 });
 
 export default function ProfileScreen() {
+    const { locale, setLanguage, t } = useContext(LanguageContext);
   const insets = useSafeAreaInsets();
   
   // --- STORE ENTEGRASYONU ---
@@ -248,16 +256,20 @@ export default function ProfileScreen() {
         {/* HEADER */}
         <View style={[styles.headerContainer, { paddingTop: insets.top + 20 }]}>
           <Animated.View style={[styles.avatarContainer, { transform: [{ scale: headerScale }] }]}>
-            <Image 
-              source={{uri: 'https://cdn-icons-png.flaticon.com/128/11478/11478480.png'}} 
-              style={styles.avatar} 
+            <Image
+              source={
+                (profile?.gender === 'female' || profile?.gender === 'woman' || profile?.gender === 'kadın')
+                  ? FEMALE_AVATAR
+                  : MALE_AVATAR
+              }
+              style={styles.avatar}
             />
             <TouchableOpacity style={styles.editIconBadge} onPress={openEditModal}>
                <Ionicons name="pencil" size={14} color="#fff" />
             </TouchableOpacity>
           </Animated.View>
           
-          <Text style={styles.userName}>Su Savaşçısı</Text>
+        <Text style={styles.userName}>{t('profile.userTitle')}</Text>
           <View style={styles.badgeRow}>
              <View style={styles.miniBadge}>
                 <Ionicons name="ribbon" size={14} color="#FFA000" />
@@ -291,17 +303,17 @@ export default function ProfileScreen() {
         </View>
 
         <TouchableOpacity style={styles.refreshLink} onPress={openEditModal}>
-            <Text style={styles.refreshLinkText}>Bilgileri Düzenle</Text>
+        <Text style={styles.refreshLinkText}>{t('profile.editInfo')}</Text>
             <Ionicons name="create-outline" size={16} color="#90A4AE" />
         </TouchableOpacity>
 
         {/* HEDEF & AYARLAR */}
         <View style={styles.sectionCard}>
-           <Text style={styles.sectionTitle}>Günlük Hedef</Text>
+        <Text style={styles.sectionTitle}>{t('profile.dailyGoal')}</Text>
            
            <View style={styles.goalContainer}>
               <View>
-                 <Text style={styles.goalSub}>Önerilen: {recommendedGoal || 2500} ml</Text>
+              <Text style={styles.goalSub}>{t('profile.recommended')}: {recommendedGoal || 2500} ml</Text>
                  <TouchableOpacity style={styles.goalSelector} onPress={() => setShowGoalPicker(true)}>
                     <Text style={styles.goalValueMain}>{goalEditMl}</Text>
                     <Text style={styles.goalUnit}>ml</Text>
@@ -313,16 +325,50 @@ export default function ProfileScreen() {
 
            <View style={styles.divider} />
 
+           {/* Dil */}
+           <View style={styles.settingRow}>
+              <View style={styles.settingLeft}>
+                 <View style={[styles.settingIcon, { backgroundColor: '#E3F2FD' }]}>
+                   <Ionicons name="language" size={18} color="#1565C0" />
+                 </View>
+                 <Text style={styles.settingText}>{t('settings.language')}</Text>
+              </View>
+
+              <View style={styles.langPillWrap}>
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() => setLanguage('en')}
+                  style={[styles.langPill, locale === 'en' && styles.langPillActive]}
+                >
+                  <Text style={[styles.langPillText, locale === 'en' && styles.langPillTextActive]}>
+                    {t('settings.english')}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() => setLanguage('tr')}
+                  style={[styles.langPill, locale === 'tr' && styles.langPillActive]}
+                >
+                  <Text style={[styles.langPillText, locale === 'tr' && styles.langPillTextActive]}>
+                    {t('settings.turkish')}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+           </View>
+
            {/* Bildirimler */}
            <View style={styles.settingRow}>
               <View style={styles.settingLeft}>
-                 <View style={[styles.settingIcon, {backgroundColor: '#E0F2F1'}]}><Ionicons name="notifications" size={18} color="#00695C" /></View>
-                 <Text style={styles.settingText}>Bildirimler</Text>
+                 <View style={[styles.settingIcon, { backgroundColor: '#E0F2F1' }]}>
+                   <Ionicons name="notifications" size={18} color="#00695C" />
+                 </View>
+            <Text style={styles.settingText}>{t('settings.notifications')}</Text>
               </View>
-              <Switch 
-                value={notificationsEnabled} 
-                onValueChange={toggleNotifications} 
-                trackColor={{ true: '#4DB6AC', false: '#E0E0E0' }} 
+              <Switch
+                value={notificationsEnabled}
+                onValueChange={toggleNotifications}
+                trackColor={{ true: '#4DB6AC', false: '#E0E0E0' }}
                 thumbColor={'#fff'}
               />
            </View>
@@ -331,7 +377,7 @@ export default function ProfileScreen() {
            <View style={styles.settingRow}>
               <View style={styles.settingLeft}>
                  <View style={[styles.settingIcon, {backgroundColor: '#EDE7F6'}]}><Ionicons name="musical-notes" size={18} color="#5E35B1" /></View>
-                 <Text style={styles.settingText}>Ses Efektleri</Text>
+              <Text style={styles.settingText}>{t('settings.soundFx')}</Text>
               </View>
               <Switch 
                 value={soundEnabled} 
@@ -345,7 +391,7 @@ export default function ProfileScreen() {
         {/* KAYDET (Sadece Hedef) */}
         <TouchableOpacity style={styles.saveBtn} onPress={saveGoalSettings} activeOpacity={0.9}>
            <LinearGradient colors={['#29B6F6', '#0288D1']} style={styles.saveBtnGradient} start={{x:0, y:0}} end={{x:1, y:0}}>
-              <Text style={styles.saveBtnText}>Hedefi Güncelle</Text>
+            <Text style={styles.saveBtnText}>{t('profile.updateGoal')}</Text>
               <Ionicons name="checkmark-circle" size={20} color="#fff" style={{marginLeft: 8}} />
            </LinearGradient>
         </TouchableOpacity>
@@ -476,6 +522,32 @@ const styles = StyleSheet.create({
   settingLeft: { flexDirection: 'row', alignItems: 'center' },
   settingIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   settingText: { fontSize: 16, fontWeight: '600', color: '#374151' },
+    langPillWrap: {
+    flexDirection: 'row',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 999,
+    padding: 4,
+  },
+  langPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  langPillActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  langPillText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#6B7280',
+  },
+  langPillTextActive: {
+    color: '#111827',
+  },
   saveBtn: { marginHorizontal: 16, marginBottom: 24, borderRadius: 20, shadowColor: '#0288D1', shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
   saveBtnGradient: { paddingVertical: 18, borderRadius: 20, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
   saveBtnText: { color: '#fff', fontSize: 18, fontWeight: '800' },

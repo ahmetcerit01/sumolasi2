@@ -1,0 +1,64 @@
+{
+  "common": {
+    "ok": "OK",
+    "close": "Close"
+  },
+  "badges": {
+    "title": "Badges",
+    "earned": "Earned",
+    "locked": "Locked",
+    "totalBadges": "Total badges"
+  },
+  "badges.items": {
+    "first_sip": {
+      "title": "First Sip",
+      "description": "You logged your first water today.",
+      "howToEarn": "Add water once."
+    },
+    "sunrise": {
+      "title": "Sunrise",
+      "description": "You added water before 09:00.",
+      "howToEarn": "Add water before 09:00."
+    },
+    "moon": {
+      "title": "Night Owl",
+      "description": "You added water at or after 23:00.",
+      "howToEarn": "Add water after 23:00."
+    },
+    "overflow_glass": {
+      "title": "Overflow Glass",
+      "description": "You reached 150% of your daily goal.",
+      "howToEarn": "Drink 1.5× of your goal."
+    },
+    "calendar5": {
+      "title": "5-Day Streak",
+      "description": "You kept a 5-day streak.",
+      "howToEarn": "Reach a 5-day streak."
+    },
+    "sparkling": {
+      "title": "Sparkling",
+      "description": "You reached 10 glasses today.",
+      "howToEarn": "Add 10 glasses in one day."
+    },
+    "calendar7": {
+      "title": "7-Day Streak",
+      "description": "You kept a 7-day streak.",
+      "howToEarn": "Reach a 7-day streak."
+    },
+    "medal_bronze": {
+      "title": "Bronze Medal",
+      "description": "You reached a 10-day streak.",
+      "howToEarn": "Reach a 10-day streak."
+    },
+    "medal_silver": {
+      "title": "Silver Medal",
+      "description": "You reached a 20-day streak.",
+      "howToEarn": "Reach a 20-day streak."
+    },
+    "medal_gold": {
+      "title": "Gold Medal",
+      "description": "You reached a 30-day streak.",
+      "howToEarn": "Reach a 30-day streak."
+    }
+  }
+}

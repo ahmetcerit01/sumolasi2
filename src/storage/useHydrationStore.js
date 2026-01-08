@@ -53,6 +53,130 @@ let store = {
   soundEnabled: true,
 };
 
+// --- ACTIONS (hook dışı) ---
+// Not: Bazı yerlerde Zustand gibi `useHydrationStore.getState().xxx` çağrısı var.
+// Bu yüzden action'ları hook dışına taşıyıp tek bir API üretelim.
+
+const actions = {
+  add: async (ml) => {
+    const nowIso = new Date().toISOString();
+    const newTotal = (store.totalMl || 0) + ml;
+    const newGlasses = (store.todayGlasses || 0) + 1;
+
+    const candidateState = {
+      totalMl: newTotal,
+      goalMl: store.goalMl,
+      todayGlasses: newGlasses,
+      streakDays: store.streakDays,
+      lastAddAt: nowIso,
+    };
+
+    const newBadges = { ...store.badges };
+    if (Array.isArray(BADGES)) {
+      BADGES.forEach((badge) => {
+        if (!newBadges[badge.id] && typeof badge.check === 'function') {
+          if (badge.check(candidateState)) newBadges[badge.id] = nowIso;
+        }
+      });
+    }
+
+    store = {
+      ...store,
+      totalMl: newTotal,
+      todayGlasses: newGlasses,
+      lastAddAt: nowIso,
+      badges: newBadges,
+    };
+    await persist();
+    emit();
+  },
+
+  setGoalMl: async (ml) => {
+    const val = parseInt(ml);
+    if (!isNaN(val) && val > 0) {
+      store = { ...store, goalMl: val };
+      await persist();
+      emit();
+    }
+  },
+
+  updateProfile: async (newProfile) => {
+    const updatedProfile = { ...store.profile, ...newProfile };
+    const newRecGoal = calculateGoal(updatedProfile.weight, updatedProfile.height);
+    store = { ...store, profile: updatedProfile, recommendedGoal: newRecGoal };
+    await persist();
+    emit();
+  },
+
+  setNotifications: async (val) => {
+    store = { ...store, notificationsEnabled: val };
+    await AsyncStorage.setItem(STORAGE_KEYS.notifications, val ? '1' : '0');
+    emit();
+  },
+
+  setSound: async (val) => {
+    store = { ...store, soundEnabled: val };
+    await AsyncStorage.setItem(STORAGE_KEYS.sound, val ? '1' : '0');
+    emit();
+  },
+
+  resetToday: async () => {
+    store = { ...store, totalMl: 0, todayGlasses: 0 };
+    await persist();
+    emit();
+  },
+
+  resetAll: async () => {
+    const today = dateKey();
+    store = {
+      totalMl: 0,
+      goalMl: 2500,
+      recommendedGoal: 2500,
+      lastDate: today,
+      isHydrated: true,
+      todayGlasses: 0,
+      streakDays: 0,
+      badges: {},
+      dailyHistory: {},
+      profile: { weight: 70, height: 170, wakeAt: '08:00', sleepAt: '23:00', gender: 'male' },
+      notificationsEnabled: true,
+      soundEnabled: true,
+    };
+    await AsyncStorage.multiRemove([
+      'DAILY_GOAL_ML',
+      'ONBOARD_PROFILE',
+      STORAGE_KEYS.notifications,
+      STORAGE_KEYS.sound,
+    ]);
+    await persist();
+    emit();
+  },
+
+  getWeeklyData: () => {
+    const days = [];
+    const today = new Date();
+    const dayNames = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      const k = dateKey(d);
+      const dayName = dayNames[d.getDay()];
+      if (k === store.lastDate) {
+        days.push({ day: dayName, fullDate: k, ml: store.totalMl, goal: store.goalMl });
+      } else {
+        const historyItem = store.dailyHistory[k] || { ml: 0, goal: store.goalMl };
+        days.push({ day: dayName, fullDate: k, ml: historyItem.ml, goal: historyItem.goal });
+      }
+    }
+    return days;
+  },
+};
+
+const getApi = (snapshot) => ({
+  ...(snapshot || store),
+  ...actions,
+});
+
 const emit = () => listeners.forEach((l) => l(store));
 
 const persist = async () => {
@@ -176,108 +300,32 @@ export function useHydrationStore(selector) {
   }, []);
 
   // --- ACTIONS ---
-  
-  const add = async (ml) => {
-    const nowIso = new Date().toISOString();
-    const newTotal = (store.totalMl || 0) + ml;
-    const newGlasses = (store.todayGlasses || 0) + 1;
+  // Hook içinde artık sadece dışarıdaki action'lara referans veriyoruz.
+  const add = actions.add;
+  const setGoalMl = actions.setGoalMl;
+  const updateProfile = actions.updateProfile;
+  const setNotifications = actions.setNotifications;
+  const setSound = actions.setSound;
+  const resetToday = actions.resetToday;
+  const resetAll = actions.resetAll;
+  const getWeeklyData = actions.getWeeklyData;
 
-    const candidateState = {
-      totalMl: newTotal,
-      goalMl: store.goalMl,
-      todayGlasses: newGlasses,
-      streakDays: store.streakDays,
-      lastAddAt: nowIso,
-    };
-    const newBadges = { ...store.badges };
-    if (Array.isArray(BADGES)) {
-      BADGES.forEach(badge => {
-        if (!newBadges[badge.id] && typeof badge.check === 'function') {
-          if (badge.check(candidateState)) newBadges[badge.id] = nowIso;
-        }
-      });
-    }
-
-    store = { ...store, totalMl: newTotal, todayGlasses: newGlasses, lastAddAt: nowIso, badges: newBadges };
-    await persist();
-    emit();
-  };
-
-  const setGoalMl = async (ml) => {
-    const val = parseInt(ml);
-    if (!isNaN(val) && val > 0) {
-      store = { ...store, goalMl: val };
-      await persist();
-      emit();
-    }
-  };
-
-  const updateProfile = async (newProfile) => {
-    const updatedProfile = { ...store.profile, ...newProfile };
-    const newRecGoal = calculateGoal(updatedProfile.weight, updatedProfile.height);
-    store = { ...store, profile: updatedProfile, recommendedGoal: newRecGoal };
-    await persist();
-    emit();
-  };
-
-  // --- YENİ: AYAR FONKSİYONLARI ---
-  const setNotifications = async (val) => {
-    store = { ...store, notificationsEnabled: val };
-    // AsyncStorage'a da yaz (Kalıcı olsun)
-    await AsyncStorage.setItem(STORAGE_KEYS.notifications, val ? '1' : '0');
-    // Store'u kaydet
-    // await persist(); // Gerekirse persist() de çağrılabilir ama üstteki yeterli
-    emit();
-  };
-
-  const setSound = async (val) => {
-    store = { ...store, soundEnabled: val };
-    await AsyncStorage.setItem(STORAGE_KEYS.sound, val ? '1' : '0');
-    emit();
-  };
-
-  const resetToday = async () => {
-    store = { ...store, totalMl: 0, todayGlasses: 0 };
-    await persist();
-    emit();
-  };
-
-  const resetAll = async () => {
-    const today = dateKey();
-    store = {
-      totalMl: 0, goalMl: 2500, recommendedGoal: 2500, lastDate: today, isHydrated: true, todayGlasses: 0, streakDays: 0, badges: {}, dailyHistory: {},
-      profile: { weight: 70, height: 170, wakeAt: '08:00', sleepAt: '23:00', gender: 'male' },
-      notificationsEnabled: true,
-      soundEnabled: true,
-    };
-    await AsyncStorage.multiRemove(['DAILY_GOAL_ML', 'ONBOARD_PROFILE', STORAGE_KEYS.notifications, STORAGE_KEYS.sound]);
-    await persist();
-    emit();
-  };
-
-  const getWeeklyData = () => {
-    const days = [];
-    const today = new Date();
-    const dayNames = ["Paz", "Pzt", "Sal", "Çar", "Per", "Cum", "Cmt"];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(today.getDate() - i);
-      const k = dateKey(d);
-      const dayName = dayNames[d.getDay()];
-      if (k === store.lastDate) {
-        days.push({ day: dayName, fullDate: k, ml: store.totalMl, goal: store.goalMl });
-      } else {
-        const historyItem = store.dailyHistory[k] || { ml: 0, goal: store.goalMl };
-        days.push({ day: dayName, fullDate: k, ml: historyItem.ml, goal: historyItem.goal });
-      }
-    }
-    return days;
-  };
-
-  const api = { 
-    ...snapshot, 
-    add, setGoalMl, updateProfile, resetToday, resetAll, getWeeklyData,
-    setNotifications, setSound // Dışarı açtık
-  };
+  const api = getApi(snapshot);
   return typeof selector === 'function' ? selector(api) : api;
 }
+
+// ------------------------------------------------------------
+// Not: Projede bazı yerlerde Zustand gibi `useHydrationStore.getState()`
+// çağrısı yapılmış. Bu dosya Zustand store değil, custom hook.
+// Crash olmaması için minimal bir `getState/setState` köprüsü ekliyoruz.
+// ------------------------------------------------------------
+useHydrationStore.getState = () => getApi(store);
+
+useHydrationStore.setState = async (partial, shouldPersist = true) => {
+  const next = typeof partial === 'function' ? partial(store) : partial;
+  if (!next || typeof next !== 'object') return;
+
+  store = { ...store, ...next };
+  if (shouldPersist) await persist();
+  emit();
+};

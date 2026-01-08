@@ -14,7 +14,12 @@ import ProfileScreen from '../screens/ProfileScreen';
 const Tab = createBottomTabNavigator();
 const { width } = Dimensions.get('window');
 
-export default function BottomTabs() {
+export default function BottomTabs({ t: tProp }) {
+  // App.js'den prop olarak gelen çeviri fonksiyonu. (Require cycle olmaması için App import etmiyoruz)
+  const t = tProp || ((key, opts) => {
+    // i18n library yoksa defaultValue dönsün
+    return opts?.defaultValue ?? key;
+  });
   return (
     <Tab.Navigator
       screenOptions={{
@@ -28,7 +33,7 @@ export default function BottomTabs() {
         component={HomeScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} name="home" label="Ana Sayfa" />
+            <TabIcon focused={focused} name="home" label={t('tabs.home', { defaultValue: 'Ana Sayfa' })} />
           ),
         }}
       />
@@ -38,7 +43,7 @@ export default function BottomTabs() {
         component={HistoryScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} name="calendar" label="Geçmiş" />
+            <TabIcon focused={focused} name="calendar" label={t('tabs.history', { defaultValue: 'Geçmiş' })} />
           ),
         }}
       />
@@ -48,7 +53,7 @@ export default function BottomTabs() {
         component={RemindersScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} name="alarm" label="Hatırlatıcılar" />
+            <TabIcon focused={focused} name="alarm" label={t('tabs.reminders', { defaultValue: 'Hatırlatıcılar' })} />
           ),
         }}
       />
@@ -58,7 +63,7 @@ export default function BottomTabs() {
         component={BadgesScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} name="ribbon" label="Rozetler" />
+            <TabIcon focused={focused} name="ribbon" label={t('tabs.badges', { defaultValue: 'Rozetler' })} />
           ),
         }}
       />
@@ -68,7 +73,7 @@ export default function BottomTabs() {
         component={ProfileScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} name="person" label="Profil" />
+            <TabIcon focused={focused} name="person" label={t('tabs.profile', { defaultValue: 'Profil' })} />
           ),
         }}
       />

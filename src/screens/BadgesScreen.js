@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useContext } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, Modal, TouchableOpacity, 
   Dimensions, Animated, Easing, StatusBar 
@@ -9,6 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Audio } from 'expo-av';
+import { LanguageContext } from '../../App';
 
 import BadgeIcon from '../components/BadgeIcon';
 import { BADGES } from '../constants/badges';
@@ -18,6 +19,7 @@ const { width } = Dimensions.get('window');
 
 export default function BadgesScreen() {
   const insets = useSafeAreaInsets();
+  const { locale, t } = useContext(LanguageContext);
   
   const earnedBadgesMap = useHydrationStore(s => s.badges) || {};
   const currentEarnedIds = Object.keys(earnedBadgesMap);
@@ -95,8 +97,38 @@ export default function BadgesScreen() {
   const formatDate = (isoString) => {
     if (!isoString) return '';
     try {
-      return new Date(isoString).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
+      const dateLocale = locale === 'tr' ? 'tr-TR' : 'en-US';
+      return new Date(isoString).toLocaleDateString(dateLocale, { day: 'numeric', month: 'long', year: 'numeric' });
     } catch { return ''; }
+  };
+
+  // Rozet başlık/açıklama çözümleyici (BADGES: titleKey/descriptionKey/howToEarnKey)
+  const getBadgeTitle = (badge) => {
+    if (!badge) return '';
+    if (badge.titleKey && typeof t === 'function') return t(badge.titleKey);
+    if (typeof badge.title === 'string') return badge.title;
+    if (badge.title && typeof badge.title === 'object') {
+      const l = locale === 'tr' ? 'tr' : 'en';
+      return badge.title[l] || badge.title.tr || badge.title.en || '';
+    }
+    return '';
+  };
+
+  const getBadgeDescription = (badge) => {
+    if (!badge) return '';
+    if (badge.descriptionKey && typeof t === 'function') return t(badge.descriptionKey);
+    if (typeof badge.description === 'string') return badge.description;
+    if (badge.description && typeof badge.description === 'object') {
+      const l = locale === 'tr' ? 'tr' : 'en';
+      return badge.description[l] || badge.description.tr || badge.description.en || '';
+    }
+    return '';
+  };
+
+  const getBadgeHowToEarn = (badge) => {
+    if (!badge) return '';
+    if (badge.howToEarnKey && typeof t === 'function') return t(badge.howToEarnKey);
+    return '';
   };
 
   const totalBadges = BADGES.length;
@@ -113,20 +145,20 @@ export default function BadgesScreen() {
 
       <ScrollView contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 20, paddingBottom: 100 }]} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <Text style={styles.title}>Koleksiyon</Text>
-          <Text style={styles.subtitle}>Başarılarını tamamla, rozetleri kap!</Text>
+          <Text style={styles.title}>{t('badges.title')}</Text>
+          <Text style={styles.subtitle}>{t('badges.subtitle')}</Text>
         </View>
         
         <View style={styles.progressCard}>
             <View style={styles.progressTextRow}>
-                <Text style={styles.progressLabel}>Rozet Seviyesi</Text>
+                <Text style={styles.progressLabel}>{t('badges.levelLabel')}</Text>
                 <Text style={styles.progressValue}>{earnedCount} / {totalBadges}</Text>
             </View>
             <View style={styles.progressBarTrack}>
                 <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
             </View>
             <Text style={styles.motivationText}>
-               {progressPercent === 100 ? "Efsanesin! 🏆" : "Yolun başındasın, devam et!"}
+               {progressPercent === 100 ? t('badges.motivationComplete') : t('badges.motivationProgress')}
             </Text>
         </View>
 
@@ -157,7 +189,7 @@ export default function BadgesScreen() {
                     </View>
                   )}
                   <Text numberOfLines={1} style={[styles.badgeLabel, !isUnlocked && { color: '#90A4AE' }]}>
-                    {badge.title}
+                    {getBadgeTitle(badge)}
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -175,18 +207,21 @@ export default function BadgesScreen() {
               <View style={[styles.bigIconCircle, selectedBadge?.isUnlocked ? styles.circleUnlocked : styles.circleLocked]}>
                   <BadgeIcon name={selectedBadge?.icon || selectedBadge?.id} size={80} unlocked={selectedBadge?.isUnlocked} color={selectedBadge?.color} />
               </View>
-              <Text style={styles.modalTitle}>{selectedBadge?.title}</Text>
+              <Text style={styles.modalTitle}>{getBadgeTitle(selectedBadge)}</Text>
               {selectedBadge?.isUnlocked ? (
                  <View style={styles.earnedBadge}>
-                    <Text style={styles.earnedText}>Kazanıldı</Text>
+                    <Text style={styles.earnedText}>{t('badges.earned')}</Text>
                     {selectedBadge.earnedData?.earnedDate && <Text style={styles.dateText}>• {formatDate(selectedBadge.earnedData.earnedDate)}</Text>}
                  </View>
               ) : (
-                 <View style={styles.lockedBadge}><Text style={styles.lockedText}>KİLİTLİ</Text></View>
+                 <View style={styles.lockedBadge}><Text style={styles.lockedText}>{t('badges.locked')}</Text></View>
               )}
-              <Text style={styles.modalDesc}>{selectedBadge?.description}</Text>
+              <Text style={styles.modalDesc}>{getBadgeDescription(selectedBadge)}</Text>
+              {!!getBadgeHowToEarn(selectedBadge) && (
+                <Text style={styles.modalHowToEarn}>{getBadgeHowToEarn(selectedBadge)}</Text>
+              )}
               <TouchableOpacity style={styles.closeBtn} onPress={() => setSelectedBadge(null)}>
-                <Text style={styles.closeBtnText}>Tamam</Text>
+                <Text style={styles.closeBtnText}>{t('common.ok')}</Text>
               </TouchableOpacity>
             </LinearGradient>
           </View>
@@ -215,8 +250,8 @@ export default function BadgesScreen() {
             <View style={styles.celebrationContent}>
                 {/* BURADAKİ "celebrationLight" (BÜYÜK DAİRE) TAMAMEN SİLİNDİ */}
                 
-                <Text style={styles.celebrationTitle}>TEBRİKLER!</Text>
-                <Text style={styles.celebrationSubtitle}>Yeni bir rozet kazandın</Text>
+                <Text style={styles.celebrationTitle}>{t('badges.congrats')}</Text>
+                <Text style={styles.celebrationSubtitle}>{t('badges.newBadge')}</Text>
 
                 <Animated.View style={{ transform: [{ scale: scaleAnim }], marginVertical: 40 }}>
                     <View style={[styles.celebrationIconBox, { shadowColor: celebrationBadge?.color || '#FFF' }]}>
@@ -229,13 +264,13 @@ export default function BadgesScreen() {
                     </View>
                 </Animated.View>
                 
-                <Text style={styles.celebrationBadgeName}>{celebrationBadge?.title}</Text>
+                <Text style={styles.celebrationBadgeName}>{getBadgeTitle(celebrationBadge)}</Text>
 
                 <TouchableOpacity 
                     style={[styles.celebrationBtn, { backgroundColor: celebrationBadge?.color || '#29B6F6' }]} 
                     onPress={() => setCelebrationBadge(null)}
                 >
-                    <Text style={styles.celebrationBtnText}>Harika!</Text>
+                    <Text style={styles.celebrationBtnText}>{t('badges.awesome')}</Text>
                 </TouchableOpacity>
             </View>
         </View>
@@ -280,6 +315,7 @@ const styles = StyleSheet.create({
   lockedBadge: { backgroundColor: '#FFEBEE', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginBottom: 16 },
   lockedText: { fontSize: 12, fontWeight: '700', color: '#C62828' },
   modalDesc: { fontSize: 15, color: '#546E7A', textAlign: 'center', lineHeight: 22, marginBottom: 20 },
+  modalHowToEarn: { fontSize: 13, color: '#546E7A', textAlign: 'center', lineHeight: 20, marginTop: 10, marginBottom: 20 },
   closeBtn: { backgroundColor: '#29B6F6', paddingHorizontal: 32, paddingVertical: 14, borderRadius: 16, elevation: 4 },
   closeBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
 

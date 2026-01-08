@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useContext } from "react";
 import {
   View,
   Text,
@@ -16,12 +16,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "../theme/colors";
 import { S } from "../theme/spacing";
 import { useHydrationStore } from "../storage/useHydrationStore";
+import { LanguageContext } from "../../App";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const CHART_HEIGHT = 220;
 
 export default function HistoryScreen() {
   const insets = useSafeAreaInsets();
+  const { t } = useContext(LanguageContext);
   
   // Store Verileri
   const weeklyData = useHydrationStore((s) => s.getWeeklyData());
@@ -106,8 +108,8 @@ export default function HistoryScreen() {
         contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
       >
         <View style={[styles.headerContent, { marginTop: insets.top + 10 }]}>
-          <Text style={styles.headerTitle}>Geçmiş Raporu</Text>
-          <Text style={styles.headerSubtitle}>Son 7 günün su tüketim analizi</Text>
+          <Text style={styles.headerTitle}>{t('history.title')}</Text>
+          <Text style={styles.headerSubtitle}>{t('history.subtitle')}</Text>
         </View>
 
         {/* ÖZET KARTI (Animasyonlu) */}
@@ -127,7 +129,7 @@ export default function HistoryScreen() {
           >
             <View style={styles.summaryRow}>
               <View>
-                <Text style={styles.summaryLabel}>Bu Hafta Toplam</Text>
+                <Text style={styles.summaryLabel}>{t('history.weekTotal')}</Text>
                 <Text style={styles.summaryValue}>{(totalWeekly / 1000).toFixed(1)} L</Text>
               </View>
               <View style={styles.summaryIconBox}>
@@ -139,12 +141,12 @@ export default function HistoryScreen() {
 
         {/* GRAFİK ALANI */}
         <View style={styles.chartSection}>
-          <Text style={styles.sectionTitle}>Günlük Performans</Text>
+          <Text style={styles.sectionTitle}>{t('history.dailyPerformance')}</Text>
           
           <View style={styles.chartContainer}>
             <View style={[styles.targetLine, { bottom: targetLinePosition }]} />
             <Text style={[styles.targetLabel, { bottom: targetLinePosition + 5 }]}>
-              Hedef ({currentGoal}ml)
+              {t('history.goalLabel', { goal: currentGoal })}
             </Text>
 
             <View style={styles.barsRow}>
@@ -200,7 +202,7 @@ export default function HistoryScreen() {
               <Ionicons name="water-outline" size={20} color={COLORS.primaryEnd} />
             </View>
             <Text style={styles.statValue}>{avgWeekly} ml</Text>
-            <Text style={styles.statLabel}>Günlük Ort.</Text>
+            <Text style={styles.statLabel}>{t('history.dailyAvg')}</Text>
           </View>
 
           <View style={styles.statBox}>
@@ -208,7 +210,7 @@ export default function HistoryScreen() {
               <Ionicons name="trophy-outline" size={20} color="#D97706" />
             </View>
             <Text style={styles.statValue}>{bestDay.ml > 0 ? bestDay.day : "-"}</Text>
-            <Text style={styles.statLabel}>En İyi ({bestDay.ml}ml)</Text>
+            <Text style={styles.statLabel}>{t('history.bestDay', { ml: bestDay.ml })}</Text>
           </View>
 
           <View style={styles.statBox}>
@@ -220,9 +222,13 @@ export default function HistoryScreen() {
               />
             </View>
             <Text style={[styles.statValue, { fontSize: 16 }]}>
-              {selectedDay.ml === 0 ? "Veri Yok" : (selectedDay.ml >= (selectedDay.goal || currentGoal) ? "Hedef Tutuldu" : "Hedef Altında")}
+              {selectedDay.ml === 0
+                ? t('history.noData')
+                : (selectedDay.ml >= (selectedDay.goal || currentGoal)
+                    ? t('history.goalMet')
+                    : t('history.belowGoal'))}
             </Text>
-            <Text style={styles.statLabel}>{selectedDay.day} Günü</Text>
+            <Text style={styles.statLabel}>{t('history.dayLabel', { day: selectedDay.day })}</Text>
           </View>
 
         </Animated.View>
