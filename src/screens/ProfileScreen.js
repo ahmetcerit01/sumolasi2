@@ -25,9 +25,12 @@ import * as Notifications from 'expo-notifications';
 import { useHydrationStore } from '../storage/useHydrationStore';
 import { LanguageContext } from '../i18n';
 import { cardShadow, useTheme } from '../theme/theme';
-import { fmtNumber } from '../utils/format';
+import { fmtNumber, upper } from '../utils/format';
 import { getLiveActivityEnabled, isLiveActivitySupported, setLiveActivityEnabled } from '../widgets/liveActivity';
 import { syncWidget } from '../widgets/widgetSync';
+import { PREMIUM_MODE, usePremium } from '../premium/PremiumProvider';
+import { usePaywall } from '../premium/Paywall';
+import Mascot from '../components/Mascot';
 import {
   computeReminderTimes,
   disableReminders,
@@ -58,6 +61,8 @@ export default function ProfileScreen() {
   const soundEnabled = useHydrationStore((s) => s.soundEnabled) !== false;
   const { setGoalMl, updateProfile, setSound, setNotifications } = useHydrationStore.getState();
 
+  const { isPremium, setMockPremium } = usePremium();
+  const { open: openPaywall } = usePaywall();
   const [reminders, setReminders] = useState({ enabled: true, intervalHours: 2 });
   const [editing, setEditing] = useState(false);
 
@@ -162,6 +167,24 @@ export default function ProfileScreen() {
       <ScrollView contentContainerStyle={{ paddingTop: insets.top + 14, paddingBottom: insets.bottom + 120, paddingHorizontal: 22, gap: 14 }} showsVerticalScrollIndicator={false}>
         <Text style={[type.title, { color: c.ink }]}>{t('tabs.profile')}</Text>
 
+        {/* premium */}
+        <TouchableOpacity
+          activeOpacity={isPremium ? 1 : 0.85}
+          disabled={isPremium}
+          onPress={() => openPaywall()}
+          style={[styles.premium, { backgroundColor: isPremium ? c.successBg : c.chip }]}
+          accessibilityRole="button"
+        >
+          <Mascot mood={isPremium ? 'celebrate' : 'happy'} size={52} />
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={[type.bodyStrong, { color: isPremium ? c.successInk : c.chipInk }]}>
+              {isPremium ? t('premium.active') : t('premium.upgrade')}
+            </Text>
+            <Text style={[type.label, { color: c.ink2 }]}>{isPremium ? t('premium.activeSub') : t('premium.upgradeSub')}</Text>
+          </View>
+          {!isPremium && <Ionicons name="chevron-forward" size={18} color={c.chipInk} />}
+        </TouchableOpacity>
+
         {/* günlük hedef */}
         <View style={[card, { paddingVertical: 14, gap: 10 }]}>
           <View style={styles.goalRow}>
@@ -196,7 +219,7 @@ export default function ProfileScreen() {
         </View>
 
         {/* hatırlatıcılar */}
-        <Text style={[type.overline, { color: c.ink2, paddingHorizontal: 4, marginTop: 6 }]}>{t('reminders.title')}</Text>
+        <Text style={[type.overline, { color: c.ink2, paddingHorizontal: 4, marginTop: 6 }]}>{upper(t('reminders.title'))}</Text>
         <View style={[card, { paddingBottom: 14, gap: 12 }]}>
           <Row label={t('settings.notifications')} last>
             <Switch
@@ -268,7 +291,7 @@ export default function ProfileScreen() {
         {/* geliştirici (yalnızca geliştirme sürümü) */}
         {__DEV__ && (
           <View style={[card, { paddingVertical: 12, gap: 8 }]}>
-            <Text style={[type.overline, { color: c.ink3 }]}>{t('reminders.testPanel')}</Text>
+            <Text style={[type.overline, { color: c.ink3 }]}>{upper(t('reminders.testPanel'))}</Text>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <TouchableOpacity
                 style={[styles.devBtn, { backgroundColor: c.chip }]}
@@ -289,6 +312,12 @@ export default function ProfileScreen() {
                 <Text style={[type.labelStrong, { color: c.chipInk }]}>{t('dev.reset')}</Text>
               </TouchableOpacity>
             </View>
+            {PREMIUM_MODE === 'mock' && (
+              <View style={[styles.row, { minHeight: 44 }]}>
+                <Text style={[type.label, { color: c.ink2 }]}>{t('premium.mockToggle')}</Text>
+                <Switch value={isPremium} onValueChange={setMockPremium} trackColor={{ true: c.success, false: c.track }} />
+              </View>
+            )}
           </View>
         )}
       </ScrollView>
@@ -367,6 +396,7 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   card: { paddingHorizontal: 16 },
+  premium: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 22, paddingHorizontal: 14, paddingVertical: 12 },
   goalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   stepper: { flexDirection: 'row', gap: 8 },
   stepBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },

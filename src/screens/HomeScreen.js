@@ -7,6 +7,7 @@ import * as Haptics from 'expo-haptics';
 
 import SkiaGlass from '../components/SkiaGlass';
 import { QuickAddRow } from '../components/QuickAdd';
+import MedsCard from '../components/MedsCard';
 import { useHydrationStore } from '../storage/useHydrationStore';
 import { LanguageContext } from '../i18n';
 import { cardShadow, useTheme } from '../theme/theme';
@@ -123,6 +124,9 @@ export default function HomeScreen() {
 
         {/* hızlı ekle */}
         <QuickAddRow items={quick} onAdd={addWater} style={{ marginTop: 22, marginHorizontal: 22 }} />
+
+        {/* vitamin & ilaç */}
+        <MedsCard style={{ marginTop: 18, marginHorizontal: 22 }} />
 
         {/* bugün */}
         <View style={[styles.todayCard, { backgroundColor: c.card, borderRadius: radius.card }, cardShadow(c)]}>

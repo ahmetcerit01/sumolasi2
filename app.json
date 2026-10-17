@@ -55,10 +55,13 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/splash-icon.png",
-          "imageWidth": 200,
-          "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "image": "./assets/splash-transparent.png",
+          "imageWidth": 1,
+          "backgroundColor": "#FFFFFF",
+          "dark": {
+            "image": "./assets/splash-transparent.png",
+            "backgroundColor": "#FFFFFF"
+          }
         }
       ],
       "expo-font",
@@ -90,6 +93,14 @@
     "extra": {
       "eas": {
         "projectId": "2eb1305c-1314-4715-bd1f-8f7d73ed7a57"
+      },
+      "revenuecat": {
+        "iosApiKey": "",
+        "androidApiKey": ""
+      },
+      "legal": {
+        "termsUrl": "",
+        "privacyUrl": ""
       }
     },
     "locales": {

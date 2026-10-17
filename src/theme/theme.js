@@ -85,7 +85,8 @@ export const type = {
   label: { fontFamily: fonts.bold, fontSize: 13 },
   labelStrong: { fontFamily: fonts.extrabold, fontSize: 13 },
   caption: { fontFamily: fonts.extrabold, fontSize: 12 },
-  overline: { fontFamily: fonts.extrabold, fontSize: 13, letterSpacing: 0.8, textTransform: 'uppercase' },
+  // Büyük harf için textTransform değil upper() kullanılır: Türkçede i → İ olmalı
+  overline: { fontFamily: fonts.extrabold, fontSize: 13, letterSpacing: 0.8 },
 };
 
 export const radius = { card: 22, cardLg: 24, tile: 20, pill: 999 };

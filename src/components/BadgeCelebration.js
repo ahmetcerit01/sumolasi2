@@ -9,6 +9,7 @@ import { useHydrationStore } from '../storage/useHydrationStore';
 import { LanguageContext } from '../i18n';
 import { useTheme } from '../theme/theme';
 import { badgeTint } from '../constants/badgeStyle';
+import { upper } from '../utils/format';
 
 // Yeni rozet kazanılınca hangi ekranda olunursa olunsun kutlama göster.
 // (Eskiden sadece Rozetler sekmesi açıkken çalışıyordu.)
@@ -59,7 +60,7 @@ export default function BadgeCelebration() {
           <View style={[styles.icon, { backgroundColor: tint.bg }]}>
             <Ionicons name={badge.icon} size={52} color={tint.fg} />
           </View>
-          <Text style={[type.overline, { color: c.accentInk }]}>{t('badges.congrats')}</Text>
+          <Text style={[type.overline, { color: c.accentInk }]}>{upper(t('badges.congrats'))}</Text>
           <Text style={[type.heading, { color: c.ink, textAlign: 'center' }]}>{t(badge.titleKey)}</Text>
           <Text style={[type.body, { color: c.ink2, textAlign: 'center', fontSize: 15 }]}>{t(badge.descriptionKey)}</Text>
           <TouchableOpacity onPress={() => setBadge(null)} style={[styles.cta, { backgroundColor: c.accent }]} accessibilityRole="button">

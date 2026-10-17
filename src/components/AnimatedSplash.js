@@ -1,10 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { View, StyleSheet, Animated, Dimensions, Easing, Text } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, StyleSheet, Animated, Easing, Text } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect, Circle, G, ClipPath } from 'react-native-svg';
 import { LinearGradient as ExpoLinearGradient } from 'expo-linear-gradient';
 import { i18n } from '../i18n';
 
-const { width, height } = Dimensions.get('window');
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 const AnimatedView = Animated.createAnimatedComponent(View);
@@ -135,7 +134,13 @@ export default function AnimatedSplash({ onAnimationFinish }) {
 
 const styles = StyleSheet.create({
   container: {
-    ...StyleSheet.absoluteFillObject, // Tam ekran kapla
+    // Tam ekran kapla. (RN 0.88'de StyleSheet.absoluteFillObject kaldırıldı; yayılınca hiçbir şey
+    // eklemiyordu ve splash uygulamanın altına normal blok olarak yerleşip ekranı ikiye bölüyordu.)
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     zIndex: 9999, // En üstte
     alignItems: 'center',
     justifyContent: 'center',

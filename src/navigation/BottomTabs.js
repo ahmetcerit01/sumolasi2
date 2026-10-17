@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
@@ -8,12 +9,14 @@ import HomeScreen from '../screens/HomeScreen';
 import HistoryScreen from '../screens/HistoryScreen';
 import BadgesScreen from '../screens/BadgesScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import MedsScreen from '../screens/MedsScreen';
 import AddSheet from '../components/AddSheet';
 import BadgeCelebration from '../components/BadgeCelebration';
 import { useLanguage } from '../i18n';
 import { useTheme } from '../theme/theme';
 
 const Tab = createBottomTabNavigator();
+const Stack = createNativeStackNavigator();
 
 // Sekme sırası: Ana Sayfa, Geçmiş, [+ su ekle], Rozetler, Profil.
 // Hatırlatıcı ayarları artık Profil'in içinde.
@@ -104,7 +107,7 @@ function FloatingTabBar({ state, navigation }) {
   );
 }
 
-export default function BottomTabs() {
+function Tabs() {
   const { c } = useTheme();
   return (
     <Tab.Navigator
@@ -147,3 +150,14 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
 });
+
+// Kök: sekmeler + üstte açılan ekranlar (Vitamin & İlaç)
+export default function BottomTabs() {
+  const { c } = useTheme();
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg } }}>
+      <Stack.Screen name="Main" component={Tabs} />
+      <Stack.Screen name="Meds" component={MedsScreen} />
+    </Stack.Navigator>
+  );
+}

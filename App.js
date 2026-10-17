@@ -27,6 +27,25 @@ import { ensureHydrated, useHydrationStore } from './src/storage/useHydrationSto
 import { i18n, LanguageContext, LANGUAGE_KEY, normalizeLang, getDeviceLang } from './src/i18n';
 import { rescheduleIfEnabled } from './src/utils/reminders';
 import { startWidgetSync, refreshWidgetLabels } from './src/widgets/widgetSync';
+import { PremiumProvider } from './src/premium/PremiumProvider';
+import { PaywallProvider } from './src/premium/Paywall';
+import { ensureMedCategory, ensureMedsHydrated, MED_ACTION_TAKEN, useMedsStore } from './src/storage/useMedsStore';
+import { navRef, navigateWhenReady } from './src/navigation/navRef';
+
+// Vitamin/ilaç bildirimine yanıt: "Aldım" → işaretle, bildirime dokunma → Vitamin ekranını aç
+const handleNotificationResponse = async (response) => {
+  const data = response?.notification?.request?.content?.data;
+  if (data?.type !== 'MED') return;
+  // Aynı yanıt her açılışta tekrar gelebilir (getLastNotificationResponseAsync): bir kez işle
+  const key = `${response.notification.request.identifier}|${response.notification.date}|${response.actionIdentifier}`;
+  if ((await AsyncStorage.getItem('LAST_HANDLED_NOTIF_RESPONSE')) === key) return;
+  await AsyncStorage.setItem('LAST_HANDLED_NOTIF_RESPONSE', key);
+  await ensureMedsHydrated();
+  if (response.actionIdentifier === MED_ACTION_TAKEN) {
+    await useMedsStore.getState().markTaken(data.medId, data.time);
+  }
+  navigateWhenReady('Meds');
+};
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -69,6 +88,8 @@ export default function App() {
         await ensureHydrated();
         // Widget'tan eklenenleri al ve widget'ı güncel duruma getir (iOS)
         startWidgetSync();
+        ensureMedsHydrated();
+        ensureMedCategory();
 
         // 2. Onboard Durumu Kontrolü
         // Bildirim izni artık açılışta değil, onboarding sonunda isteniyor.
@@ -83,6 +104,13 @@ export default function App() {
     }
 
     prepare();
+  }, []);
+
+  // Bildirim yanıtları (uygulama kapalıyken gelen dahil)
+  useEffect(() => {
+    Notifications.getLastNotificationResponseAsync().then((r) => r && handleNotificationResponse(r)).catch(() => {});
+    const sub = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse);
+    return () => sub.remove();
   }, []);
 
   // Onboard Test Tetikleyicisi (Geliştirici Ayarları için)
@@ -103,6 +131,7 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
+      <PremiumProvider>
       <LanguageContext.Provider
         value={useMemo(() => ({
           locale,
@@ -116,9 +145,11 @@ export default function App() {
             const { profile } = useHydrationStore.getState();
             rescheduleIfEnabled({ wakeAt: profile.wakeAt, sleepAt: profile.sleepAt }).catch(() => {});
             refreshWidgetLabels();
+            useMedsStore.getState().rescheduleAll().catch(() => {});
           },
         }), [locale])}
       >
+      <PaywallProvider>
       <View style={{ flex: 1, backgroundColor: c.bg }}>
         <StatusBar barStyle={c.statusBar} backgroundColor="transparent" translucent />
 
@@ -130,7 +161,7 @@ export default function App() {
         */}
 
         {appIsReady && fontsLoaded && (
-          <NavigationContainer theme={navTheme}>
+          <NavigationContainer theme={navTheme} ref={navRef}>
             {showOnboard ? (
               <LanguageContext.Consumer>
                 {({ t, locale, setLanguage }) => (
@@ -148,14 +179,17 @@ export default function App() {
           </NavigationContainer>
         )}
 
-        {!splashFinished && (
+        {/* Fontlar yüklenene kadar yalnızca zemin (yerel splash ile aynı renk) görünür */}
+        {!splashFinished && fontsLoaded && (
           <AnimatedSplash 
             onAnimationFinish={() => setSplashFinished(true)} 
           />
         )}
         
       </View>
+      </PaywallProvider>
       </LanguageContext.Provider>
+      </PremiumProvider>
     </SafeAreaProvider>
   );
 }

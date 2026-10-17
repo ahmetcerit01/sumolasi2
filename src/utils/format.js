@@ -27,3 +27,6 @@ export const fmtLongDate = (date = new Date()) => {
   const month = i18n.t(`months.${date.getMonth()}`);
   return i18n.locale === 'tr' ? `${day}, ${date.getDate()} ${month}` : `${day}, ${month} ${date.getDate()}`;
 };
+
+// Dile uygun büyük harf (Türkçe: i → İ, ı → I)
+export const upper = (str) => String(str ?? '').toLocaleUpperCase(i18n.locale === 'tr' ? 'tr-TR' : 'en-US');
