@@ -1,44 +1,22 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect } from 'react';
 import LottieView from 'lottie-react-native';
-import { Audio } from 'expo-av';
+import { useAudioPlayer } from 'expo-audio';
 import { View, StyleSheet } from 'react-native';
 
 export default function WaterEffect({ visible, onFinish, soundOnly = false }) {
-  const [sound, setSound] = useState(null);
+  // 1. Sesi önceden yükle (Preload) - Gecikmeyi önler. Hook unmount'ta player'ı kendisi bırakır.
+  const player = useAudioPlayer(require('../../assets/sounds/watersound2.mp3'));
   const lottieRef = useRef(null);
-
-  // 1. Sesi önceden yükle (Preload) - Gecikmeyi önler
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadSound() {
-      try {
-        const { sound: soundObject } = await Audio.Sound.createAsync(
-          require('../../assets/sounds/water_pop.mp3'), // Modern ses dosyası (aşağıda açıklama var)
-          { shouldPlay: false, volume: 1.0 }
-        );
-        if (isMounted) setSound(soundObject);
-      } catch (error) {
-        console.log('Ses yüklenemedi:', error);
-      }
-    }
-
-    loadSound();
-
-    return () => {
-      isMounted = false;
-      if (sound) {
-        sound.unloadAsync();
-      }
-    };
-  }, []);
 
   // 2. Tetiklendiğinde çalıştır
   useEffect(() => {
     if (visible) {
-      // Sesi Oynat
-      if (sound) {
-        sound.replayAsync();
+      // Sesi baştan oynat
+      try {
+        player.seekTo(0);
+        player.play();
+      } catch (error) {
+        console.log('Ses çalınamadı:', error);
       }
 
       // Animasyonu Oynat
@@ -51,7 +29,7 @@ export default function WaterEffect({ visible, onFinish, soundOnly = false }) {
         }, 800);
       }
     }
-  }, [visible, sound, soundOnly]);
+  }, [visible, player, soundOnly]);
 
   if (!visible || soundOnly) return null;
 

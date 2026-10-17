@@ -7,12 +7,6 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "scheme": "sumolasi",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.alfacode.sumolasi",
@@ -46,7 +40,27 @@
           "color": "#5081E5"
         }
       ],
-      "expo-localization"
+      "expo-localization",
+      [
+        "./plugins/withPodsDeploymentTarget",
+        {
+          "target": "15.1"
+        }
+      ],
+      "@react-native-community/datetimepicker",
+      "expo-status-bar",
+      "expo-audio",
+      "expo-asset",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
+      ],
+      "expo-font"
     ],
     "extra": {
       "eas": {

@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Audio } from 'expo-av';
+import { useAudioPlayer } from 'expo-audio';
 import { LanguageContext } from '../../App';
 
 import BadgeIcon from '../components/BadgeIcon';
@@ -26,7 +26,7 @@ export default function BadgesScreen() {
 
   const [selectedBadge, setSelectedBadge] = useState(null); 
   const [celebrationBadge, setCelebrationBadge] = useState(null);
-  const [sound, setSound] = useState(null);
+  const successPlayer = useAudioPlayer(require('../../assets/sounds/watersound2.mp3'));
 
   const bgAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0)).current;
@@ -69,11 +69,8 @@ export default function BadgesScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     try {
-      const { sound } = await Audio.Sound.createAsync(
-        require('../../assets/sounds/success.mp3') 
-      );
-      setSound(sound);
-      await sound.playAsync();
+      await successPlayer.seekTo(0);
+      successPlayer.play();
     } catch (e) { }
 
     scaleAnim.setValue(0);
@@ -84,10 +81,6 @@ export default function BadgesScreen() {
       useNativeDriver: true
     }).start();
   };
-
-  useEffect(() => {
-    return () => { if (sound) sound.unloadAsync(); };
-  }, [sound]);
 
   const bgTopColor = bgAnim.interpolate({
     inputRange: [0, 1],

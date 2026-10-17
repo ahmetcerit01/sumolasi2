@@ -20,7 +20,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
-import { Audio } from "expo-av";
+import { useAudioPlayer, setAudioModeAsync } from "expo-audio";
 
 import WaterGlass from "../components/WaterGlass";
 import { useHydrationStore } from "../storage/useHydrationStore";
@@ -111,7 +111,15 @@ export default function HomeScreen({ navigation }) {
     extrapolate: 'clamp'
   });
 
-  const soundRef = useRef(null);
+  const waterPlayer = useAudioPlayer(require("../../assets/sounds/water.mp3"));
+
+  useEffect(() => {
+    setAudioModeAsync({
+      playsInSilentMode: true,
+      shouldPlayInBackground: false,
+      interruptionMode: "duckOthers",
+    }).catch(() => {});
+  }, []);
 
   // iOS Widget/App Group senkronu (Native Module)
   // Not: SharedWaterStore native modülü iOS tarafında ekli olmalı.
@@ -148,17 +156,8 @@ export default function HomeScreen({ navigation }) {
     if (soundEnabled === false) return;
 
     try {
-      if (soundRef.current) {
-        await soundRef.current.unloadAsync();
-      }
-      await Audio.setAudioModeAsync({
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: false,
-        shouldDuckAndroid: true,
-      });
-      const { sound } = await Audio.Sound.createAsync(require("../../assets/sounds/water.mp3"));
-      soundRef.current = sound;
-      await sound.playAsync();
+      await waterPlayer.seekTo(0);
+      waterPlayer.play();
     } catch (error) {}
   };
 
