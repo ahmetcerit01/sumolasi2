@@ -74,16 +74,35 @@ const persist = async () => {
 };
 
 // UI önce güncellenir, disk yazımı arkadan gelir (await persist() önce gelince ekleme 2-3 sn gecikiyordu)
+// Her kayıtta artan sürüm numarası. Başka bir JS örneği (geliştirmede yeniden yükleme, arka planda
+// başlatılan uygulama vb.) daha yeni bir durum yazdıysa, eski bellek kopyası onu ezmesin diye kullanılır.
 const commit = (next) => {
-  store = next;
+  store = { ...next, rev: (store.rev || 0) + 1 };
   emit();
   return persist();
+};
+
+// Diskteki kopya bizimkinden yeniyse onu al (yazmadan önce ve uygulama öne gelince çağrılır)
+export const refreshIfStale = async () => {
+  if (!store.isHydrated) return false;
+  try {
+    const raw = await AsyncStorage.getItem(KEY);
+    if (!raw) return false;
+    const disk = JSON.parse(raw);
+    if ((disk.rev || 0) > (store.rev || 0)) {
+      store = { ...store, ...disk, isHydrated: true };
+      emit();
+      return true;
+    }
+  } catch {}
+  return false;
 };
 
 // Gün devri: dünü geçmişe yazar, seriyi günceller, bugünü sıfırlar.
 // Tek kaynak burası; hydrate, dakikalık zamanlayıcı ve uygulama öne gelince çağrılır.
 export const rolloverIfNeeded = async () => {
   if (!store.isHydrated) return false;
+  await refreshIfStale();
   const today = dateKey();
   if (store.lastDate === today) return false;
 
@@ -150,6 +169,7 @@ const actions = {
 
   // Son eklemeyi geri al (yanlış dokunuşlar için). Kazanılan rozetler geri alınmaz.
   undoLast: async () => {
+    await refreshIfStale();
     const entries = store.entries || [];
     if (entries.length === 0) return false;
     const last = entries[entries.length - 1];
@@ -166,10 +186,18 @@ const actions = {
 
   // Widget'tan eklenen miktar. Bugüne aitse normal ekleme (rozetler dahil);
   // uygulama açılmadan gün döndüyse o günün geçmiş kaydına yazılır.
-  addFromWidget: async (ml, day) => {
+  // id: widget/Siri tarafında üretilen benzersiz kimlik. Aynı kayıt iki kez gelirse (iki senkron
+  // aynı anda çalışırsa) ikinci kez eklenmez.
+  addFromWidget: async (ml, day, id) => {
     await rolloverIfNeeded();
     const amount = Number(ml) || 0;
     if (amount <= 0) return;
+    if (id) {
+      const seen = store.appliedExternalIds || [];
+      if (seen.includes(id)) return;
+      // Son 200 kimliği tut (yeterli: pending listesi her senkronda boşaltılıyor)
+      store = { ...store, appliedExternalIds: [...seen, id].slice(-200) };
+    }
     if (!day || day === store.lastDate) {
       await actions.add(amount);
       return;
@@ -183,6 +211,7 @@ const actions = {
   },
 
   setGoalMl: async (ml) => {
+    await refreshIfStale();
     const val = parseInt(ml);
     if (!isNaN(val) && val > 0) {
       await commit({ ...store, goalMl: val });
@@ -190,6 +219,7 @@ const actions = {
   },
 
   updateProfile: async (newProfile) => {
+    await refreshIfStale();
     const updatedProfile = { ...store.profile, ...newProfile };
     const newRecGoal = calculateGoal(updatedProfile.weight, updatedProfile.height);
     await commit({ ...store, profile: updatedProfile, recommendedGoal: newRecGoal });
@@ -208,12 +238,14 @@ const actions = {
   },
 
   resetToday: async () => {
+    await refreshIfStale();
     await commit({ ...store, totalMl: 0, todayGlasses: 0, entries: [] });
   },
 
   resetAll: async () => {
     const today = dateKey();
     store = {
+      rev: (store.rev || 0) + 1,
       totalMl: 0,
       goalMl: 2500,
       recommendedGoal: 2500,
@@ -367,7 +399,7 @@ const startRolloverWatch = () => {
   if (rolloverTimer) return;
   rolloverTimer = setInterval(rolloverIfNeeded, 60000);
   AppState.addEventListener('change', (st) => {
-    if (st === 'active') rolloverIfNeeded();
+    if (st === 'active') rolloverIfNeeded(); // içinde refreshIfStale de çalışır
   });
 };
 
@@ -399,7 +431,7 @@ useHydrationStore.setState = async (partial, shouldPersist = true) => {
   const next = typeof partial === 'function' ? partial(store) : partial;
   if (!next || typeof next !== 'object') return;
 
-  store = { ...store, ...next };
+  store = { ...store, ...next, rev: (store.rev || 0) + 1 };
   emit();
   if (shouldPersist) await persist();
 };

@@ -1,5 +1,13 @@
 {
   "ios": {
-    "CFBundleDisplayName": "Su Molası"
+    "CFBundleDisplayName": "Su Molası",
+    "Localizable.strings": {
+      "Add Water": "Su Ekle",
+      "Today's Water": "Bugünkü Su",
+      "Amount": "Miktar",
+      "Add ${amount}": "${amount} ekle",
+      "Adds water to today's total without opening the app.": "Uygulamayı açmadan bugünkü toplama su ekler.",
+      "Tells how much water you drank today.": "Bugün ne kadar su içtiğini söyler."
+    }
   }
 }

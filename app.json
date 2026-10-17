@@ -84,7 +84,8 @@
             }
           ]
         }
-      ]
+      ],
+      "./plugins/withSiriShortcuts"
     ],
     "extra": {
       "eas": {

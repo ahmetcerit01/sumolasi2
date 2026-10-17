@@ -160,6 +160,12 @@ export const translations = {
       belowGoal: 'Hedef altında',
       dayLabel: '%{day} Günü',
     },
+    live: {
+      next: 'Sıradaki',
+      done: 'Hedef tamam!',
+      setting: 'Kilit ekranında ilerleme',
+      settingHint: 'Gün içinde kilit ekranında ve Dynamic Island\'da ilerlemeni gösterir.',
+    },
     widget: {
       moods: {
         thirsty: 'Biraz kurudum, bir yudum?',
@@ -462,6 +468,12 @@ export const translations = {
       goalMet: 'Goal Met',
       belowGoal: 'Below Goal',
       dayLabel: '%{day}',
+    },
+    live: {
+      next: 'Next',
+      done: 'Goal reached!',
+      setting: 'Progress on Lock Screen',
+      settingHint: 'Shows your progress on the Lock Screen and in the Dynamic Island during the day.',
     },
     widget: {
       moods: {

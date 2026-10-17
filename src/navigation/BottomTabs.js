@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -29,6 +29,19 @@ function FloatingTabBar({ state, navigation }) {
   const { t } = useLanguage();
   const { c, type } = useTheme();
   const [sheet, setSheet] = useState(false);
+
+  // Kilit ekranındaki canlı etkinliğe dokununca (sumolasi://add) su ekleme sayfası açılır
+  useEffect(() => {
+    const handle = (url) => {
+      if (url && /^sumolasi:\/\/add/.test(url)) {
+        navigation.navigate('Home');
+        setSheet(true);
+      }
+    };
+    Linking.getInitialURL().then(handle).catch(() => {});
+    const sub = Linking.addEventListener('url', ({ url }) => handle(url));
+    return () => sub.remove();
+  }, []);
 
   const renderTab = (route, index) => {
     const meta = TABS.find((x) => x.name === route.name);

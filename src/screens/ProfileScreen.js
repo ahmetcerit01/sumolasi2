@@ -26,6 +26,8 @@ import { useHydrationStore } from '../storage/useHydrationStore';
 import { LanguageContext } from '../i18n';
 import { cardShadow, useTheme } from '../theme/theme';
 import { fmtNumber } from '../utils/format';
+import { getLiveActivityEnabled, isLiveActivitySupported, setLiveActivityEnabled } from '../widgets/liveActivity';
+import { syncWidget } from '../widgets/widgetSync';
 import {
   computeReminderTimes,
   disableReminders,
@@ -62,6 +64,17 @@ export default function ProfileScreen() {
   useEffect(() => {
     getReminderSettings().then(setReminders).catch(() => {});
   }, []);
+
+  // Kilit ekranı canlı etkinliği (yalnızca iOS)
+  const [liveOn, setLiveOn] = useState(true);
+  useEffect(() => {
+    getLiveActivityEnabled().then(setLiveOn).catch(() => {});
+  }, []);
+  const toggleLive = async (v) => {
+    setLiveOn(v);
+    await setLiveActivityEnabled(v);
+    syncWidget(); // aç: hemen başlat / kapat: hemen kaldır
+  };
 
   const fmtHours = (h) => (locale === 'tr' ? String(h).replace('.', ',') : String(h));
   const reminderCount = computeReminderTimes(profile.wakeAt, profile.sleepAt, reminders.intervalHours).length;
@@ -239,10 +252,18 @@ export default function ProfileScreen() {
               })}
             </View>
           </Row>
-          <Row label={t('settings.soundFx')} last>
+          <Row label={t('settings.soundFx')} last={!isLiveActivitySupported()}>
             <Switch value={soundEnabled} onValueChange={(v) => setSound(v)} trackColor={{ true: c.success, false: c.track }} />
           </Row>
+          {isLiveActivitySupported() && (
+            <Row label={t('live.setting')} last>
+              <Switch value={liveOn} onValueChange={toggleLive} trackColor={{ true: c.success, false: c.track }} />
+            </Row>
+          )}
         </View>
+        {isLiveActivitySupported() && (
+          <Text style={[type.label, { color: c.ink3, paddingHorizontal: 4, marginTop: -6 }]}>{t('live.settingHint')}</Text>
+        )}
 
         {/* geliştirici (yalnızca geliştirme sürümü) */}
         {__DEV__ && (

@@ -1,5 +1,13 @@
 {
   "ios": {
-    "CFBundleDisplayName": "Water Break"
+    "CFBundleDisplayName": "Water Break",
+    "Localizable.strings": {
+      "Add Water": "Add Water",
+      "Today's Water": "Today's Water",
+      "Amount": "Amount",
+      "Add ${amount}": "Add ${amount}",
+      "Adds water to today's total without opening the app.": "Adds water to today's total without opening the app.",
+      "Tells how much water you drank today.": "Tells how much water you drank today."
+    }
   }
 }

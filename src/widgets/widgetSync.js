@@ -1,6 +1,7 @@
 import { AppState, Platform } from 'react-native';
 import { i18n } from '../i18n';
 import { subscribe, useHydrationStore } from '../storage/useHydrationStore';
+import { syncLiveActivity } from './liveActivity';
 
 // Uygulama <-> widget senkronu (yalnızca iOS).
 // - Widget'taki butonlar uygulama kapalıyken bile toplamı artırır ve eklenenleri `pending` listesine yazar.
@@ -41,9 +42,13 @@ const currentEntryProps = async () => {
 const pullPending = async () => {
   const props = await currentEntryProps();
   const pending = Array.isArray(props?.pending) ? props.pending : [];
+  if (pending.length === 0) return 0;
+  // Önce widget'taki listeyi boşalt (başka bir senkron aynı listeyi tekrar okumasın),
+  // sonra uygula. Kimlikli kayıtlar store'da tekrar eklenmeye karşı da korunuyor.
+  pushState();
   const { addFromWidget } = useHydrationStore.getState();
   for (const item of pending) {
-    await addFromWidget(item?.ml, item?.d);
+    await addFromWidget(item?.ml, item?.d, item?.id);
   }
   return pending.length;
 };
@@ -78,6 +83,7 @@ export const syncWidget = () => {
   return enqueue(async () => {
     await pullPending();
     pushState();
+    await syncLiveActivity();
   });
 };
 
@@ -86,8 +92,10 @@ let lastSignature = '';
 
 // App.js store yüklendikten sonra bir kez çağırır
 export function startWidgetSync() {
-  if (!WaterWidget || started) return;
+  // Fast Refresh modülü yeniden yükleyince dinleyiciler ikinci kez kurulmasın
+  if (!WaterWidget || started || globalThis.__waterWidgetSyncStarted) return;
   started = true;
+  globalThis.__waterWidgetSyncStarted = true;
 
   syncWidget();
 

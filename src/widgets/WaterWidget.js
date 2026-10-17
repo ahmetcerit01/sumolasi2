@@ -164,7 +164,8 @@ const WaterWidget = (props, environment) => {
 
   // Butona basınca dönen değer widget'ın yeni props'u olur (uygulama kapalıyken bile).
   const addWater = (ml) => {
-    const pending = (props.pending || []).concat([{ d: today, ml: ml }]);
+    const id = 'w' + now.getTime() + '-' + Math.floor(Math.random() * 1e9);
+    const pending = (props.pending || []).concat([{ d: today, ml: ml, id: id }]);
     return { date: today, totalMl: total + ml, pending: pending, lastAddAt: new Date().toISOString() };
   };
 
