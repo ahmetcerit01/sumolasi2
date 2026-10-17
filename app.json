@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "scheme": "sumolasi",
     "ios": {
       "supportsTablet": false,
@@ -61,7 +61,30 @@
           "backgroundColor": "#ffffff"
         }
       ],
-      "expo-font"
+      "expo-font",
+      [
+        "expo-widgets",
+        {
+          "groupIdentifier": "group.com.alfacode.sumolasi",
+          "widgets": [
+            {
+              "name": "WaterWidget",
+              "displayName": "Su Molası",
+              "description": "Günlük su hedefini takip et, tek dokunuşla su ekle.",
+              "ios": {
+                "supportedFamilies": [
+                  "systemSmall",
+                  "systemMedium",
+                  "accessoryCircular",
+                  "accessoryRectangular",
+                  "accessoryInline"
+                ],
+                "initialLayout": "./src/widgets/WaterWidget.js"
+              }
+            }
+          ]
+        }
+      ]
     ],
     "extra": {
       "eas": {

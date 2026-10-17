@@ -43,6 +43,7 @@ let store = {
   isHydrated: false,
   todayGlasses: 0,
   lastAddAt: null,
+  entries: [], // bugünkü eklemeler [{ id, ml, at }] (Bugün listesi ve geri alma için)
   streakDays: 0,
   badges: {},
   dailyHistory: {},
@@ -56,6 +57,12 @@ let store = {
 };
 
 const emit = () => listeners.forEach((l) => l(store));
+
+// React dışından (ör. widget senkronu) store değişikliklerini dinlemek için
+export const subscribe = (fn) => {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+};
 
 const persist = async () => {
   try {
@@ -90,10 +97,11 @@ export const rolloverIfNeeded = async () => {
     ...store,
     dailyHistory: {
       ...store.dailyHistory,
-      [prevDate]: { ml: store.totalMl, goal: store.goalMl },
+      [prevDate]: { ml: store.totalMl, goal: store.goalMl, count: store.todayGlasses || 0 },
     },
     totalMl: 0,
     todayGlasses: 0,
+    entries: [],
     lastDate: today,
     streakDays,
   });
@@ -129,12 +137,48 @@ const actions = {
       });
     }
 
+    const entry = { id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`, ml, at: nowIso };
     await commit({
       ...store,
       totalMl: newTotal,
       todayGlasses: newGlasses,
       lastAddAt: nowIso,
+      entries: [...(store.entries || []), entry],
       badges: newBadges,
+    });
+  },
+
+  // Son eklemeyi geri al (yanlış dokunuşlar için). Kazanılan rozetler geri alınmaz.
+  undoLast: async () => {
+    const entries = store.entries || [];
+    if (entries.length === 0) return false;
+    const last = entries[entries.length - 1];
+    const rest = entries.slice(0, -1);
+    await commit({
+      ...store,
+      totalMl: Math.max(0, (store.totalMl || 0) - (last.ml || 0)),
+      todayGlasses: Math.max(0, (store.todayGlasses || 0) - 1),
+      lastAddAt: rest.length ? rest[rest.length - 1].at : null,
+      entries: rest,
+    });
+    return true;
+  },
+
+  // Widget'tan eklenen miktar. Bugüne aitse normal ekleme (rozetler dahil);
+  // uygulama açılmadan gün döndüyse o günün geçmiş kaydına yazılır.
+  addFromWidget: async (ml, day) => {
+    await rolloverIfNeeded();
+    const amount = Number(ml) || 0;
+    if (amount <= 0) return;
+    if (!day || day === store.lastDate) {
+      await actions.add(amount);
+      return;
+    }
+    if (day > store.lastDate) return; // saat/tarih tutarsızlığı: yok say
+    const prev = store.dailyHistory[day] || { ml: 0, goal: store.goalMl };
+    await commit({
+      ...store,
+      dailyHistory: { ...store.dailyHistory, [day]: { ...prev, ml: (prev.ml || 0) + amount } },
     });
   },
 
@@ -164,7 +208,7 @@ const actions = {
   },
 
   resetToday: async () => {
-    await commit({ ...store, totalMl: 0, todayGlasses: 0 });
+    await commit({ ...store, totalMl: 0, todayGlasses: 0, entries: [] });
   },
 
   resetAll: async () => {
@@ -178,6 +222,7 @@ const actions = {
       isHydrated: true,
       todayGlasses: 0,
       lastAddAt: null,
+      entries: [],
       streakDays: 0,
       badges: {},
       dailyHistory: {},
@@ -195,24 +240,48 @@ const actions = {
     await persist();
   },
 
-  // Son 7 gün. Gün adı yerine dayIndex (0=Pazar) döner; ekran bunu aktif dile göre çevirir.
+  // Son N gün (varsayılan 7). Gün adı yerine dayIndex (0=Pazar) döner; ekran bunu aktif dile göre çevirir.
   // isTracked: kullanıcı o gün uygulamayı kullanıyor muydu (başlangıç tarihinden önceki günler ortalamaya girmez)
-  getWeeklyData: () => {
+  getDays: (count = 7) => {
     const days = [];
     const today = new Date();
-    for (let i = 6; i >= 0; i--) {
+    for (let i = count - 1; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(today.getDate() - i);
       const k = dateKey(d);
       const isTracked = !store.startDate || k >= store.startDate;
-      if (k === store.lastDate) {
-        days.push({ dayIndex: d.getDay(), fullDate: k, ml: store.totalMl, goal: store.goalMl, isTracked });
-      } else {
-        const historyItem = store.dailyHistory[k] || { ml: 0, goal: store.goalMl };
-        days.push({ dayIndex: d.getDay(), fullDate: k, ml: historyItem.ml, goal: historyItem.goal, isTracked });
-      }
+      const item = k === store.lastDate
+        ? { ml: store.totalMl, goal: store.goalMl, count: store.todayGlasses || 0 }
+        : { ml: 0, goal: store.goalMl, count: 0, ...(store.dailyHistory[k] || {}) };
+      days.push({ dayIndex: d.getDay(), date: d.getDate(), fullDate: k, isToday: i === 0, isTracked, ...item });
     }
     return days;
+  },
+
+  getWeeklyData: () => actions.getDays(7),
+
+  // Geçmişteki en uzun hedef serisi (bugün tamamlandıysa dahil)
+  getLongestStreak: () => {
+    const met = new Set(
+      Object.entries(store.dailyHistory || {})
+        .filter(([, v]) => v && v.ml > 0 && v.ml >= (v.goal || store.goalMl))
+        .map(([k]) => k)
+    );
+    if (store.totalMl > 0 && store.totalMl >= store.goalMl) met.add(store.lastDate);
+    let best = 0;
+    for (const k of met) {
+      const prev = new Date(k);
+      prev.setUTCDate(prev.getUTCDate() - 1);
+      if (met.has(prev.toISOString().slice(0, 10))) continue; // serinin başı değil
+      let len = 0;
+      const cur = new Date(k);
+      while (met.has(cur.toISOString().slice(0, 10))) {
+        len += 1;
+        cur.setUTCDate(cur.getUTCDate() + 1);
+      }
+      best = Math.max(best, len);
+    }
+    return best;
   },
 };
 
@@ -275,6 +344,7 @@ async function hydrate() {
       isHydrated: true,
       dailyHistory: parsedStore.dailyHistory || {},
       badges: parsedStore.badges || {},
+      entries: Array.isArray(parsedStore.entries) ? parsedStore.entries : [],
       notificationsEnabled: isNotifOn,
       soundEnabled: isSoundOn,
     };

@@ -1,555 +1,364 @@
-import React, { useEffect, useMemo, useState, useRef, useContext } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  TouchableOpacity, 
-  ScrollView, 
-  Platform, 
-  Switch, 
-  Alert, 
-  Animated, 
-  Easing, 
-  Dimensions, 
-  Image, 
-  StatusBar,
-  Modal,
-  TextInput,
+import React, { useContext, useEffect, useState } from 'react';
+import {
+  Alert,
+  DeviceEventEmitter,
   KeyboardAvoidingView,
-  Linking
+  Linking,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import DateTimePicker from '@react-native-community/datetimepicker'; 
+import DateTimePicker from '@react-native-community/datetimepicker';
+import * as Haptics from 'expo-haptics';
+import * as Notifications from 'expo-notifications';
 
 import { useHydrationStore } from '../storage/useHydrationStore';
-import { BADGES } from '../constants/badges';
-import BadgeIcon from '../components/BadgeIcon';
 import { LanguageContext } from '../i18n';
-import { scheduleReminders, disableReminders, getReminderSettings, rescheduleIfEnabled } from '../utils/reminders';
+import { cardShadow, useTheme } from '../theme/theme';
+import { fmtNumber } from '../utils/format';
+import {
+  computeReminderTimes,
+  disableReminders,
+  getReminderSettings,
+  rescheduleIfEnabled,
+  scheduleReminders,
+} from '../utils/reminders';
 
-
-
-const { width, height } = Dimensions.get('window');
-// Profil avatarları (lokal dosyalar)
-// Not: assets klasörünün proje kökünde olduğunu varsayıyoruz.
-const MALE_AVATAR = require('../../assets/illustrations/male.png');
-const FEMALE_AVATAR = require('../../assets/illustrations/female.png');
-
-const STORAGE_KEYS = {
-  sound: 'SUMOLASI_SOUND_ENABLED',
+const INTERVALS = [1, 1.5, 2, 3];
+const GOAL_STEP = 100;
+const pad = (n) => (n < 10 ? `0${n}` : `${n}`);
+const toHHMM = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const fromHHMM = (s, fb) => {
+  const [h, m] = String(s || fb).split(':').map(Number);
+  const d = new Date();
+  d.setHours(h || 0, m || 0, 0, 0);
+  return d;
 };
 
-// Not: Bildirim handler'ı App.js'te tek yerden tanımlı. Burada ikinci kez tanımlanınca
-// shouldPlaySound:false ile App.js'tekini eziyor ve hatırlatıcılar sessiz geliyordu.
-
 export default function ProfileScreen() {
-    const { locale, setLanguage, t } = useContext(LanguageContext);
   const insets = useSafeAreaInsets();
-  
-  // --- STORE ENTEGRASYONU ---
-  const { 
-    goalMl, 
-    setGoalMl, 
-    badges, 
-    profile, 
-    recommendedGoal, 
-    updateProfile,
-    // Eğer store'da bu fonksiyonlar yoksa (önceki adımlarda eklemediysek) 
-    // aşağıda manuel yöneteceğiz, varsa kullanacağız.
-    setNotifications, 
-    setSound,
-    notificationsEnabled: storeNotifEnabled,
-    soundEnabled: storeSoundEnabled
-  } = useHydrationStore();
+  const { t, locale, setLanguage } = useContext(LanguageContext);
+  const { c, type, radius } = useTheme();
 
-  const badgesMap = badges || {};
+  const goalMl = useHydrationStore((s) => s.goalMl) || 2500;
+  const recommended = useHydrationStore((s) => s.recommendedGoal) || 2500;
+  const profile = useHydrationStore((s) => s.profile) || {};
+  const soundEnabled = useHydrationStore((s) => s.soundEnabled) !== false;
+  const { setGoalMl, updateProfile, setSound, setNotifications } = useHydrationStore.getState();
 
-  // Animasyonlar
-  const bgAnim = useRef(new Animated.Value(0)).current;
-  const scrollY = useRef(new Animated.Value(0)).current;
+  const [reminders, setReminders] = useState({ enabled: true, intervalHours: 2 });
+  const [editing, setEditing] = useState(false);
 
-  // UI state
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [soundEnabled, setSoundEnabled] = useState(true);
-  
-  // Hedef & Modal State'leri
-  const [goalEditMl, setGoalEditMl] = useState(goalMl || 2500);
-  const [showGoalPicker, setShowGoalPicker] = useState(false);
-  const [showEditProfile, setShowEditProfile] = useState(false);
-
-  // Profil Düzenleme State'leri
-  const [editWeight, setEditWeight] = useState('');
-  const [editHeight, setEditHeight] = useState('');
-  const [editWake, setEditWake] = useState(new Date());
-  const [editSleep, setEditSleep] = useState(new Date());
-  const [showWakePicker, setShowWakePicker] = useState(false);
-  const [showSleepPicker, setShowSleepPicker] = useState(false);
-
-  const factIndex = useMemo(() => Math.floor(Math.random() * 7), []);
-  const facts = t('profile.facts');
-  const fact = Array.isArray(facts) ? facts[factIndex % facts.length] : '';
-  const earnedCount = Object.keys(badgesMap).length;
-
-  // Arkaplan Animasyonu
   useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(bgAnim, { toValue: 1, duration: 8000, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
-        Animated.timing(bgAnim, { toValue: 0, duration: 8000, easing: Easing.inOut(Easing.ease), useNativeDriver: false })
-      ])
-    ).start();
+    getReminderSettings().then(setReminders).catch(() => {});
   }, []);
 
-  // Ayarları yükle: bildirim anahtarı gerçek hatırlatıcı durumunu gösterir
-  useEffect(() => {
-    getReminderSettings().then(({ enabled }) => setNotificationsEnabled(enabled)).catch(() => {});
-  }, []);
+  const fmtHours = (h) => (locale === 'tr' ? String(h).replace('.', ',') : String(h));
+  const reminderCount = computeReminderTimes(profile.wakeAt, profile.sleepAt, reminders.intervalHours).length;
 
-  useEffect(() => {
-    if (storeSoundEnabled !== undefined) setSoundEnabled(storeSoundEnabled);
-  }, [storeSoundEnabled]);
+  // --- hedef ---
+  const changeGoal = (delta) => {
+    const next = Math.min(6000, Math.max(800, goalMl + delta));
+    setGoalMl(next);
+    Haptics.selectionAsync().catch(() => {});
+  };
 
-  // Hedef Store ile senkronize olsun
-  useEffect(() => {
-    if (goalMl) setGoalEditMl(goalMl);
-  }, [goalMl]);
+  // --- hatırlatıcılar: değişiklik anında uygulanır ---
+  const permissionAlert = () =>
+    Alert.alert(t('reminders.permissionTitle'), t('reminders.permissionMsg'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('reminders.openSettings'), onPress: () => Linking.openSettings() },
+    ]);
 
-  // --- DİNAMİK FONKSİYONLAR ---
-
-  // Hatırlatıcılar ekranıyla aynı ayarı kullanır (eskiden iki ayrı anahtar vardı)
-  const toggleNotifications = async (value) => {
-    setNotificationsEnabled(value);
-    if (setNotifications) setNotifications(value);
-
-    if (!value) {
+  const applyReminders = async (next) => {
+    setReminders(next);
+    setNotifications?.(next.enabled);
+    if (!next.enabled) {
       await disableReminders();
       return;
     }
-    const { intervalHours } = await getReminderSettings();
-    const count = await scheduleReminders({ wakeAt: profile?.wakeAt, sleepAt: profile?.sleepAt, intervalHours });
+    const count = await scheduleReminders({ wakeAt: profile.wakeAt, sleepAt: profile.sleepAt, intervalHours: next.intervalHours });
     if (count < 0) {
-      // İzin yoksa anahtar açık görünmesin
-      setNotificationsEnabled(false);
-      if (setNotifications) setNotifications(false);
-      Alert.alert(t('reminders.permissionTitle'), t('reminders.permissionMsg'), [
-        { text: t('common.cancel'), style: 'cancel' },
-        { text: t('reminders.openSettings'), onPress: () => Linking.openSettings() },
-      ]);
+      setReminders({ ...next, enabled: false });
+      setNotifications?.(false);
+      permissionAlert();
     }
   };
 
-  const toggleSound = async (value) => {
-    setSoundEnabled(value);
-    
-    // 1. Store varsa güncelle
-    if (setSound) setSound(value);
-
-    // 2. Storage'a yaz
-    await AsyncStorage.setItem(STORAGE_KEYS.sound, value ? '1' : '0');
+  // --- profil düzenleme ---
+  const [form, setForm] = useState(null);
+  const [picker, setPicker] = useState(null); // 'wake' | 'sleep' | null
+  const openEdit = () => {
+    setForm({
+      weight: String(profile.weight || 70),
+      height: String(profile.height || 170),
+      wake: fromHHMM(profile.wakeAt, '08:00'),
+      sleep: fromHHMM(profile.sleepAt, '23:00'),
+    });
+    setPicker(null);
+    setEditing(true);
   };
-
-  // --- PROFİL DÜZENLEME ---
-
-  const openEditModal = () => {
-    setEditWeight(String(profile?.weight || 70));
-    setEditHeight(String(profile?.height || 170));
-    
-    const wakeDate = new Date();
-    const [wh, wm] = (profile?.wakeAt || "08:00").split(':');
-    wakeDate.setHours(parseInt(wh), parseInt(wm));
-    setEditWake(wakeDate);
-
-    const sleepDate = new Date();
-    const [sh, sm] = (profile?.sleepAt || "23:00").split(':');
-    sleepDate.setHours(parseInt(sh), parseInt(sm));
-    setEditSleep(sleepDate);
-
-    setShowEditProfile(true);
-  };
-
-  const handleSaveProfile = () => {
-    const w = parseInt(editWeight);
-    const h = parseInt(editHeight);
-
+  const saveEdit = async () => {
+    const w = parseInt(form.weight, 10);
+    const h = parseInt(form.height, 10);
     if (!w || !h || w < 30 || w > 250 || h < 100 || h > 250) {
       Alert.alert(t('alert.error'), t('profile.invalidInput'));
       return;
     }
-
-    const wakeStr = `${String(editWake.getHours()).padStart(2, '0')}:${String(editWake.getMinutes()).padStart(2, '0')}`;
-    const sleepStr = `${String(editSleep.getHours()).padStart(2, '0')}:${String(editSleep.getMinutes()).padStart(2, '0')}`;
-
-    updateProfile({
-      weight: w,
-      height: h,
-      wakeAt: wakeStr,
-      sleepAt: sleepStr
-    });
-    // Uyanış/uyku değiştiyse hatırlatıcılar yeni saatlere göre kurulsun
-    rescheduleIfEnabled({ wakeAt: wakeStr, sleepAt: sleepStr }).catch(() => {});
-
-    setShowEditProfile(false);
-    Alert.alert(t('profile.updatedTitle'), t('profile.updatedMsg'));
+    const wakeAt = toHHMM(form.wake);
+    const sleepAt = toHHMM(form.sleep);
+    await updateProfile({ weight: w, height: h, wakeAt, sleepAt });
+    rescheduleIfEnabled({ wakeAt, sleepAt }).catch(() => {});
+    setEditing(false);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   };
 
-  // --- SADECE HEDEFİ KAYDET ---
-  const saveGoalSettings = async () => {
-    try {
-      await AsyncStorage.setItem('DAILY_GOAL_ML', String(goalEditMl));
-      setGoalMl(goalEditMl);
-      Alert.alert(t('profile.goalSavedTitle'), t('profile.goalSavedMsg'));
-    } catch (e) {
-      Alert.alert(t('alert.error'), t('profile.saveError'));
-    }
-  };
-
-  const bgTopColor = bgAnim.interpolate({ inputRange: [0, 1], outputRange: ['#E3F2FD', '#F3E5F5'] });
-  const headerScale = scrollY.interpolate({ inputRange: [-100, 0], outputRange: [1.5, 1], extrapolate: 'clamp' });
-
-  return (
-    <View style={styles.container}>
-      <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
-
-      {/* ARKAPLAN */}
-      <Animated.View style={[styles.animatedBg, { backgroundColor: bgTopColor }]}>
-        <LinearGradient colors={['rgba(255,255,255,0.2)', 'rgba(255,255,255,0.9)']} style={StyleSheet.absoluteFill} />
-        <View style={[styles.bubble, { top: -50, right: -50, width: 300, height: 300, backgroundColor: '#BBDEFB', opacity: 0.2 }]} />
-        <View style={[styles.bubble, { top: height * 0.5, left: -50, width: 200, height: 200, backgroundColor: '#E1BEE7', opacity: 0.15 }]} />
-      </Animated.View>
-
-      <Animated.ScrollView
-        contentContainerStyle={{ paddingBottom: 120 }}
-        showsVerticalScrollIndicator={false}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: false })}
-        scrollEventThrottle={16}
-      >
-        
-        {/* HEADER */}
-        <View style={[styles.headerContainer, { paddingTop: insets.top + 20 }]}>
-          <Animated.View style={[styles.avatarContainer, { transform: [{ scale: headerScale }] }]}>
-            <Image
-              source={
-                (profile?.gender === 'female' || profile?.gender === 'woman' || profile?.gender === 'kadın')
-                  ? FEMALE_AVATAR
-                  : MALE_AVATAR
-              }
-              style={styles.avatar}
-            />
-            <TouchableOpacity style={styles.editIconBadge} onPress={openEditModal}>
-               <Ionicons name="pencil" size={14} color="#fff" />
-            </TouchableOpacity>
-          </Animated.View>
-          
-        <Text style={styles.userName}>{t('profile.userTitle')}</Text>
-          <View style={styles.badgeRow}>
-             <View style={styles.miniBadge}>
-                <Ionicons name="ribbon" size={14} color="#FFA000" />
-                <Text style={styles.miniBadgeText}>{t('profile.badgeCount', { count: earnedCount })}</Text>
-             </View>
-             <View style={[styles.miniBadge, {backgroundColor: '#E1F5FE'}]}>
-                <Ionicons name="water" size={14} color="#039BE5" />
-                <Text style={[styles.miniBadgeText, {color: '#0277BD'}]}>{t('profile.level', { level: Math.floor(earnedCount/3) + 1 })}</Text>
-             </View>
-          </View>
-        </View>
-
-        {/* BİLGİ KARTLARI */}
-        <View style={styles.statsGrid}>
-           <View style={styles.statCard}>
-              <View style={[styles.iconBox, {backgroundColor: '#E8F5E9'}]}><Ionicons name="fitness" size={20} color="#2E7D32" /></View>
-              <View><Text style={styles.statLabel}>{t('profile.weight')}</Text><Text style={styles.statValue}>{profile?.weight || '--'} {t('units.kg')}</Text></View>
-           </View>
-           <View style={styles.statCard}>
-              <View style={[styles.iconBox, {backgroundColor: '#E3F2FD'}]}><Ionicons name="resize" size={20} color="#1565C0" /></View>
-              <View><Text style={styles.statLabel}>{t('profile.height')}</Text><Text style={styles.statValue}>{profile?.height || '--'} {t('units.cm')}</Text></View>
-           </View>
-           <View style={styles.statCard}>
-              <View style={[styles.iconBox, {backgroundColor: '#FFF3E0'}]}><Ionicons name="sunny" size={20} color="#EF6C00" /></View>
-              <View><Text style={styles.statLabel}>{t('profile.wake')}</Text><Text style={styles.statValue}>{profile?.wakeAt || '--:--'}</Text></View>
-           </View>
-           <View style={styles.statCard}>
-              <View style={[styles.iconBox, {backgroundColor: '#F3E5F5'}]}><Ionicons name="moon" size={20} color="#8E24AA" /></View>
-              <View><Text style={styles.statLabel}>{t('profile.sleep')}</Text><Text style={styles.statValue}>{profile?.sleepAt || '--:--'}</Text></View>
-           </View>
-        </View>
-
-        <TouchableOpacity style={styles.refreshLink} onPress={openEditModal}>
-        <Text style={styles.refreshLinkText}>{t('profile.editInfo')}</Text>
-            <Ionicons name="create-outline" size={16} color="#90A4AE" />
-        </TouchableOpacity>
-
-        {/* HEDEF & AYARLAR */}
-        <View style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>{t('profile.dailyGoal')}</Text>
-           
-           <View style={styles.goalContainer}>
-              <View>
-              <Text style={styles.goalSub}>{t('profile.recommended')}: {recommendedGoal || 2500} {t('units.ml')}</Text>
-                 <TouchableOpacity style={styles.goalSelector} onPress={() => setShowGoalPicker(true)}>
-                    <Text style={styles.goalValueMain}>{goalEditMl}</Text>
-                    <Text style={styles.goalUnit}>{t('units.ml')}</Text>
-                    <Ionicons name="chevron-down" size={20} color="#374151" style={{marginLeft: 5}} />
-                 </TouchableOpacity>
-              </View>
-              <View style={styles.goalIconCircle}><Ionicons name="trophy" size={32} color="#FFB300" /></View>
-           </View>
-
-           <View style={styles.divider} />
-
-           {/* Dil */}
-           <View style={styles.settingRow}>
-              <View style={styles.settingLeft}>
-                 <View style={[styles.settingIcon, { backgroundColor: '#E3F2FD' }]}>
-                   <Ionicons name="language" size={18} color="#1565C0" />
-                 </View>
-                 <Text style={styles.settingText}>{t('settings.language')}</Text>
-              </View>
-
-              <View style={styles.langPillWrap}>
-                <TouchableOpacity
-                  activeOpacity={0.9}
-                  onPress={() => setLanguage('en')}
-                  style={[styles.langPill, locale === 'en' && styles.langPillActive]}
-                >
-                  <Text style={[styles.langPillText, locale === 'en' && styles.langPillTextActive]}>
-                    {t('settings.english')}
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  activeOpacity={0.9}
-                  onPress={() => setLanguage('tr')}
-                  style={[styles.langPill, locale === 'tr' && styles.langPillActive]}
-                >
-                  <Text style={[styles.langPillText, locale === 'tr' && styles.langPillTextActive]}>
-                    {t('settings.turkish')}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-           </View>
-
-           {/* Bildirimler */}
-           <View style={styles.settingRow}>
-              <View style={styles.settingLeft}>
-                 <View style={[styles.settingIcon, { backgroundColor: '#E0F2F1' }]}>
-                   <Ionicons name="notifications" size={18} color="#00695C" />
-                 </View>
-            <Text style={styles.settingText}>{t('settings.notifications')}</Text>
-              </View>
-              <Switch
-                value={notificationsEnabled}
-                onValueChange={toggleNotifications}
-                trackColor={{ true: '#4DB6AC', false: '#E0E0E0' }}
-                thumbColor={'#fff'}
-              />
-           </View>
-
-           {/* Sesler */}
-           <View style={styles.settingRow}>
-              <View style={styles.settingLeft}>
-                 <View style={[styles.settingIcon, {backgroundColor: '#EDE7F6'}]}><Ionicons name="musical-notes" size={18} color="#5E35B1" /></View>
-              <Text style={styles.settingText}>{t('settings.soundFx')}</Text>
-              </View>
-              <Switch 
-                value={soundEnabled} 
-                onValueChange={toggleSound} 
-                trackColor={{ true: '#7E57C2', false: '#E0E0E0' }} 
-                thumbColor={'#fff'}
-              />
-           </View>
-        </View>
-
-        {/* KAYDET (Sadece Hedef) */}
-        <TouchableOpacity style={styles.saveBtn} onPress={saveGoalSettings} activeOpacity={0.9}>
-           <LinearGradient colors={['#29B6F6', '#0288D1']} style={styles.saveBtnGradient} start={{x:0, y:0}} end={{x:1, y:0}}>
-            <Text style={styles.saveBtnText}>{t('profile.updateGoal')}</Text>
-              <Ionicons name="checkmark-circle" size={20} color="#fff" style={{marginLeft: 8}} />
-           </LinearGradient>
-        </TouchableOpacity>
-
-        <View style={styles.factCard}>
-           <View style={styles.factHeader}><Ionicons name="bulb" size={20} color="#FBC02D" /><Text style={styles.factTitle}>{t('profile.tip')}</Text></View>
-           <Text style={styles.factText}>{fact}</Text>
-        </View>
-
-      </Animated.ScrollView>
-
-      {/* --- PROFİL DÜZENLEME MODALI --- */}
-      <Modal animationType="slide" transparent={true} visible={showEditProfile} onRequestClose={() => setShowEditProfile(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalOverlay}>
-          <View style={styles.editModalContent}>
-            <View style={styles.modalHeaderRow}>
-               <Text style={styles.modalTitle}>{t('profile.editTitle')}</Text>
-               <TouchableOpacity onPress={() => setShowEditProfile(false)}><Ionicons name="close" size={24} color="#333"/></TouchableOpacity>
-            </View>
-            <View style={styles.inputGroup}>
-               <Text style={styles.inputLabel}>{t('profile.weightInput')}</Text>
-               <TextInput style={styles.inputBox} value={editWeight} onChangeText={setEditWeight} keyboardType="numeric" placeholder="70" />
-            </View>
-            <View style={styles.inputGroup}>
-               <Text style={styles.inputLabel}>{t('profile.heightInput')}</Text>
-               <TextInput style={styles.inputBox} value={editHeight} onChangeText={setEditHeight} keyboardType="numeric" placeholder="170" />
-            </View>
-            <View style={styles.rowInputs}>
-               <TouchableOpacity style={styles.timeInput} onPress={() => setShowWakePicker(true)}>
-                  <Text style={styles.inputLabel}>{t('profile.wake')}</Text>
-                  <Text style={styles.timeValue}>{String(editWake.getHours()).padStart(2,'0')}:{String(editWake.getMinutes()).padStart(2,'0')}</Text>
-               </TouchableOpacity>
-               <TouchableOpacity style={styles.timeInput} onPress={() => setShowSleepPicker(true)}>
-                  <Text style={styles.inputLabel}>{t('profile.sleep')}</Text>
-                  <Text style={styles.timeValue}>{String(editSleep.getHours()).padStart(2,'0')}:{String(editSleep.getMinutes()).padStart(2,'0')}</Text>
-               </TouchableOpacity>
-            </View>
-            {(showWakePicker || showSleepPicker) && (
-               Platform.OS === 'ios' ? (
-                  <DateTimePicker
-                     value={showWakePicker ? editWake : editSleep}
-                     mode="time"
-                     display="spinner"
-                     onValueChange={(e, d) => { if (d) showWakePicker ? setEditWake(d) : setEditSleep(d); }}
-                     style={{height: 120}}
-                  />
-               ) : (
-                  <DateTimePicker
-                     value={showWakePicker ? editWake : editSleep}
-                     mode="time"
-                     is24Hour
-                     onValueChange={(e, d) => { setShowWakePicker(false); setShowSleepPicker(false); if (d) showWakePicker ? setEditWake(d) : setEditSleep(d); }}
-                     onDismiss={() => { setShowWakePicker(false); setShowSleepPicker(false); }}
-                  />
-               )
-            )}
-            {Platform.OS === 'ios' && (showWakePicker || showSleepPicker) && (
-               <TouchableOpacity onPress={() => {setShowWakePicker(false); setShowSleepPicker(false)}} style={{alignItems:'flex-end', padding:10}}>
-                  <Text style={{color:'#0288D1', fontWeight:'700'}}>{t('common.ok')}</Text>
-               </TouchableOpacity>
-            )}
-            <TouchableOpacity style={styles.saveModalBtn} onPress={handleSaveProfile}>
-               <Text style={styles.saveModalBtnText}>{t('profile.saveAndCalc')}</Text>
-            </TouchableOpacity>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      {/* --- HEDEF SEÇİCİ MODAL --- */}
-      {showGoalPicker && (
-        <View style={styles.modalOverlay}>
-          <TouchableOpacity style={styles.modalBackdrop} onPress={() => setShowGoalPicker(false)} />
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{t('profile.chooseGoal')}</Text>
-            <ScrollView style={{maxHeight: 300}}>
-              {[1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000].map(v => (
-                <TouchableOpacity
-                  key={v}
-                  style={[styles.modalOption, goalEditMl === v && styles.modalOptionSelected]}
-                  onPress={() => { setGoalEditMl(v); setShowGoalPicker(false); }}
-                >
-                  <Text style={[styles.modalOptionText, goalEditMl === v && styles.modalOptionTextSelected]}>
-                    {v} {t('units.ml')}
-                  </Text>
-                  {goalEditMl === v && <Ionicons name="checkmark" size={20} color="#0288D1" />}
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-            <TouchableOpacity style={styles.modalClose} onPress={() => setShowGoalPicker(false)}>
-              <Text style={styles.modalCloseText}>{t('common.close')}</Text>
-            </TouchableOpacity>
-          </View>
+  const Row = ({ label, value, onPress, last, children }) => (
+    <TouchableOpacity
+      disabled={!onPress}
+      onPress={onPress}
+      activeOpacity={0.6}
+      style={[styles.row, !last && { borderBottomWidth: 1, borderBottomColor: c.divider }]}
+      accessibilityRole={onPress ? 'button' : undefined}
+    >
+      <Text style={[type.body, { color: c.ink }]}>{label}</Text>
+      {children || (
+        <View style={styles.rowRight}>
+          <Text style={[type.bodyStrong, { color: c.ink2 }]}>{value}</Text>
+          {onPress && <Ionicons name="chevron-forward" size={16} color={c.ink3} />}
         </View>
       )}
+    </TouchableOpacity>
+  );
 
+  const card = [styles.card, { backgroundColor: c.card, borderRadius: radius.card }, cardShadow(c)];
+
+  return (
+    <View style={[styles.root, { backgroundColor: c.bg }]}>
+      <StatusBar barStyle={c.statusBar} />
+      <ScrollView contentContainerStyle={{ paddingTop: insets.top + 14, paddingBottom: insets.bottom + 120, paddingHorizontal: 22, gap: 14 }} showsVerticalScrollIndicator={false}>
+        <Text style={[type.title, { color: c.ink }]}>{t('tabs.profile')}</Text>
+
+        {/* günlük hedef */}
+        <View style={[card, { paddingVertical: 14, gap: 10 }]}>
+          <View style={styles.goalRow}>
+            <View style={{ gap: 2 }}>
+              <Text style={[type.labelStrong, { color: c.ink2 }]}>{t('profile.dailyGoal')}</Text>
+              <Text style={[type.title, { color: c.ink, fontSize: 28 }]}>{`${fmtNumber(goalMl)} ml`}</Text>
+            </View>
+            <View style={styles.stepper}>
+              <TouchableOpacity onPress={() => changeGoal(-GOAL_STEP)} style={[styles.stepBtn, { backgroundColor: c.chip }]} accessibilityRole="button" accessibilityLabel={t('profile.goalDecrease')}>
+                <Ionicons name="remove" size={22} color={c.chipInk} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => changeGoal(GOAL_STEP)} style={[styles.stepBtn, { backgroundColor: c.chip }]} accessibilityRole="button" accessibilityLabel={t('profile.goalIncrease')}>
+                <Ionicons name="add" size={22} color={c.chipInk} />
+              </TouchableOpacity>
+            </View>
+          </View>
+          <Text style={[type.label, { color: c.ink2 }]}>
+            {t('profile.recommendedLine', { weight: profile.weight || 70, height: profile.height || 170, goal: fmtNumber(recommended) })}
+          </Text>
+          {goalMl !== recommended && (
+            <TouchableOpacity onPress={() => setGoalMl(recommended)} accessibilityRole="button">
+              <Text style={[type.labelStrong, { color: c.accentInk }]}>{t('profile.useRecommended')}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* vücut ve rutin */}
+        <View style={card}>
+          <Row label={t('profile.weight')} value={`${profile.weight || '--'} kg`} onPress={openEdit} />
+          <Row label={t('profile.height')} value={`${profile.height || '--'} cm`} onPress={openEdit} />
+          <Row label={t('profile.wakeSleep')} value={`${profile.wakeAt || '--:--'} · ${profile.sleepAt || '--:--'}`} onPress={openEdit} last />
+        </View>
+
+        {/* hatırlatıcılar */}
+        <Text style={[type.overline, { color: c.ink2, paddingHorizontal: 4, marginTop: 6 }]}>{t('reminders.title')}</Text>
+        <View style={[card, { paddingBottom: 14, gap: 12 }]}>
+          <Row label={t('settings.notifications')} last>
+            <Switch
+              value={reminders.enabled}
+              onValueChange={(v) => applyReminders({ ...reminders, enabled: v })}
+              trackColor={{ true: c.success, false: c.track }}
+            />
+          </Row>
+          <View style={[styles.segment, { backgroundColor: c.track, opacity: reminders.enabled ? 1 : 0.45 }]} pointerEvents={reminders.enabled ? 'auto' : 'none'}>
+            {INTERVALS.map((h) => {
+              const on = h === reminders.intervalHours;
+              return (
+                <TouchableOpacity
+                  key={h}
+                  onPress={() => applyReminders({ ...reminders, intervalHours: h })}
+                  style={[styles.segBtn, on && { backgroundColor: c.card }, on && cardShadow(c)]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
+                >
+                  <Text style={[on ? type.labelStrong : type.label, { fontSize: 14, color: on ? c.ink : c.ink2 }]}>
+                    {t('reminders.everyShort', { hours: fmtHours(h) })}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <Text style={[type.label, { color: c.ink2, fontSize: 14 }]}>
+            {reminders.enabled
+              ? t('reminders.summary', { from: profile.wakeAt || '08:00', to: profile.sleepAt || '23:00', count: reminderCount })
+              : t('reminders.disabledInline')}
+          </Text>
+        </View>
+
+        {/* ayarlar */}
+        <View style={card}>
+          <Row label={t('settings.language')}>
+            <View style={[styles.langSeg, { backgroundColor: c.track }]}>
+              {['tr', 'en'].map((l) => {
+                const on = locale === l;
+                return (
+                  <TouchableOpacity
+                    key={l}
+                    onPress={() => setLanguage(l)}
+                    style={[styles.langBtn, on && { backgroundColor: c.card }, on && cardShadow(c)]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: on }}
+                  >
+                    <Text style={[on ? type.labelStrong : type.label, { fontSize: 14, color: on ? c.ink : c.ink2 }]}>
+                      {l === 'tr' ? 'Türkçe' : 'English'}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </Row>
+          <Row label={t('settings.soundFx')} last>
+            <Switch value={soundEnabled} onValueChange={(v) => setSound(v)} trackColor={{ true: c.success, false: c.track }} />
+          </Row>
+        </View>
+
+        {/* geliştirici (yalnızca geliştirme sürümü) */}
+        {__DEV__ && (
+          <View style={[card, { paddingVertical: 12, gap: 8 }]}>
+            <Text style={[type.overline, { color: c.ink3 }]}>{t('reminders.testPanel')}</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity
+                style={[styles.devBtn, { backgroundColor: c.chip }]}
+                onPress={async () => {
+                  await Notifications.scheduleNotificationAsync({
+                    content: { title: t('notifications.title'), body: t('notifications.body'), sound: 'default' },
+                    trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 60 },
+                  });
+                  Alert.alert(t('reminders.plannedTitle'), t('reminders.testInOneMinuteMsg'));
+                }}
+              >
+                <Text style={[type.labelStrong, { color: c.chipInk }]}>{t('reminders.test1m')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.devBtn, { backgroundColor: c.chip }]} onPress={() => DeviceEventEmitter.emit('OPEN_ONBOARD')}>
+                <Text style={[type.labelStrong, { color: c.chipInk }]}>{t('reminders.onboard')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.devBtn, { backgroundColor: c.chip }]} onPress={() => useHydrationStore.getState().resetToday()}>
+                <Text style={[type.labelStrong, { color: c.chipInk }]}>{t('dev.reset')}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+      </ScrollView>
+
+      {/* profil düzenleme sayfası */}
+      <Modal visible={editing} transparent animationType="slide" onRequestClose={() => setEditing(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, justifyContent: 'flex-end' }}>
+          <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: c.overlay }]} onPress={() => setEditing(false)} />
+          {form && (
+            <View style={[styles.sheet, { backgroundColor: c.card, paddingBottom: insets.bottom + 20 }]}>
+              <View style={styles.sheetHeader}>
+                <Text style={[type.heading, { color: c.ink }]}>{t('profile.editTitle')}</Text>
+                <TouchableOpacity onPress={() => setEditing(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                  <Text style={[type.bodyStrong, { color: c.accentInk }]}>{t('common.cancel')}</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                {[
+                  ['weight', t('profile.weightInput')],
+                  ['height', t('profile.heightInput')],
+                ].map(([key, label]) => (
+                  <View key={key} style={{ flex: 1, gap: 6 }}>
+                    <Text style={[type.labelStrong, { color: c.ink2 }]}>{label}</Text>
+                    <TextInput
+                      value={form[key]}
+                      onChangeText={(v) => setForm({ ...form, [key]: v.replace(/[^0-9]/g, '') })}
+                      keyboardType="number-pad"
+                      maxLength={3}
+                      style={[styles.input, type.heading, { color: c.ink, backgroundColor: c.cardAlt }]}
+                      accessibilityLabel={label}
+                    />
+                  </View>
+                ))}
+              </View>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                {[
+                  ['wake', t('profile.wake')],
+                  ['sleep', t('profile.sleep')],
+                ].map(([key, label]) => (
+                  <TouchableOpacity
+                    key={key}
+                    onPress={() => setPicker(picker === key ? null : key)}
+                    style={[styles.timeBtn, { backgroundColor: c.cardAlt, borderColor: picker === key ? c.accent : 'transparent' }]}
+                    accessibilityRole="button"
+                  >
+                    <Text style={[type.labelStrong, { color: c.ink2 }]}>{label}</Text>
+                    <Text style={[type.heading, { color: c.ink }]}>{toHHMM(form[key])}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              {picker && (
+                <DateTimePicker
+                  value={form[picker]}
+                  mode="time"
+                  is24Hour
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onValueChange={(e, d) => {
+                    if (d) setForm({ ...form, [picker]: d });
+                    if (Platform.OS !== 'ios') setPicker(null);
+                  }}
+                  onDismiss={() => setPicker(null)}
+                  style={{ height: 150 }}
+                />
+              )}
+              <TouchableOpacity onPress={saveEdit} style={[styles.cta, { backgroundColor: c.accent }]} accessibilityRole="button">
+                <Text style={[type.bodyStrong, { color: c.onAccent, fontSize: 17 }]}>{t('profile.saveAndCalc')}</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8F9FA' },
-  animatedBg: { ...StyleSheet.absoluteFillObject },
-  bubble: { position: 'absolute', borderRadius: 999 },
-  headerContainer: { alignItems: 'center', marginBottom: 24 },
-  avatarContainer: { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 10, elevation: 8, marginBottom: 12, position: 'relative' },
-  avatar: { width: 100, height: 100, borderRadius: 50, borderWidth: 4, borderColor: '#fff' },
-  editIconBadge: { position: 'absolute', bottom: 0, right: 0, backgroundColor: '#29B6F6', width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' },
-  userName: { fontSize: 24, fontWeight: '800', color: '#1A237E' },
-  badgeRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
-  miniBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF8E1', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
-  miniBadgeText: { fontSize: 12, fontWeight: '700', color: '#FF8F00', marginLeft: 4 },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 12, justifyContent: 'space-between' },
-  statCard: { width: '48%', backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 12, flexDirection: 'row', alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
-  iconBox: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  statLabel: { fontSize: 12, color: '#90A4AE', fontWeight: '600' },
-  statValue: { fontSize: 16, fontWeight: '800', color: '#374151' },
-  refreshLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 24 },
-  refreshLinkText: { color: '#90A4AE', fontSize: 13, fontWeight: '600', marginRight: 4 },
-  sectionCard: { backgroundColor: '#fff', marginHorizontal: 16, borderRadius: 24, padding: 20, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, elevation: 3, marginBottom: 20 },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#90A4AE', marginBottom: 16, textTransform: 'uppercase', letterSpacing: 0.5 },
-  goalContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  goalSub: { fontSize: 13, color: '#90A4AE', fontWeight: '500', marginBottom: 4 },
-  goalSelector: { flexDirection: 'row', alignItems: 'baseline' },
-  goalValueMain: { fontSize: 32, fontWeight: '800', color: '#1A237E' },
-  goalUnit: { fontSize: 16, fontWeight: '600', color: '#90A4AE', marginLeft: 4 },
-  goalIconCircle: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#FFF8E1', alignItems: 'center', justifyContent: 'center' },
-  divider: { height: 1, backgroundColor: '#F5F5F5', marginVertical: 20 },
-  settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  settingLeft: { flexDirection: 'row', alignItems: 'center' },
-  settingIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  settingText: { fontSize: 16, fontWeight: '600', color: '#374151' },
-    langPillWrap: {
-    flexDirection: 'row',
-    backgroundColor: '#F3F4F6',
-    borderRadius: 999,
-    padding: 4,
-  },
-  langPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-  },
-  langPillActive: {
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  langPillText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#6B7280',
-  },
-  langPillTextActive: {
-    color: '#111827',
-  },
-  saveBtn: { marginHorizontal: 16, marginBottom: 24, borderRadius: 20, shadowColor: '#0288D1', shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
-  saveBtnGradient: { paddingVertical: 18, borderRadius: 20, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
-  saveBtnText: { color: '#fff', fontSize: 18, fontWeight: '800' },
-  factCard: { marginHorizontal: 16, backgroundColor: '#FFFDE7', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#FFF59D', marginBottom: 24 },
-  factHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  factTitle: { fontSize: 14, fontWeight: '700', color: '#F9A825', marginLeft: 6 },
-  factText: { fontSize: 14, color: '#F57F17', lineHeight: 20 },
-  resetOnboardBtn: { alignItems: 'center', padding: 10 },
-  resetOnboardText: { color: '#B0BEC5', fontWeight: '600', fontSize: 13 },
-  modalOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', zIndex: 100, backgroundColor: 'rgba(0,0,0,0.5)' },
-  modalBackdrop: { ...StyleSheet.absoluteFillObject },
-  editModalContent: { width: '85%', backgroundColor: '#fff', borderRadius: 24, padding: 24, elevation: 10 },
-  modalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  inputGroup: { marginBottom: 16 },
-  inputLabel: { fontSize: 14, fontWeight: '700', color: '#546E7A', marginBottom: 6 },
-  inputBox: { backgroundColor: '#F5F5F5', borderRadius: 12, padding: 14, fontSize: 16, color: '#333', fontWeight: '600' },
-  rowInputs: { flexDirection: 'row', justifyContent: 'space-between' },
-  timeInput: { width: '48%', backgroundColor: '#F5F5F5', borderRadius: 12, padding: 14, alignItems: 'center' },
-  timeValue: { fontSize: 18, fontWeight: '800', color: '#0288D1', marginTop: 4 },
-  saveModalBtn: { backgroundColor: '#29B6F6', paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginTop: 10 },
-  saveModalBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  modalContent: { width: '80%', backgroundColor: '#fff', borderRadius: 24, padding: 24, elevation: 10 },
-  modalTitle: { fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 16, color: '#1A237E' },
-  modalOption: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F5F5F5', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  modalOptionSelected: { backgroundColor: '#E1F5FE', marginHorizontal: -24, paddingHorizontal: 24 },
-  modalOptionText: { fontSize: 16, color: '#374151', fontWeight: '600' },
-  modalOptionTextSelected: { color: '#0288D1', fontWeight: '800' },
-  modalClose: { marginTop: 16, alignItems: 'center', padding: 12 },
-  modalCloseText: { color: '#F44336', fontWeight: '700' }
+  root: { flex: 1 },
+  card: { paddingHorizontal: 16 },
+  goalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  stepper: { flexDirection: 'row', gap: 8 },
+  stepBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: 50, paddingVertical: 8 },
+  rowRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  segment: { flexDirection: 'row', borderRadius: 14, padding: 4, gap: 4 },
+  segBtn: { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 10 },
+  langSeg: { flexDirection: 'row', borderRadius: 999, padding: 3 },
+  langBtn: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
+  devBtn: { flex: 1, borderRadius: 12, paddingVertical: 10, alignItems: 'center' },
+  sheet: { borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 22, gap: 16 },
+  sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  input: { borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12 },
+  timeBtn: { flex: 1, borderRadius: 16, padding: 12, gap: 2, borderWidth: 2 },
+  cta: { borderRadius: 999, paddingVertical: 16, alignItems: 'center' },
 });

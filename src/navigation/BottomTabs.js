@@ -1,189 +1,136 @@
-import React from 'react';
-import { View, Text, StyleSheet, Platform, Dimensions } from 'react-native';
+import React, { useState } from 'react';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
-// Ekranlarınızı import edin
 import HomeScreen from '../screens/HomeScreen';
 import HistoryScreen from '../screens/HistoryScreen';
-import RemindersScreen from '../screens/RemindersScreen';
 import BadgesScreen from '../screens/BadgesScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import AddSheet from '../components/AddSheet';
+import BadgeCelebration from '../components/BadgeCelebration';
 import { useLanguage } from '../i18n';
+import { useTheme } from '../theme/theme';
 
 const Tab = createBottomTabNavigator();
-const { width } = Dimensions.get('window');
+
+// Sekme sırası: Ana Sayfa, Geçmiş, [+ su ekle], Rozetler, Profil.
+// Hatırlatıcı ayarları artık Profil'in içinde.
+const TABS = [
+  { name: 'Home', label: 'tabs.home', icon: 'home', iconOff: 'home-outline' },
+  { name: 'History', label: 'tabs.history', icon: 'stats-chart', iconOff: 'stats-chart-outline' },
+  { name: 'Badges', label: 'tabs.badges', icon: 'ribbon', iconOff: 'ribbon-outline' },
+  { name: 'Profile', label: 'tabs.profile', icon: 'person', iconOff: 'person-outline' },
+];
+
+function FloatingTabBar({ state, navigation }) {
+  const insets = useSafeAreaInsets();
+  const { t } = useLanguage();
+  const { c, type } = useTheme();
+  const [sheet, setSheet] = useState(false);
+
+  const renderTab = (route, index) => {
+    const meta = TABS.find((x) => x.name === route.name);
+    const focused = state.index === index;
+    const color = focused ? c.accent : c.ink2;
+    const onPress = () => {
+      const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
+      if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
+    };
+    return (
+      <TouchableOpacity
+        key={route.key}
+        onPress={onPress}
+        style={styles.tab}
+        accessibilityRole="tab"
+        accessibilityState={{ selected: focused }}
+        accessibilityLabel={t(meta.label)}
+      >
+        <Ionicons name={focused ? meta.icon : meta.iconOff} size={24} color={color} />
+        <Text numberOfLines={1} style={[type.caption, { fontSize: 11, color, fontFamily: focused ? type.labelStrong.fontFamily : type.label.fontFamily }]}>
+          {t(meta.label)}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
+
+  const left = state.routes.slice(0, 2).map((r, i) => renderTab(r, i));
+  const right = state.routes.slice(2).map((r, i) => renderTab(r, i + 2));
+
+  return (
+    <>
+      <View
+        style={[
+          styles.bar,
+          {
+            bottom: Math.max(insets.bottom - 6, 12),
+            backgroundColor: c.tabBg,
+            shadowColor: c.shadowColor,
+            shadowOpacity: c.shadowOpacity * 1.6,
+          },
+        ]}
+      >
+        {left}
+        <View style={styles.centerSlot}>
+          <TouchableOpacity
+            onPress={() => setSheet(true)}
+            activeOpacity={0.85}
+            style={[styles.plus, { backgroundColor: c.accent, shadowColor: c.accent }]}
+            accessibilityRole="button"
+            accessibilityLabel={t('tabs.add')}
+          >
+            <Ionicons name="add" size={32} color={c.onAccent} />
+          </TouchableOpacity>
+        </View>
+        {right}
+      </View>
+      <AddSheet visible={sheet} onClose={() => setSheet(false)} />
+      <BadgeCelebration />
+    </>
+  );
+}
 
 export default function BottomTabs() {
-  // Dil değişince sekme etiketleri de güncellensin diye context'ten alıyoruz
-  const { t } = useLanguage();
+  const { c } = useTheme();
   return (
     <Tab.Navigator
-      screenOptions={{
-        headerShown: false,
-        tabBarShowLabel: false, // Etiketleri manuel yönetiyoruz
-        tabBarStyle: styles.tabBar,
-      }}
+      tabBar={(props) => <FloatingTabBar {...props} />}
+      screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: c.bg } }}
     >
-      <Tab.Screen
-        name="Home"
-        component={HomeScreen}
-        options={{
-          tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} name="home" label={t('tabs.home')} />
-          ),
-        }}
-      />
-
-      <Tab.Screen
-        name="History"
-        component={HistoryScreen}
-        options={{
-          tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} name="calendar" label={t('tabs.history')} />
-          ),
-        }}
-      />
-
-      <Tab.Screen
-        name="Reminders"
-        component={RemindersScreen}
-        options={{
-          tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} name="alarm" label={t('tabs.reminders')} />
-          ),
-        }}
-      />
-
-      <Tab.Screen
-        name="Badges"
-        component={BadgesScreen}
-        options={{
-          tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} name="ribbon" label={t('tabs.badges')} />
-          ),
-        }}
-      />
-
-      <Tab.Screen
-        name="Profile"
-        component={ProfileScreen}
-        options={{
-          tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} name="person" label={t('tabs.profile')} />
-          ),
-        }}
-      />
+      <Tab.Screen name="Home" component={HomeScreen} />
+      <Tab.Screen name="History" component={HistoryScreen} />
+      <Tab.Screen name="Badges" component={BadgesScreen} />
+      <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );
 }
 
-// Tekrar eden kodları önlemek için özel bileşen
-const TabIcon = ({ focused, name, label }) => {
-  return (
-    <View style={styles.tabItem}>
-      {/* İKON ALANI */}
-      {focused ? (
-        <LinearGradient
-          colors={['#7CE8FF', '#4C8CFF']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.iconContainerActive}
-        >
-          <Ionicons name={name} size={24} color="#fff" />
-        </LinearGradient>
-      ) : (
-        <View style={styles.iconContainerInactive}>
-          <Ionicons name={name} size={24} color="#9CA3AF" />
-        </View>
-      )}
-
-      {/* METİN ALANI - numberOfLines={1} taşmayı engeller */}
-      <Text 
-        numberOfLines={1} 
-        style={[styles.label, focused ? styles.labelActive : styles.labelInactive]}
-      >
-        {label}
-      </Text>
-
-      {/* AKTİF ÇİZGİSİ (Opsiyonel, şık durur) */}
-      {focused && (
-        <LinearGradient 
-          colors={['#7CE8FF', '#4C8CFF']} 
-          style={styles.activeLine} 
-        />
-      )}
-    </View>
-  );
-};
-
 const styles = StyleSheet.create({
-  tabBar: {
+  bar: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#FFFFFF',
-    height: Platform.OS === 'ios' ? 95 : 80, // iPhone'larda home indicator için daha yüksek
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderTopWidth: 0,
-    // Profesyonel gölge
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 10,
-    paddingHorizontal: 5, // Kenarlardan hafif boşluk
+    left: 14,
+    right: 14,
+    height: 72,
+    borderRadius: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 12,
   },
-  tabItem: {
+  tab: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 3, height: '100%' },
+  centerSlot: { flex: 1, alignItems: 'center' },
+  plus: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    marginTop: -28,
     alignItems: 'center',
     justifyContent: 'center',
-    width: width / 5, // Ekranı tam 5 parçaya bölerek her tab'a eşit alan verir
-    height: '100%',
-    top: Platform.OS === 'ios' ? 10 : 0, // İçeriği biraz aşağı it
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
   },
-  iconContainerActive: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 4,
-    // Aktif ikon gölgesi
-    shadowColor: '#4C8CFF',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 5,
-  },
-  iconContainerInactive: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  label: {
-    fontSize: 11, // Okunabilir ama küçük
-    textAlign: 'center',
-    width: '100%', // Bulunduğu alanın tamamını kullansın
-    paddingHorizontal: 2, // Yanlardan çok az boşluk
-  },
-  labelActive: {
-    color: '#4C8CFF',
-    fontWeight: '700',
-  },
-  labelInactive: {
-    color: '#9CA3AF',
-    fontWeight: '500',
-  },
-  activeLine: {
-    width: 20,
-    height: 3,
-    borderRadius: 2,
-    marginTop: 4,
-    opacity: 0.8,
-  }
 });

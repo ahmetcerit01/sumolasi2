@@ -1,293 +1,167 @@
-import React, { useState, useEffect, useRef, useCallback, useContext } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Dimensions,
-  StatusBar,
-  Animated
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useFocusEffect } from "@react-navigation/native"; 
-import { LinearGradient } from "expo-linear-gradient";
-import { Ionicons } from "@expo/vector-icons";
-import { COLORS } from "../theme/colors";
-import { S } from "../theme/spacing";
-import { useHydrationStore } from "../storage/useHydrationStore";
+import React, { useCallback, useContext, useRef, useState } from 'react';
+import { Animated, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
+import { useHydrationStore } from '../storage/useHydrationStore';
 import { LanguageContext } from '../i18n';
+import { cardShadow, useTheme } from '../theme/theme';
+import { fmtLiters, fmtNumber } from '../utils/format';
 
-const SCREEN_WIDTH = Dimensions.get("window").width;
-const CHART_HEIGHT = 220;
+const CHART_H = 180;
 
 export default function HistoryScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useContext(LanguageContext);
-  
-  // Store Verileri
-  const rawWeekly = useHydrationStore((s) => s.getWeeklyData());
-  // Gün adları aktif dile göre
-  const weeklyData = rawWeekly.map((d) => ({ ...d, day: t(`days.short.${d.dayIndex}`) }));
-  const currentGoal = useHydrationStore((s) => s.goalMl); 
-  
-  const [selectedDate, setSelectedDate] = useState(null);
-  const [animationKey, setAnimationKey] = useState(0); // Animasyonları tetiklemek için anahtar
+  const { c, type, radius } = useTheme();
+  const [range, setRange] = useState('week');
 
-  // Sayfa Animasyonu (Fade & Slide)
-  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const goal = useHydrationStore((s) => s.goalMl) || 2500;
+  const days = useHydrationStore((s) => s.getDays(range === 'week' ? 7 : 30));
+  const streakDays = useHydrationStore((s) => s.streakDays) || 0;
+  const longest = useHydrationStore((s) => s.getLongestStreak());
+  const totalToday = useHydrationStore((s) => s.totalMl) || 0;
 
-  // --- HER EKRAN AÇILDIĞINDA ÇALIŞACAK ---
+  // Ekrana her gelişte çubuklar sıfırdan büyüsün
+  const grow = useRef(new Animated.Value(0)).current;
   useFocusEffect(
     useCallback(() => {
-      // 1. Opaklığı sıfırla
-      fadeAnim.setValue(0);
-      
-      // 2. Animasyon anahtarını değiştir (Barları yeniden çizmek için)
-      setAnimationKey(prev => prev + 1);
-
-      // 3. Giriş animasyonunu başlat
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 800,
-        useNativeDriver: true,
-      }).start();
-      
-    }, []) 
+      grow.setValue(0);
+      Animated.spring(grow, { toValue: 1, damping: 16, stiffness: 90, useNativeDriver: false }).start();
+    }, [range])
   );
 
-  // Seçili günü tarih olarak tutuyoruz; veri ve dil değişince güncel hali listeden türetilir.
-  // Seçim yoksa veya hafta kaydıysa bugün (listenin son elemanı) gösterilir.
-  const selectedDay = weeklyData.find((d) => d.fullDate === selectedDate) || weeklyData[weeklyData.length - 1];
+  const tracked = days.filter((d) => d.isTracked);
+  const avg = tracked.length ? tracked.reduce((a, d) => a + (d.ml || 0), 0) / tracked.length : 0;
+  const metCount = tracked.filter((d) => d.ml > 0 && d.ml >= (d.goal || goal)).length;
+  const currentStreak = streakDays + (totalToday >= goal ? 1 : 0);
+  const max = Math.max(goal * 1.35, ...days.map((d) => d.ml || 0));
+  const goalY = (goal / max) * CHART_H;
 
-  if (!selectedDay) {
-    return <View style={styles.container} />;
-  }
+  const recent = days.slice(-7).reverse();
+  const dayName = (d, i) => (i === 0 ? t('home.today') : t(`days.long.${d.dayIndex}`));
 
-  // --- HESAPLAMALAR ---
-  const maxIntake = Math.max(...weeklyData.map(d => d.ml || 0));
-  const chartScaleMax = Math.max(maxIntake, currentGoal, 2500);
-  const targetLinePosition = (currentGoal / chartScaleMax) * CHART_HEIGHT;
-  const totalWeekly = weeklyData.reduce((acc, curr) => acc + (curr.ml || 0), 0);
-  // Uygulamayı kullanmaya başlamadan önceki günler ortalamayı düşürmesin
-  const trackedDays = weeklyData.filter((d) => d.isTracked);
-  const trackedTotal = trackedDays.reduce((acc, curr) => acc + (curr.ml || 0), 0);
-  const avgWeekly = trackedDays.length ? Math.round(trackedTotal / trackedDays.length) : 0;
-  const bestDay = weeklyData.reduce((prev, current) => 
-    ((prev.ml || 0) > (current.ml || 0)) ? prev : current
-  , { ml: 0, day: '-' });
+  const Stat = ({ value, label }) => (
+    <View style={[styles.stat, { backgroundColor: c.card, borderRadius: 18 }, cardShadow(c)]}>
+      <Text style={[type.heading, { color: c.ink }]} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
+      <Text style={[type.caption, { color: c.ink2 }]}>{label}</Text>
+    </View>
+  );
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="dark-content" />
-      
-      <View style={[styles.headerBg, { height: insets.top + 80 }]}>
-        <LinearGradient colors={["#E0F2FE", "#F0F9FF"]} style={StyleSheet.absoluteFill} />
-      </View>
-
-      <ScrollView 
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
-      >
-        <View style={[styles.headerContent, { marginTop: insets.top + 10 }]}>
-          <Text style={styles.headerTitle}>{t('history.title')}</Text>
-          <Text style={styles.headerSubtitle}>{t('history.subtitle')}</Text>
+    <View style={[styles.root, { backgroundColor: c.bg }]}>
+      <StatusBar barStyle={c.statusBar} />
+      <ScrollView contentContainerStyle={{ paddingTop: insets.top + 14, paddingBottom: insets.bottom + 120, paddingHorizontal: 22, gap: 16 }} showsVerticalScrollIndicator={false}>
+        <View style={styles.headerRow}>
+          <Text style={[type.title, { color: c.ink }]}>{t('history.title')}</Text>
+          <View style={[styles.segment, { backgroundColor: c.track }]}>
+            {['week', 'month'].map((r) => {
+              const on = r === range;
+              return (
+                <TouchableOpacity
+                  key={r}
+                  onPress={() => setRange(r)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
+                  style={[styles.segBtn, on && { backgroundColor: c.card }, on && cardShadow(c)]}
+                >
+                  <Text style={[on ? type.labelStrong : type.label, { fontSize: 14, color: on ? c.ink : c.ink2 }]}>
+                    {r === 'week' ? t('history.week') : t('history.month')}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </View>
 
-        {/* ÖZET KARTI (Animasyonlu) */}
-        <Animated.View 
-          style={[
-            styles.summaryCard, 
-            { 
-              opacity: fadeAnim, 
-              transform: [{translateY: fadeAnim.interpolate({inputRange:[0,1], outputRange:[20,0]})}] 
-            }
-          ]}
-        >
-          <LinearGradient
-            colors={[COLORS.primaryStart, COLORS.primaryEnd]}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-            style={styles.cardGradient}
-          >
-            <View style={styles.summaryRow}>
-              <View>
-                <Text style={styles.summaryLabel}>{t('history.weekTotal')}</Text>
-                <Text style={styles.summaryValue}>{(totalWeekly / 1000).toFixed(1)} {t('units.liter')}</Text>
-              </View>
-              <View style={styles.summaryIconBox}>
-                <Ionicons name="stats-chart" size={24} color="#fff" />
-              </View>
-            </View>
-          </LinearGradient>
-        </Animated.View>
+        <View style={styles.statsRow}>
+          <Stat value={fmtLiters(avg)} label={t('history.dailyAvg')} />
+          <Stat value={`${metCount}/${tracked.length || days.length}`} label={t('history.goalDays')} />
+          <Stat value={`${Math.max(currentStreak, longest)}`} label={t('history.bestStreak')} />
+        </View>
 
-        {/* GRAFİK ALANI */}
-        <View style={styles.chartSection}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>{t('history.dailyPerformance')}</Text>
-            {/* Hedef etiketi grafiğin içindeyken son çubuğun altında kalıyordu */}
-            <View style={styles.targetChip}>
-              <View style={styles.targetChipLine} />
-              <Text style={styles.targetLabel}>{t('history.goalLabel', { goal: currentGoal })}</Text>
+        <View style={[styles.chartCard, { backgroundColor: c.card, borderRadius: radius.cardLg }, cardShadow(c)]}>
+          <View style={styles.chartHeader}>
+            <Text style={[type.section, { color: c.ink }]}>{range === 'week' ? t('history.thisWeek') : t('history.last30')}</Text>
+            <View style={styles.legend}>
+              <View style={[styles.legendDash, { borderColor: c.ink3 }]} />
+              <Text style={[type.caption, { color: c.ink2 }]}>{t('history.goalLabel', { goal: fmtNumber(goal) })}</Text>
             </View>
           </View>
 
-          <View style={styles.chartContainer}>
-            <View style={[styles.targetLine, { bottom: targetLinePosition }]} />
-
-            <View style={styles.barsRow}>
-              {weeklyData.map((item, index) => {
-                const isSelected = selectedDay.fullDate === item.fullDate;
-                const heightPercent = Math.min((item.ml || 0) / chartScaleMax, 1);
-                const isGoalMet = item.ml >= (item.goal || currentGoal) && item.ml > 0;
-
+          <View style={{ height: CHART_H }}>
+            <View style={[styles.goalLine, { bottom: goalY, borderColor: c.divider }]} />
+            <View style={[styles.bars, { gap: range === 'week' ? 10 : 3 }]}>
+              {days.map((d) => {
+                const h = Math.max(((d.ml || 0) / max) * CHART_H, d.ml > 0 ? 6 : 4);
+                const met = d.ml > 0 && d.ml >= (d.goal || goal);
+                const color = d.isToday ? c.accent : met ? c.barGoal : c.barMuted;
                 return (
-                  <TouchableOpacity 
-                    key={index} 
-                    activeOpacity={0.8}
-                    style={styles.barWrapper}
-                    // Tıklanınca state'i güncelle
-                    onPress={() => setSelectedDate(item.fullDate)}
-                  >
-                    {isSelected && (
-                      <Animated.View style={styles.bubble}>
-                        <Text style={styles.bubbleText}>{item.ml}</Text>
-                        <View style={styles.bubbleArrow} />
-                      </Animated.View>
-                    )}
-
-                    <Bar 
-                      key={`bar-${index}-${animationKey}`} 
-                      height={heightPercent * CHART_HEIGHT} 
-                      color={isSelected ? COLORS.primaryEnd : "#E0E7FF"}
-                      isGoalMet={isGoalMet}
+                  <View key={d.fullDate} style={styles.barSlot} accessible accessibilityLabel={`${d.fullDate}: ${fmtNumber(d.ml)} ml`}>
+                    <Animated.View
+                      style={{
+                        width: '100%',
+                        maxWidth: range === 'week' ? 30 : 8,
+                        height: grow.interpolate({ inputRange: [0, 1], outputRange: [4, h] }),
+                        borderRadius: range === 'week' ? 10 : 4,
+                        backgroundColor: color,
+                      }}
                     />
-                    
-                    <Text style={[styles.dayText, isSelected && styles.dayTextSelected]}>
-                      {item.day}
-                    </Text>
-                  </TouchableOpacity>
+                  </View>
                 );
               })}
             </View>
           </View>
+
+          <View style={[styles.labels, { gap: range === 'week' ? 10 : 3 }]}>
+            {days.map((d, i) => (
+              <Text
+                key={d.fullDate}
+                style={[type.caption, styles.dayLabel, { color: d.isToday ? c.accentInk : c.ink2 }]}
+                numberOfLines={1}
+              >
+                {range === 'week' ? t(`days.short.${d.dayIndex}`) : (i % 5 === 4 || d.isToday ? String(d.date) : '')}
+              </Text>
+            ))}
+          </View>
         </View>
 
-        {/* İSTATİSTİKLER GRID (Animasyonlu) */}
-        <Animated.View 
-          style={[
-            styles.statsGrid,
-            { 
-              opacity: fadeAnim, 
-              transform: [{translateY: fadeAnim.interpolate({inputRange:[0,1], outputRange:[40,0]})}] 
-            }
-          ]}
-        >
-          <View style={styles.statBox}>
-            <View style={[styles.iconCircle, { backgroundColor: "#EFF6FF" }]}>
-              <Ionicons name="water-outline" size={20} color={COLORS.primaryEnd} />
-            </View>
-            <Text style={styles.statValue}>{avgWeekly} {t('units.ml')}</Text>
-            <Text style={styles.statLabel}>{t('history.dailyAvg')}</Text>
-          </View>
-
-          <View style={styles.statBox}>
-            <View style={[styles.iconCircle, { backgroundColor: "#FEF3C7" }]}>
-              <Ionicons name="trophy-outline" size={20} color="#D97706" />
-            </View>
-            <Text style={styles.statValue}>{bestDay.ml > 0 ? bestDay.day : "-"}</Text>
-            <Text style={styles.statLabel}>{t('history.bestDay', { ml: bestDay.ml })}</Text>
-          </View>
-
-          <View style={styles.statBox}>
-            <View style={[styles.iconCircle, { backgroundColor: selectedDay.ml >= (selectedDay.goal || currentGoal) && selectedDay.ml > 0 ? "#DCFCE7" : "#FEE2E2" }]}>
-              <Ionicons 
-                name={selectedDay.ml >= (selectedDay.goal || currentGoal) && selectedDay.ml > 0 ? "checkmark-circle-outline" : "close-circle-outline"} 
-                size={20} 
-                color={selectedDay.ml >= (selectedDay.goal || currentGoal) && selectedDay.ml > 0 ? "#16A34A" : "#DC2626"} 
-              />
-            </View>
-            <Text style={[styles.statValue, { fontSize: 16 }]}>
-              {selectedDay.ml === 0
-                ? t('history.noData')
-                : (selectedDay.ml >= (selectedDay.goal || currentGoal)
-                    ? t('history.goalMet')
-                    : t('history.belowGoal'))}
-            </Text>
-            <Text style={styles.statLabel}>{t('history.dayLabel', { day: selectedDay.day })}</Text>
-          </View>
-
-        </Animated.View>
+        <View style={[styles.listCard, { backgroundColor: c.card, borderRadius: radius.cardLg }, cardShadow(c)]}>
+          {recent.map((d, i) => {
+            const met = d.ml > 0 && d.ml >= (d.goal || goal);
+            return (
+              <View key={d.fullDate} style={[styles.listRow, i < recent.length - 1 && { borderBottomWidth: 1, borderBottomColor: c.divider }]}>
+                <View style={{ gap: 1 }}>
+                  <Text style={[type.bodyStrong, { color: c.ink, fontSize: 15 }]}>{dayName(d, i)}</Text>
+                  <Text style={[type.label, { color: met ? c.successInk : c.ink2 }]}>
+                    {met ? t('history.goalMet') : d.ml > 0 ? t('history.entriesCount', { count: d.count || 0 }) : t('history.noData')}
+                  </Text>
+                </View>
+                <Text style={[type.bodyStrong, { color: c.ink, fontSize: 15 }]}>{`${fmtNumber(d.ml)} ml`}</Text>
+              </View>
+            );
+          })}
+        </View>
       </ScrollView>
     </View>
   );
 }
 
-// Animated Bar
-const Bar = ({ height, color, isGoalMet }) => {
-  const animHeight = useRef(new Animated.Value(0)).current;
-  
-  useEffect(() => {
-    Animated.spring(animHeight, {
-      toValue: height || 5,
-      friction: 6,
-      tension: 40,
-      useNativeDriver: false,
-    }).start();
-  }, [height]);
-
-  return (
-    <View style={styles.barContainer}>
-      <View style={styles.barBackground} />
-      <Animated.View 
-        style={[
-          styles.barFill, 
-          { 
-            height: animHeight, 
-            backgroundColor: color,
-            shadowColor: isGoalMet ? color : "transparent",
-            shadowOpacity: isGoalMet ? 0.5 : 0,
-            shadowRadius: 8,
-          }
-        ]} 
-      />
-    </View>
-  );
-};
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FAFAFA" },
-  headerBg: { position: "absolute", top: 0, left: 0, right: 0, zIndex: -1 },
-  headerContent: { paddingHorizontal: S.xl, marginBottom: 20 },
-  headerTitle: { fontSize: 28, fontWeight: "800", color: "#1F2937" },
-  headerSubtitle: { fontSize: 14, color: "#6B7280", marginTop: 4 },
-  summaryCard: { marginHorizontal: S.xl, borderRadius: 24, shadowColor: COLORS.primaryEnd, shadowOpacity: 0.3, shadowRadius: 15, elevation: 8 },
-  cardGradient: { padding: 24, borderRadius: 24 },
-  summaryRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  summaryLabel: { color: "rgba(255,255,255,0.9)", fontSize: 14, fontWeight: "600", marginBottom: 4 },
-  summaryValue: { color: "#fff", fontSize: 32, fontWeight: "800" },
-  summaryIconBox: { width: 48, height: 48, borderRadius: 24, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
-  chartSection: { marginTop: 30, paddingHorizontal: S.xl },
-  sectionTitle: { fontSize: 18, fontWeight: "700", color: "#1F2937", marginBottom: 20 },
-  chartContainer: { height: CHART_HEIGHT + 50, justifyContent: "flex-end" },
-  barsRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", height: CHART_HEIGHT },
-  targetLine: { position: "absolute", left: 0, right: 0, height: 1, backgroundColor: "#9CA3AF", borderStyle: "dashed", borderWidth: 1, borderColor: "#9CA3AF", opacity: 0.3, zIndex: -1 },
-  sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 40 },
-  targetChip: { flexDirection: "row", alignItems: "center", gap: 6 },
-  targetChipLine: { width: 14, height: 0, borderTopWidth: 2, borderColor: "#9CA3AF", borderStyle: "dashed", opacity: 0.6 },
-  targetLabel: { fontSize: 11, color: "#9CA3AF", fontWeight: "700" },
-  barWrapper: { alignItems: "center", width: (SCREEN_WIDTH - 60) / 7 },
-  barContainer: { width: 14, height: CHART_HEIGHT, justifyContent: "flex-end", backgroundColor: "rgba(229, 231, 235, 0.3)", borderRadius: 10, overflow: "hidden" },
-  barBackground: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "#F3F4F6", borderRadius: 10 },
-  barFill: { width: "100%", borderRadius: 10 },
-  dayText: { marginTop: 12, fontSize: 12, fontWeight: "600", color: "#9CA3AF" },
-  dayTextSelected: { color: COLORS.primaryEnd, fontWeight: "800" },
-  bubble: { position: "absolute", top: -35, backgroundColor: "#1F2937", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, alignItems: "center", zIndex: 10 },
-  bubbleText: { color: "#fff", fontSize: 12, fontWeight: "700" },
-  bubbleArrow: { width: 0, height: 0, borderLeftWidth: 5, borderRightWidth: 5, borderTopWidth: 5, borderLeftColor: "transparent", borderRightColor: "transparent", borderTopColor: "#1F2937", marginTop: -1 },
-  statsGrid: { marginTop: 30, paddingHorizontal: S.xl, flexDirection: "row", flexWrap: "wrap", gap: 12 },
-  statBox: { flexGrow: 1, width: "45%", backgroundColor: "#fff", padding: 16, borderRadius: 20, borderWidth: 1, borderColor: "#F3F4F6", shadowColor: "#000", shadowOpacity: 0.02, shadowRadius: 10 },
-  iconCircle: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", marginBottom: 12 },
-  statValue: { fontSize: 18, fontWeight: "800", color: "#1F2937", marginBottom: 2 },
-  statLabel: { fontSize: 12, color: "#6B7280", fontWeight: "500" },
+  root: { flex: 1 },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  segment: { flexDirection: 'row', borderRadius: 999, padding: 3 },
+  segBtn: { borderRadius: 999, paddingHorizontal: 14, paddingVertical: 7, minHeight: 34, justifyContent: 'center' },
+  statsRow: { flexDirection: 'row', gap: 10 },
+  stat: { flex: 1, padding: 12, gap: 2 },
+  chartCard: { paddingTop: 18, paddingHorizontal: 16, paddingBottom: 14, gap: 12 },
+  chartHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  legend: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  legendDash: { width: 14, borderTopWidth: 2, borderStyle: 'dashed' },
+  goalLine: { position: 'absolute', left: 0, right: 0, borderTopWidth: 2, borderStyle: 'dashed' },
+  bars: { flexDirection: 'row', alignItems: 'flex-end', height: '100%' },
+  barSlot: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', height: '100%' },
+  labels: { flexDirection: 'row' },
+  dayLabel: { flex: 1, textAlign: 'center' },
+  listCard: { paddingHorizontal: 16, paddingVertical: 4 },
+  listRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12 },
 });

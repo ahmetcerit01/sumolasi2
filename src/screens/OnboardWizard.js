@@ -14,14 +14,15 @@ import {
   StatusBar
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import LottieView from 'lottie-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useHydrationStore } from '../storage/useHydrationStore';
 import { scheduleReminders, DEFAULT_INTERVAL_HOURS } from '../utils/reminders';
+import { useTheme } from '../theme/theme';
+import { fmtNumber } from '../utils/format';
+import Mascot from '../components/Mascot';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -32,7 +33,6 @@ const { width, height } = Dimensions.get('window');
 // Görseller
 const IMG_MALE = require('../../assets/illustrations/male.png');
 const IMG_FEMALE = require('../../assets/illustrations/female.png');
-const WAVE_JSON = require('../../assets/lottie/wave.json');
 const IMG_WAKE = require('../../assets/illustrations/wakeup.png');
 const IMG_NAP_MALE = require('../../assets/illustrations/nap-male.png');
 const IMG_NAP_FEMALE = require('../../assets/illustrations/nap-female.png');
@@ -47,6 +47,8 @@ const toHHMM = (d) => `${String(d.getHours()).padStart(2,'0')}:${String(d.getMin
 
 export default function OnboardWizard({ onDone, onShowPaywall, t: tProp, locale: localeProp, setLanguage: setLanguageProp }) {
   const insets = useSafeAreaInsets();
+  const { c, type, dark } = useTheme();
+  const styles = useMemo(() => makeStyles(c, type), [c]);
   // NOTE: App.js ile döngü (require cycle) olmaması için artık LanguageContext'i buradan import etmiyoruz.
   // App.js bu ekrana t / locale / setLanguage prop'larını geçmeli.
   const t = tProp || ((key) => key);
@@ -72,10 +74,8 @@ export default function OnboardWizard({ onDone, onShowPaywall, t: tProp, locale:
   const [showSleep, setShowSleep] = useState(Platform.OS === 'ios');
 
   const [loadingIdx, setLoadingIdx] = useState(0);
-  const bgAnim = useRef(new Animated.Value(0)).current;
   const progress = useRef(new Animated.Value(0)).current;
   const pulse = useRef(new Animated.Value(1)).current;
-  const spinVal = useRef(new Animated.Value(0)).current;
 
   const loadingPhrases = useMemo(() => [
     t('onboard.loading.bmi'),
@@ -86,15 +86,6 @@ export default function OnboardWizard({ onDone, onShowPaywall, t: tProp, locale:
   const isFirst = stepIndex === 0;
   const isLast  = stepIndex === STEPS.length - 1;
   const step = STEPS[stepIndex];
-
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(bgAnim, { toValue: 1, duration: 8000, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
-        Animated.timing(bgAnim, { toValue: 0, duration: 8000, easing: Easing.inOut(Easing.ease), useNativeDriver: false })
-      ])
-    ).start();
-  }, []);
 
   useEffect(() => {
     const target = Math.min(stepIndex / (STEPS.length - 2), 1); 
@@ -110,20 +101,14 @@ export default function OnboardWizard({ onDone, onShowPaywall, t: tProp, locale:
           Animated.timing(pulse, { toValue: 1, duration: 800, useNativeDriver: true })
         ])
     );
-    
-    const spinLoop = Animated.loop(
-        Animated.timing(spinVal, { toValue: 1, duration: 2000, easing: Easing.linear, useNativeDriver: true })
-    );
 
     pulseLoop.start();
-    spinLoop.start();
 
     const timer = setInterval(() => setLoadingIdx(i => (i+1)%3), 1500);
     
     return () => { 
         clearInterval(timer);
         pulseLoop.stop();
-        spinLoop.stop();
     };
   }, [step]);
 
@@ -254,17 +239,9 @@ export default function OnboardWizard({ onDone, onShowPaywall, t: tProp, locale:
     }
   };
 
-  const bgTopColor = bgAnim.interpolate({ inputRange: [0, 1], outputRange: ['#E3F2FD', '#F3E5F5'] });
-
   return (
     <View style={styles.container}>
-      <StatusBar translucent barStyle="dark-content" backgroundColor="transparent" />
-
-      <Animated.View style={[styles.animatedBg, { backgroundColor: bgTopColor }]}>
-        <LinearGradient colors={['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.9)']} style={StyleSheet.absoluteFill} />
-        <View style={[styles.bubble, { top: 100, left: -30, width: 200, height: 200, backgroundColor: '#B3E5FC', opacity: 0.2 }]} />
-        <View style={[styles.bubble, { bottom: 100, right: -50, width: 250, height: 250, backgroundColor: '#E1BEE7', opacity: 0.15 }]} />
-      </Animated.View>
+      <StatusBar translucent barStyle={c.statusBar} backgroundColor="transparent" />
 
       <SafeAreaView style={[styles.safe, { paddingTop: insets.top }]} edges={['top']}>
         
@@ -307,8 +284,8 @@ export default function OnboardWizard({ onDone, onShowPaywall, t: tProp, locale:
               
               {step === 'gender' && (
                 <View style={styles.genderRow}>
-                  <Avatar label={t('onboard.gender.male')} active={gender==='male'} img={IMG_MALE} onPress={()=>setGender('male')} color="#42A5F5" />
-                  <Avatar label={t('onboard.gender.female')} active={gender==='female'} img={IMG_FEMALE} onPress={()=>setGender('female')} color="#EC407A" />
+                  <Avatar styles={styles} label={t('onboard.gender.male')} active={gender==='male'} img={IMG_MALE} onPress={()=>setGender('male')} color={c.accent} />
+                  <Avatar styles={styles} label={t('onboard.gender.female')} active={gender==='female'} img={IMG_FEMALE} onPress={()=>setGender('female')} color={dark ? '#F28CA6' : '#D9506F'} />
                 </View>
               )}
 
@@ -317,7 +294,7 @@ export default function OnboardWizard({ onDone, onShowPaywall, t: tProp, locale:
                   <Image source={gender==='male'?IMG_MALE:IMG_FEMALE} style={styles.illustration} />
                   <View style={styles.pickerWrapper}>
                     <View style={styles.pickerGlass}>
-                      <Picker selectedValue={weight} onValueChange={setWeight} style={styles.picker} itemStyle={styles.pickerItem}>
+                      <Picker selectedValue={weight} onValueChange={setWeight} style={styles.picker} itemStyle={styles.pickerItem} themeVariant={dark ? 'dark' : 'light'}>
                         {Array.from({length:150}, (_,i) => 30+i).map(v=><Picker.Item key={v} label={`${v}`} value={v} />)}
                       </Picker>
                     </View>
@@ -331,7 +308,7 @@ export default function OnboardWizard({ onDone, onShowPaywall, t: tProp, locale:
                   <Image source={gender==='male'?IMG_MALE_LENGTH:IMG_FEMALE_LENGTH} style={styles.illustration} />
                   <View style={styles.pickerWrapper}>
                     <View style={styles.pickerGlass}>
-                      <Picker selectedValue={height} onValueChange={setHeight} style={styles.picker} itemStyle={styles.pickerItem}>
+                      <Picker selectedValue={height} onValueChange={setHeight} style={styles.picker} itemStyle={styles.pickerItem} themeVariant={dark ? 'dark' : 'light'}>
                         {Array.from({length:100}, (_,i) => 120+i).map(v=><Picker.Item key={v} label={`${v}`} value={v}/>)}
                       </Picker>
                     </View>
@@ -352,7 +329,8 @@ export default function OnboardWizard({ onDone, onShowPaywall, t: tProp, locale:
                         display="spinner" 
                         onValueChange={(e,d)=>d && (step==='wake'?setWakeAt(d):setSleepAt(d))} 
                         style={styles.iosPicker}
-                        textColor="#1A237E"
+                        textColor={c.ink}
+                        themeVariant={dark ? 'dark' : 'light'}
                       />
                     ) : (
                       <TouchableOpacity onPress={()=>(step==='wake'?setShowWake(true):setShowSleep(true))} style={styles.androidTimeBtn}>
@@ -361,7 +339,7 @@ export default function OnboardWizard({ onDone, onShowPaywall, t: tProp, locale:
                              ? `${String(wakeAt.getHours()).padStart(2,'0')}:${String(wakeAt.getMinutes()).padStart(2,'0')}` 
                              : `${String(sleepAt.getHours()).padStart(2,'0')}:${String(sleepAt.getMinutes()).padStart(2,'0')}`}
                          </Text>
-                         <Ionicons name="time-outline" size={24} color="#fff" />
+                         <Ionicons name="time-outline" size={24} color={c.onAccent} />
                       </TouchableOpacity>
                     )}
                   </View>
@@ -383,28 +361,24 @@ export default function OnboardWizard({ onDone, onShowPaywall, t: tProp, locale:
 
           {step === 'loading' && (
             <View style={styles.loadingContainer}>
-              <LottieView source={WAVE_JSON} autoPlay loop style={styles.lottieBg} resizeMode="cover" />
-              <View style={styles.loadingGlassCard}>
-                <Animated.View style={[styles.loadingIconCircle, {transform:[{scale: pulse}]}]}>
-                   <Animated.View style={{transform:[{rotate: spinVal.interpolate({inputRange:[0,1], outputRange:['0deg','360deg']})}]}}>
-                        <Ionicons name="water" size={40} color="#29B6F6" />
-                   </Animated.View>
-                </Animated.View>
-                <Text style={styles.loadingText}>{loadingPhrases[loadingIdx]}</Text>
-                <View style={styles.loadingDots}>
-                   <View style={[styles.dot, {backgroundColor: '#29B6F6'}]} />
-                   <View style={[styles.dot, {backgroundColor: '#81D4FA'}]} />
-                   <View style={[styles.dot, {backgroundColor: '#B3E5FC'}]} />
-                </View>
+              <Animated.View style={{ transform: [{ scale: pulse }] }}>
+                <Mascot mood="happy" size={150} />
+              </Animated.View>
+              <Text style={styles.loadingText}>{loadingPhrases[loadingIdx]}</Text>
+              <View style={styles.loadingDots}>
+                {[0, 1, 2].map((i) => (
+                  <View key={i} style={[styles.dot, { backgroundColor: c.accent, opacity: i === loadingIdx ? 1 : 0.3 }]} />
+                ))}
               </View>
             </View>
           )}
           {step === 'result' && (
             <View style={styles.resultContainer}>
+              <Mascot mood="celebrate" size={140} />
               <View style={styles.resultCard}>
                 <Text style={styles.resultTitle}>{t('onboard.result.title')}</Text>
                 <Text style={styles.resultValue}>
-                  {calculatedGoalMl ? `${calculatedGoalMl} ${t('units.ml')}` : `-- ${t('units.ml')}`}
+                  {calculatedGoalMl ? `${fmtNumber(calculatedGoalMl)} ${t('units.ml')}` : `-- ${t('units.ml')}`}
                 </Text>
                 <Text style={styles.resultSub}>
                   {t('onboard.result.subtitle')}
@@ -423,7 +397,7 @@ export default function OnboardWizard({ onDone, onShowPaywall, t: tProp, locale:
             
             {!isFirst && step !== 'result' && (
               <TouchableOpacity onPress={prev} style={styles.backBtn}>
-                <Ionicons name="arrow-back" size={24} color="#546E7A" />
+                <Ionicons name="arrow-back" size={24} color={c.ink2} />
               </TouchableOpacity>
             )}
             
@@ -432,16 +406,12 @@ export default function OnboardWizard({ onDone, onShowPaywall, t: tProp, locale:
               style={[styles.nextBtn, !isFirst && step !== 'result' && { marginLeft: 20 }]}
               activeOpacity={0.8}
             >
-              <LinearGradient
-                colors={['#29B6F6', '#0288D1']}
-                style={styles.nextBtnGradient}
-                start={{x:0, y:0}} end={{x:1, y:0}}
-              >
+              <View style={styles.nextBtnInner}>
                 <Text style={styles.nextBtnText}>
                   {step === 'result' ? t('common.done') : t('common.next')}
                 </Text>
-                <Ionicons name="arrow-forward" size={20} color="#fff" />
-              </LinearGradient>
+                <Ionicons name="arrow-forward" size={20} color={c.onAccent} />
+              </View>
             </TouchableOpacity>
           </View>
         )}
@@ -451,76 +421,62 @@ export default function OnboardWizard({ onDone, onShowPaywall, t: tProp, locale:
   );
 }
 
-const Avatar = ({label, active, img, onPress, color}) => (
+const Avatar = ({styles, label, active, img, onPress, color}) => (
   <TouchableOpacity onPress={onPress} activeOpacity={0.9} style={[styles.avatarCard, active && {borderColor: color, transform:[{scale:1.05}]}]}>
     <View style={[styles.avatarCircle, active && {backgroundColor: color+'20'}]}>
        <Image source={img} style={styles.avatarImg} />
     </View>
-    <Text style={[styles.avatarLabel, active && {color: color, fontWeight:'800'}]}>{label}</Text>
+    <Text style={[styles.avatarLabel, active && styles.avatarLabelActive, active && {color}]}>{label}</Text>
     {active && <View style={[styles.checkBadge, {backgroundColor: color}]}><Ionicons name="checkmark" size={16} color="#fff"/></View>}
   </TouchableOpacity>
 );
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8F9FA' },
-  animatedBg: { ...StyleSheet.absoluteFillObject },
-  bubble: { position: 'absolute', borderRadius: 999 },
+// Tema token'larıyla stiller (açık/koyu)
+const makeStyles = (c, type) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.bg },
   safe: { flex: 1 },
 
-  // --- NEW STYLES FOR LANGUAGE TOGGLE ---
   langToggle: {
     position: 'absolute',
-    right: 30,
+    right: 22,
     zIndex: 100,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.5)',
+    backgroundColor: c.card,
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
   },
-  langText: {
-    fontSize: 13,
-    color: '#90A4AE',
-    fontWeight: '600',
-  },
-  langActive: {
-    color: '#1565C0',
-    fontWeight: '800',
-  },
-  langSep: {
-    marginHorizontal: 8,
-    color: '#B0BEC5',
-    fontSize: 12,
-  },
-  // --------------------------------------
+  langText: { ...type.label, fontSize: 14, color: c.ink3 },
+  langActive: { ...type.labelStrong, fontSize: 14, color: c.accentInk },
+  langSep: { marginHorizontal: 8, color: c.ink3, fontSize: 12 },
 
-  header: { paddingHorizontal: 24, marginTop: 20, marginBottom: 10 },
-  progressContainer: { height: 6, backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 3, overflow: 'hidden', marginBottom: 20 },
-  progressBar: { height: '100%', backgroundColor: '#29B6F6', borderRadius: 3 },
-  title: { fontSize: 32, fontWeight: '800', color: '#1A237E', marginBottom: 8 },
-  subtitle: { fontSize: 16, color: '#546E7A', lineHeight: 22 },
+  header: { paddingHorizontal: 22, marginTop: 56, marginBottom: 10 },
+  progressContainer: { height: 6, backgroundColor: c.track, borderRadius: 3, overflow: 'hidden', marginBottom: 22 },
+  progressBar: { height: '100%', backgroundColor: c.accent, borderRadius: 3 },
+  title: { ...type.title, color: c.ink, marginBottom: 6 },
+  subtitle: { ...type.body, color: c.ink2, lineHeight: 22 },
 
   contentContainer: { flex: 1, justifyContent: 'center', paddingHorizontal: 20 },
   glassCard: {
-    backgroundColor: 'rgba(255,255,255,0.7)',
-    borderRadius: 30,
+    backgroundColor: c.card,
+    borderRadius: 28,
     padding: 20,
-    borderWidth: 1,
-    borderColor: '#fff',
-    shadowColor: '#29B6F6',
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 10,
-    minHeight: 400,
-    justifyContent: 'center'
+    shadowColor: c.shadowColor,
+    shadowOpacity: c.shadowOpacity,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+    minHeight: 380,
+    justifyContent: 'center',
   },
 
   genderRow: { flexDirection: 'row', justifyContent: 'space-around' },
-  avatarCard: { alignItems: 'center', padding: 15, borderRadius: 20, borderWidth: 2, borderColor: 'transparent', backgroundColor: 'rgba(255,255,255,0.5)' },
-  avatarCircle: { width: 120, height: 120, borderRadius: 60, backgroundColor: '#F5F5F5', alignItems: 'center', justifyContent: 'center', marginBottom: 15 },
+  avatarCard: { alignItems: 'center', padding: 15, borderRadius: 22, borderWidth: 2, borderColor: 'transparent', backgroundColor: c.cardAlt },
+  avatarCircle: { width: 120, height: 120, borderRadius: 60, backgroundColor: c.card, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
   avatarImg: { width: 100, height: 100, resizeMode: 'contain' },
-  avatarLabel: { fontSize: 18, fontWeight: '600', color: '#78909C' },
+  avatarLabel: { ...type.bodyStrong, fontSize: 18, color: c.ink2 },
+  avatarLabelActive: { fontFamily: type.title.fontFamily },
   checkBadge: { position: 'absolute', top: 10, right: 10, width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
 
   centerContent: { alignItems: 'center', justifyContent: 'center' },
@@ -528,51 +484,47 @@ const styles = StyleSheet.create({
   // Saat seçici yüksek olduğu için uyanış/uyku adımlarında görsel küçülür
   illustrationSmall: { width: 140, height: 140, marginBottom: 12 },
   pickerWrapper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-  pickerGlass: { height: 180, width: 120, overflow: 'hidden', borderRadius: 20, backgroundColor: '#F0F4F8', borderWidth: 1, borderColor: '#E1F5FE' },
+  pickerGlass: { height: 180, width: 120, overflow: 'hidden', borderRadius: 20, backgroundColor: c.cardAlt },
   picker: { width: 120, height: 180 },
-  pickerItem: { fontSize: 32, fontWeight: 'bold', color: '#1A237E' },
-  unitText: { fontSize: 24, fontWeight: '700', color: '#90A4AE', marginLeft: 15 },
+  pickerItem: { fontSize: 32, fontFamily: type.title.fontFamily, color: c.ink },
+  unitText: { ...type.heading, color: c.ink3, marginLeft: 15 },
 
-  timeCard: { backgroundColor: '#E3F2FD', padding: 10, borderRadius: 20, alignItems: 'center', justifyContent: 'center', minWidth: 200 },
+  timeCard: { backgroundColor: c.cardAlt, padding: 10, borderRadius: 20, alignItems: 'center', justifyContent: 'center', minWidth: 200 },
   iosPicker: { width: 200 },
-  androidTimeBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#29B6F6', paddingVertical: 15, paddingHorizontal: 30, borderRadius: 15, elevation: 5 },
-  androidTimeTxt: { fontSize: 36, fontWeight: '800', color: '#fff', marginRight: 10 },
+  androidTimeBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.accent, paddingVertical: 15, paddingHorizontal: 30, borderRadius: 18 },
+  androidTimeTxt: { ...type.display, fontSize: 36, color: c.onAccent, marginRight: 10 },
 
-  loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  lottieBg: { position: 'absolute', width: width, height: height, top:0 },
-  loadingGlassCard: { width: width*0.8, padding: 30, backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 30, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 20, elevation: 10 },
-  loadingIconCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#E1F5FE', alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
-  loadingText: { fontSize: 20, fontWeight: '800', color: '#0277BD', textAlign: 'center', marginBottom: 15 },
+  loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 18 },
+  loadingText: { ...type.heading, fontSize: 20, color: c.ink, textAlign: 'center', paddingHorizontal: 24 },
   loadingDots: { flexDirection: 'row', gap: 8 },
   dot: { width: 10, height: 10, borderRadius: 5 },
 
-  bottomNav: { 
-    position: 'absolute', 
-    left: 24, 
-    right: 24, 
-    flexDirection: 'row', 
+  bottomNav: {
+    position: 'absolute',
+    left: 22,
+    right: 22,
+    flexDirection: 'row',
     alignItems: 'center',
-    zIndex: 999 
+    zIndex: 999,
   },
-  backBtn: { width: 50, height: 50, borderRadius: 15, backgroundColor: '#ECEFF1', alignItems: 'center', justifyContent: 'center' },
-  nextBtn: { flex: 1, shadowColor: '#0288D1', shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
-  nextBtnGradient: { height: 60, borderRadius: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-  nextBtnText: { color: '#fff', fontSize: 18, fontWeight: '800', marginRight: 10, letterSpacing: 1 },
-  resultContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20 },
+  backBtn: { width: 56, height: 56, borderRadius: 28, backgroundColor: c.card, alignItems: 'center', justifyContent: 'center' },
+  nextBtn: { flex: 1, borderRadius: 999, backgroundColor: c.accent, shadowColor: c.accent, shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 8 }, elevation: 5 },
+  nextBtnInner: { height: 58, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  nextBtnText: { ...type.heading, fontSize: 18, color: c.onAccent },
+  resultContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20, gap: 8 },
   resultCard: {
     width: '100%',
-    backgroundColor: 'rgba(255,255,255,0.85)',
-    borderRadius: 30,
+    backgroundColor: c.card,
+    borderRadius: 28,
     padding: 26,
-    borderWidth: 1,
-    borderColor: '#fff',
-    shadowColor: '#29B6F6',
-    shadowOpacity: 0.18,
-    shadowRadius: 20,
-    elevation: 10,
+    shadowColor: c.shadowColor,
+    shadowOpacity: c.shadowOpacity,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
     alignItems: 'center',
   },
-  resultTitle: { fontSize: 22, fontWeight: '800', color: '#1A237E', textAlign: 'center', marginBottom: 10 },
-  resultValue: { fontSize: 44, fontWeight: '900', color: '#0288D1', textAlign: 'center', marginBottom: 12 },
-  resultSub: { fontSize: 15, color: '#546E7A', textAlign: 'center', lineHeight: 22 },
+  resultTitle: { ...type.heading, color: c.ink, textAlign: 'center', marginBottom: 6 },
+  resultValue: { ...type.display, fontSize: 46, color: c.accentInk, textAlign: 'center', marginBottom: 10 },
+  resultSub: { ...type.body, fontSize: 15, color: c.ink2, textAlign: 'center', lineHeight: 22 },
 });

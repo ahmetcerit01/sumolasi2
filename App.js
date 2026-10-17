@@ -1,10 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import 'react-native-gesture-handler';
 import { View, DeviceEventEmitter, StatusBar } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  useFonts,
+  Nunito_500Medium,
+  Nunito_600SemiBold,
+  Nunito_700Bold,
+  Nunito_800ExtraBold,
+  Nunito_900Black,
+} from '@expo-google-fonts/nunito';
+import { useTheme } from './src/theme/theme';
 
 // Navigasyon ve Ekranlar
 import BottomTabs from './src/navigation/BottomTabs';
@@ -17,6 +26,7 @@ import AnimatedSplash from './src/components/AnimatedSplash';
 import { ensureHydrated, useHydrationStore } from './src/storage/useHydrationStore';
 import { i18n, LanguageContext, LANGUAGE_KEY, normalizeLang, getDeviceLang } from './src/i18n';
 import { rescheduleIfEnabled } from './src/utils/reminders';
+import { startWidgetSync, refreshWidgetLabels } from './src/widgets/widgetSync';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -32,6 +42,19 @@ export default function App() {
   const [splashFinished, setSplashFinished] = useState(false); // Animasyon bitti mi?
   const [showOnboard, setShowOnboard] = useState(false); // Onboard gösterilecek mi?
   const [locale, setLocale] = useState(i18n.locale); // aktif dil
+  const { c, dark } = useTheme();
+  // Ekran geçişlerinde beyaz parlama olmasın: navigasyon zemini temadan
+  const navTheme = useMemo(() => {
+    const base = dark ? DarkTheme : DefaultTheme;
+    return { ...base, colors: { ...base.colors, background: c.bg, card: c.card, text: c.ink, primary: c.accent } };
+  }, [dark, c]);
+  const [fontsLoaded] = useFonts({
+    Nunito_500Medium,
+    Nunito_600SemiBold,
+    Nunito_700Bold,
+    Nunito_800ExtraBold,
+    Nunito_900Black,
+  });
 
   useEffect(() => {
     async function prepare() {
@@ -44,6 +67,8 @@ export default function App() {
 
         // 1. Store'u yükle (gün devri de burada yapılır)
         await ensureHydrated();
+        // Widget'tan eklenenleri al ve widget'ı güncel duruma getir (iOS)
+        startWidgetSync();
 
         // 2. Onboard Durumu Kontrolü
         // Bildirim izni artık açılışta değil, onboarding sonunda isteniyor.
@@ -90,11 +115,12 @@ export default function App() {
             // Planlanmış bildirim metinleri yeni dile geçsin
             const { profile } = useHydrationStore.getState();
             rescheduleIfEnabled({ wakeAt: profile.wakeAt, sleepAt: profile.sleepAt }).catch(() => {});
+            refreshWidgetLabels();
           },
         }), [locale])}
       >
-      <View style={{ flex: 1 }}>
-        <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+      <View style={{ flex: 1, backgroundColor: c.bg }}>
+        <StatusBar barStyle={c.statusBar} backgroundColor="transparent" translucent />
 
         {/* 
            Mantık: 
@@ -103,8 +129,8 @@ export default function App() {
            3. Animasyon bitince (onAnimationFinish) splashFinished true olur ve Splash DOM'dan kalkar.
         */}
 
-        {appIsReady && (
-          <NavigationContainer>
+        {appIsReady && fontsLoaded && (
+          <NavigationContainer theme={navTheme}>
             {showOnboard ? (
               <LanguageContext.Consumer>
                 {({ t, locale, setLanguage }) => (
