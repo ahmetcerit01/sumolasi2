@@ -15,11 +15,11 @@ import {
   StatusBar,
   Modal,
   TextInput,
-  KeyboardAvoidingView
+  KeyboardAvoidingView,
+  Linking
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Notifications from 'expo-notifications';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import DateTimePicker from '@react-native-community/datetimepicker'; 
@@ -27,7 +27,8 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { useHydrationStore } from '../storage/useHydrationStore';
 import { BADGES } from '../constants/badges';
 import BadgeIcon from '../components/BadgeIcon';
-import { LanguageContext } from '../../App';
+import { LanguageContext } from '../i18n';
+import { scheduleReminders, disableReminders, getReminderSettings, rescheduleIfEnabled } from '../utils/reminders';
 
 
 
@@ -38,29 +39,11 @@ const MALE_AVATAR = require('../../assets/illustrations/male.png');
 const FEMALE_AVATAR = require('../../assets/illustrations/female.png');
 
 const STORAGE_KEYS = {
-  reminderTime: 'SUMOLASI_REMINDER_TIME',
-  notifications: 'SUMOLASI_NOTIF_ENABLED',
   sound: 'SUMOLASI_SOUND_ENABLED',
 };
 
-const waterFacts = [
-  'Limon dilimli su, C vitamini desteği sağlar ve ferahlatır.',
-  'Güne bir bardak suyla başlamak metabolizmayı harekete geçirir.',
-  'Yeterli su tüketimi cildin bariyer fonksiyonunu destekler.',
-  'Öğünlerden önce su içmek tokluk hissini artırabilir.',
-  'Sıcak havalarda terle birlikte su kaybı artar; günlük alımı artır.',
-  'Su; kas fonksiyonları, dolaşım ve ısı dengesi için kritiktir.',
-  'Azar azar ama düzenli içmek, tek seferde çok içmekten daha konforludur.',
-];
-
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldPlaySound: false,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+// Not: Bildirim handler'ı App.js'te tek yerden tanımlı. Burada ikinci kez tanımlanınca
+// shouldPlaySound:false ile App.js'tekini eziyor ve hatırlatıcılar sessiz geliyordu.
 
 export default function ProfileScreen() {
     const { locale, setLanguage, t } = useContext(LanguageContext);
@@ -105,7 +88,9 @@ export default function ProfileScreen() {
   const [showWakePicker, setShowWakePicker] = useState(false);
   const [showSleepPicker, setShowSleepPicker] = useState(false);
 
-  const fact = useMemo(() => waterFacts[Math.floor(Math.random() * waterFacts.length)], []);
+  const factIndex = useMemo(() => Math.floor(Math.random() * 7), []);
+  const facts = t('profile.facts');
+  const fact = Array.isArray(facts) ? facts[factIndex % facts.length] : '';
   const earnedCount = Object.keys(badgesMap).length;
 
   // Arkaplan Animasyonu
@@ -118,27 +103,14 @@ export default function ProfileScreen() {
     ).start();
   }, []);
 
-  // Storage Yükleme (Açılışta ayarları çek)
+  // Ayarları yükle: bildirim anahtarı gerçek hatırlatıcı durumunu gösterir
   useEffect(() => {
-    (async () => {
-      try {
-        // Store'da varsa oradan al, yoksa Storage'dan
-        if (storeNotifEnabled !== undefined) {
-            setNotificationsEnabled(storeNotifEnabled);
-        } else {
-            const notifRaw = await AsyncStorage.getItem(STORAGE_KEYS.notifications);
-            if (notifRaw !== null) setNotificationsEnabled(notifRaw === '1');
-        }
+    getReminderSettings().then(({ enabled }) => setNotificationsEnabled(enabled)).catch(() => {});
+  }, []);
 
-        if (storeSoundEnabled !== undefined) {
-            setSoundEnabled(storeSoundEnabled);
-        } else {
-            const soundRaw = await AsyncStorage.getItem(STORAGE_KEYS.sound);
-            if (soundRaw !== null) setSoundEnabled(soundRaw === '1');
-        }
-      } catch {}
-    })();
-  }, [storeNotifEnabled, storeSoundEnabled]);
+  useEffect(() => {
+    if (storeSoundEnabled !== undefined) setSoundEnabled(storeSoundEnabled);
+  }, [storeSoundEnabled]);
 
   // Hedef Store ile senkronize olsun
   useEffect(() => {
@@ -147,25 +119,25 @@ export default function ProfileScreen() {
 
   // --- DİNAMİK FONKSİYONLAR ---
 
+  // Hatırlatıcılar ekranıyla aynı ayarı kullanır (eskiden iki ayrı anahtar vardı)
   const toggleNotifications = async (value) => {
     setNotificationsEnabled(value);
-    
-    // 1. Store varsa güncelle
     if (setNotifications) setNotifications(value);
-    
-    // 2. Storage'a yaz (Kalıcılık için)
-    await AsyncStorage.setItem(STORAGE_KEYS.notifications, value ? '1' : '0');
 
-    // 3. Mantıksal İşlem
     if (!value) {
-      // Kapatıldıysa tüm planları iptal et
-      await Notifications.cancelAllScheduledNotificationsAsync();
-    } else {
-      // Açıldıysa izin iste
-      const { status } = await Notifications.getPermissionsAsync();
-      if (status !== 'granted') {
-        await Notifications.requestPermissionsAsync();
-      }
+      await disableReminders();
+      return;
+    }
+    const { intervalHours } = await getReminderSettings();
+    const count = await scheduleReminders({ wakeAt: profile?.wakeAt, sleepAt: profile?.sleepAt, intervalHours });
+    if (count < 0) {
+      // İzin yoksa anahtar açık görünmesin
+      setNotificationsEnabled(false);
+      if (setNotifications) setNotifications(false);
+      Alert.alert(t('reminders.permissionTitle'), t('reminders.permissionMsg'), [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('reminders.openSettings'), onPress: () => Linking.openSettings() },
+      ]);
     }
   };
 
@@ -203,7 +175,7 @@ export default function ProfileScreen() {
     const h = parseInt(editHeight);
 
     if (!w || !h || w < 30 || w > 250 || h < 100 || h > 250) {
-      Alert.alert("Hata", "Lütfen geçerli bir kilo ve boy girin.");
+      Alert.alert(t('alert.error'), t('profile.invalidInput'));
       return;
     }
 
@@ -216,9 +188,11 @@ export default function ProfileScreen() {
       wakeAt: wakeStr,
       sleepAt: sleepStr
     });
+    // Uyanış/uyku değiştiyse hatırlatıcılar yeni saatlere göre kurulsun
+    rescheduleIfEnabled({ wakeAt: wakeStr, sleepAt: sleepStr }).catch(() => {});
 
     setShowEditProfile(false);
-    Alert.alert("Güncellendi", "Profil bilgilerin ve önerilen hedefin güncellendi! 🚀");
+    Alert.alert(t('profile.updatedTitle'), t('profile.updatedMsg'));
   };
 
   // --- SADECE HEDEFİ KAYDET ---
@@ -226,9 +200,9 @@ export default function ProfileScreen() {
     try {
       await AsyncStorage.setItem('DAILY_GOAL_ML', String(goalEditMl));
       setGoalMl(goalEditMl);
-      Alert.alert('Başarılı', 'Günlük hedefin güncellendi! 🎉');
+      Alert.alert(t('profile.goalSavedTitle'), t('profile.goalSavedMsg'));
     } catch (e) {
-      Alert.alert('Hata', 'Kaydedilirken sorun oluştu.');
+      Alert.alert(t('alert.error'), t('profile.saveError'));
     }
   };
 
@@ -273,11 +247,11 @@ export default function ProfileScreen() {
           <View style={styles.badgeRow}>
              <View style={styles.miniBadge}>
                 <Ionicons name="ribbon" size={14} color="#FFA000" />
-                <Text style={styles.miniBadgeText}>{earnedCount} Rozet</Text>
+                <Text style={styles.miniBadgeText}>{t('profile.badgeCount', { count: earnedCount })}</Text>
              </View>
              <View style={[styles.miniBadge, {backgroundColor: '#E1F5FE'}]}>
                 <Ionicons name="water" size={14} color="#039BE5" />
-                <Text style={[styles.miniBadgeText, {color: '#0277BD'}]}>Seviye {Math.floor(earnedCount/3) + 1}</Text>
+                <Text style={[styles.miniBadgeText, {color: '#0277BD'}]}>{t('profile.level', { level: Math.floor(earnedCount/3) + 1 })}</Text>
              </View>
           </View>
         </View>
@@ -286,19 +260,19 @@ export default function ProfileScreen() {
         <View style={styles.statsGrid}>
            <View style={styles.statCard}>
               <View style={[styles.iconBox, {backgroundColor: '#E8F5E9'}]}><Ionicons name="fitness" size={20} color="#2E7D32" /></View>
-              <View><Text style={styles.statLabel}>Ağırlık</Text><Text style={styles.statValue}>{profile?.weight || '--'} kg</Text></View>
+              <View><Text style={styles.statLabel}>{t('profile.weight')}</Text><Text style={styles.statValue}>{profile?.weight || '--'} {t('units.kg')}</Text></View>
            </View>
            <View style={styles.statCard}>
               <View style={[styles.iconBox, {backgroundColor: '#E3F2FD'}]}><Ionicons name="resize" size={20} color="#1565C0" /></View>
-              <View><Text style={styles.statLabel}>Boy</Text><Text style={styles.statValue}>{profile?.height || '--'} cm</Text></View>
+              <View><Text style={styles.statLabel}>{t('profile.height')}</Text><Text style={styles.statValue}>{profile?.height || '--'} {t('units.cm')}</Text></View>
            </View>
            <View style={styles.statCard}>
               <View style={[styles.iconBox, {backgroundColor: '#FFF3E0'}]}><Ionicons name="sunny" size={20} color="#EF6C00" /></View>
-              <View><Text style={styles.statLabel}>Uyanış</Text><Text style={styles.statValue}>{profile?.wakeAt || '--:--'}</Text></View>
+              <View><Text style={styles.statLabel}>{t('profile.wake')}</Text><Text style={styles.statValue}>{profile?.wakeAt || '--:--'}</Text></View>
            </View>
            <View style={styles.statCard}>
               <View style={[styles.iconBox, {backgroundColor: '#F3E5F5'}]}><Ionicons name="moon" size={20} color="#8E24AA" /></View>
-              <View><Text style={styles.statLabel}>Uyku</Text><Text style={styles.statValue}>{profile?.sleepAt || '--:--'}</Text></View>
+              <View><Text style={styles.statLabel}>{t('profile.sleep')}</Text><Text style={styles.statValue}>{profile?.sleepAt || '--:--'}</Text></View>
            </View>
         </View>
 
@@ -313,10 +287,10 @@ export default function ProfileScreen() {
            
            <View style={styles.goalContainer}>
               <View>
-              <Text style={styles.goalSub}>{t('profile.recommended')}: {recommendedGoal || 2500} ml</Text>
+              <Text style={styles.goalSub}>{t('profile.recommended')}: {recommendedGoal || 2500} {t('units.ml')}</Text>
                  <TouchableOpacity style={styles.goalSelector} onPress={() => setShowGoalPicker(true)}>
                     <Text style={styles.goalValueMain}>{goalEditMl}</Text>
-                    <Text style={styles.goalUnit}>ml</Text>
+                    <Text style={styles.goalUnit}>{t('units.ml')}</Text>
                     <Ionicons name="chevron-down" size={20} color="#374151" style={{marginLeft: 5}} />
                  </TouchableOpacity>
               </View>
@@ -397,7 +371,7 @@ export default function ProfileScreen() {
         </TouchableOpacity>
 
         <View style={styles.factCard}>
-           <View style={styles.factHeader}><Ionicons name="bulb" size={20} color="#FBC02D" /><Text style={styles.factTitle}>İpucu</Text></View>
+           <View style={styles.factHeader}><Ionicons name="bulb" size={20} color="#FBC02D" /><Text style={styles.factTitle}>{t('profile.tip')}</Text></View>
            <Text style={styles.factText}>{fact}</Text>
         </View>
 
@@ -408,24 +382,24 @@ export default function ProfileScreen() {
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalOverlay}>
           <View style={styles.editModalContent}>
             <View style={styles.modalHeaderRow}>
-               <Text style={styles.modalTitle}>Profili Düzenle</Text>
+               <Text style={styles.modalTitle}>{t('profile.editTitle')}</Text>
                <TouchableOpacity onPress={() => setShowEditProfile(false)}><Ionicons name="close" size={24} color="#333"/></TouchableOpacity>
             </View>
             <View style={styles.inputGroup}>
-               <Text style={styles.inputLabel}>Kilo (kg)</Text>
+               <Text style={styles.inputLabel}>{t('profile.weightInput')}</Text>
                <TextInput style={styles.inputBox} value={editWeight} onChangeText={setEditWeight} keyboardType="numeric" placeholder="70" />
             </View>
             <View style={styles.inputGroup}>
-               <Text style={styles.inputLabel}>Boy (cm)</Text>
+               <Text style={styles.inputLabel}>{t('profile.heightInput')}</Text>
                <TextInput style={styles.inputBox} value={editHeight} onChangeText={setEditHeight} keyboardType="numeric" placeholder="170" />
             </View>
             <View style={styles.rowInputs}>
                <TouchableOpacity style={styles.timeInput} onPress={() => setShowWakePicker(true)}>
-                  <Text style={styles.inputLabel}>Uyanış</Text>
+                  <Text style={styles.inputLabel}>{t('profile.wake')}</Text>
                   <Text style={styles.timeValue}>{String(editWake.getHours()).padStart(2,'0')}:{String(editWake.getMinutes()).padStart(2,'0')}</Text>
                </TouchableOpacity>
                <TouchableOpacity style={styles.timeInput} onPress={() => setShowSleepPicker(true)}>
-                  <Text style={styles.inputLabel}>Uyku</Text>
+                  <Text style={styles.inputLabel}>{t('profile.sleep')}</Text>
                   <Text style={styles.timeValue}>{String(editSleep.getHours()).padStart(2,'0')}:{String(editSleep.getMinutes()).padStart(2,'0')}</Text>
                </TouchableOpacity>
             </View>
@@ -435,7 +409,7 @@ export default function ProfileScreen() {
                      value={showWakePicker ? editWake : editSleep}
                      mode="time"
                      display="spinner"
-                     onChange={(e, d) => { if (d) showWakePicker ? setEditWake(d) : setEditSleep(d); }}
+                     onValueChange={(e, d) => { if (d) showWakePicker ? setEditWake(d) : setEditSleep(d); }}
                      style={{height: 120}}
                   />
                ) : (
@@ -443,17 +417,18 @@ export default function ProfileScreen() {
                      value={showWakePicker ? editWake : editSleep}
                      mode="time"
                      is24Hour
-                     onChange={(e, d) => { setShowWakePicker(false); setShowSleepPicker(false); if (d) showWakePicker ? setEditWake(d) : setEditSleep(d); }}
+                     onValueChange={(e, d) => { setShowWakePicker(false); setShowSleepPicker(false); if (d) showWakePicker ? setEditWake(d) : setEditSleep(d); }}
+                     onDismiss={() => { setShowWakePicker(false); setShowSleepPicker(false); }}
                   />
                )
             )}
             {Platform.OS === 'ios' && (showWakePicker || showSleepPicker) && (
                <TouchableOpacity onPress={() => {setShowWakePicker(false); setShowSleepPicker(false)}} style={{alignItems:'flex-end', padding:10}}>
-                  <Text style={{color:'#0288D1', fontWeight:'700'}}>Tamam</Text>
+                  <Text style={{color:'#0288D1', fontWeight:'700'}}>{t('common.ok')}</Text>
                </TouchableOpacity>
             )}
             <TouchableOpacity style={styles.saveModalBtn} onPress={handleSaveProfile}>
-               <Text style={styles.saveModalBtnText}>Kaydet ve Hesapla</Text>
+               <Text style={styles.saveModalBtnText}>{t('profile.saveAndCalc')}</Text>
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
@@ -464,7 +439,7 @@ export default function ProfileScreen() {
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} onPress={() => setShowGoalPicker(false)} />
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Hedefini Seç</Text>
+            <Text style={styles.modalTitle}>{t('profile.chooseGoal')}</Text>
             <ScrollView style={{maxHeight: 300}}>
               {[1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000].map(v => (
                 <TouchableOpacity
@@ -473,14 +448,14 @@ export default function ProfileScreen() {
                   onPress={() => { setGoalEditMl(v); setShowGoalPicker(false); }}
                 >
                   <Text style={[styles.modalOptionText, goalEditMl === v && styles.modalOptionTextSelected]}>
-                    {v} ml
+                    {v} {t('units.ml')}
                   </Text>
                   {goalEditMl === v && <Ionicons name="checkmark" size={20} color="#0288D1" />}
                 </TouchableOpacity>
               ))}
             </ScrollView>
             <TouchableOpacity style={styles.modalClose} onPress={() => setShowGoalPicker(false)}>
-              <Text style={styles.modalCloseText}>Kapat</Text>
+              <Text style={styles.modalCloseText}>{t('common.close')}</Text>
             </TouchableOpacity>
           </View>
         </View>

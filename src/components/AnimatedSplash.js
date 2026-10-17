@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, Animated, Dimensions, Easing, Text } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect, Circle, G, ClipPath } from 'react-native-svg';
 import { LinearGradient as ExpoLinearGradient } from 'expo-linear-gradient';
+import { i18n } from '../i18n';
 
 const { width, height } = Dimensions.get('window');
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
@@ -124,8 +125,8 @@ export default function AnimatedSplash({ onAnimationFinish }) {
 
         {/* --- LOGO YAZISI --- */}
         <Animated.View style={{ opacity: textOpacity, transform: [{ translateY: 20 }] }}>
-          <Text style={styles.brandName}>  Su Molası</Text>
-          <Text style={styles.tagline}>Sağlıklı bir mola zamanı.</Text>
+          <Text style={styles.brandName}>{i18n.t('app.name')}</Text>
+          <Text style={styles.tagline}>{i18n.t('app.tagline')}</Text>
         </Animated.View>
       </View>
     </AnimatedView>

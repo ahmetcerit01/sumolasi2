@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
+import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BADGES } from '../constants/badges';
 
 const KEY = 'SUMOLASI_STATE_V7'; // Versiyonu V7 yaptık
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
-const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // Ayarlar için Anahtarlar
 const STORAGE_KEYS = {
@@ -13,18 +13,19 @@ const STORAGE_KEYS = {
 };
 
 const pad2 = (n) => (n < 10 ? `0${n}` : `${n}`);
-const dateKey = (date = new Date()) =>
+export const dateKey = (date = new Date()) =>
   `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 
+// 'YYYY-MM-DD' stringleri UTC gece yarısı olarak parse edilir; ikisi de UTC olduğu için fark doğru çıkar.
 const diffInDays = (fromStr, toStr) => {
   if (!fromStr || !toStr) return 0;
   const d1 = new Date(fromStr);
   const d2 = new Date(toStr);
   if (Number.isNaN(d1.getTime()) || Number.isNaN(d2.getTime())) return 0;
-  return Math.floor((d2 - d1) / MS_PER_DAY);
+  return Math.round((d2 - d1) / MS_PER_DAY);
 };
 
-const calculateGoal = (weight, height) => {
+export const calculateGoal = (weight, height) => {
   if (!weight || !height) return 2500;
   let base = weight * 35;
   if (height > 170) base += (height - 170) * 10;
@@ -36,8 +37,9 @@ const listeners = new Set();
 
 let store = {
   totalMl: 0,
-  goalMl: 2500, 
+  goalMl: 2500,
   lastDate: dateKey(),
+  startDate: dateKey(), // Kullanıcının uygulamayı kullanmaya başladığı gün (ortalamalar için)
   isHydrated: false,
   todayGlasses: 0,
   lastAddAt: null,
@@ -53,12 +55,59 @@ let store = {
   soundEnabled: true,
 };
 
+const emit = () => listeners.forEach((l) => l(store));
+
+const persist = async () => {
+  try {
+    await AsyncStorage.multiSet([
+      ['DAILY_GOAL_ML', String(store.goalMl)],
+      [KEY, JSON.stringify(store)],
+    ]);
+  } catch {}
+};
+
+// UI önce güncellenir, disk yazımı arkadan gelir (await persist() önce gelince ekleme 2-3 sn gecikiyordu)
+const commit = (next) => {
+  store = next;
+  emit();
+  return persist();
+};
+
+// Gün devri: dünü geçmişe yazar, seriyi günceller, bugünü sıfırlar.
+// Tek kaynak burası; hydrate, dakikalık zamanlayıcı ve uygulama öne gelince çağrılır.
+export const rolloverIfNeeded = async () => {
+  if (!store.isHydrated) return false;
+  const today = dateKey();
+  if (store.lastDate === today) return false;
+
+  const prevDate = store.lastDate;
+  const gap = diffInDays(prevDate, today);
+  const metGoal = store.totalMl >= store.goalMl && store.totalMl > 0;
+  // Arada kaçırılan gün varsa seri bozulur
+  const streakDays = gap === 1 && metGoal ? (store.streakDays || 0) + 1 : 0;
+
+  await commit({
+    ...store,
+    dailyHistory: {
+      ...store.dailyHistory,
+      [prevDate]: { ml: store.totalMl, goal: store.goalMl },
+    },
+    totalMl: 0,
+    todayGlasses: 0,
+    lastDate: today,
+    streakDays,
+  });
+  return true;
+};
+
 // --- ACTIONS (hook dışı) ---
 // Not: Bazı yerlerde Zustand gibi `useHydrationStore.getState().xxx` çağrısı var.
 // Bu yüzden action'ları hook dışına taşıyıp tek bir API üretelim.
 
 const actions = {
   add: async (ml) => {
+    await rolloverIfNeeded();
+
     const nowIso = new Date().toISOString();
     const newTotal = (store.totalMl || 0) + ml;
     const newGlasses = (store.todayGlasses || 0) + 1;
@@ -80,50 +129,42 @@ const actions = {
       });
     }
 
-    store = {
+    await commit({
       ...store,
       totalMl: newTotal,
       todayGlasses: newGlasses,
       lastAddAt: nowIso,
       badges: newBadges,
-    };
-    await persist();
-    emit();
+    });
   },
 
   setGoalMl: async (ml) => {
     const val = parseInt(ml);
     if (!isNaN(val) && val > 0) {
-      store = { ...store, goalMl: val };
-      await persist();
-      emit();
+      await commit({ ...store, goalMl: val });
     }
   },
 
   updateProfile: async (newProfile) => {
     const updatedProfile = { ...store.profile, ...newProfile };
     const newRecGoal = calculateGoal(updatedProfile.weight, updatedProfile.height);
-    store = { ...store, profile: updatedProfile, recommendedGoal: newRecGoal };
-    await persist();
-    emit();
+    await commit({ ...store, profile: updatedProfile, recommendedGoal: newRecGoal });
   },
 
   setNotifications: async (val) => {
     store = { ...store, notificationsEnabled: val };
-    await AsyncStorage.setItem(STORAGE_KEYS.notifications, val ? '1' : '0');
     emit();
+    await AsyncStorage.setItem(STORAGE_KEYS.notifications, val ? '1' : '0');
   },
 
   setSound: async (val) => {
     store = { ...store, soundEnabled: val };
-    await AsyncStorage.setItem(STORAGE_KEYS.sound, val ? '1' : '0');
     emit();
+    await AsyncStorage.setItem(STORAGE_KEYS.sound, val ? '1' : '0');
   },
 
   resetToday: async () => {
-    store = { ...store, totalMl: 0, todayGlasses: 0 };
-    await persist();
-    emit();
+    await commit({ ...store, totalMl: 0, todayGlasses: 0 });
   },
 
   resetAll: async () => {
@@ -133,8 +174,10 @@ const actions = {
       goalMl: 2500,
       recommendedGoal: 2500,
       lastDate: today,
+      startDate: today,
       isHydrated: true,
       todayGlasses: 0,
+      lastAddAt: null,
       streakDays: 0,
       badges: {},
       dailyHistory: {},
@@ -142,6 +185,7 @@ const actions = {
       notificationsEnabled: true,
       soundEnabled: true,
     };
+    emit();
     await AsyncStorage.multiRemove([
       'DAILY_GOAL_ML',
       'ONBOARD_PROFILE',
@@ -149,23 +193,23 @@ const actions = {
       STORAGE_KEYS.sound,
     ]);
     await persist();
-    emit();
   },
 
+  // Son 7 gün. Gün adı yerine dayIndex (0=Pazar) döner; ekran bunu aktif dile göre çevirir.
+  // isTracked: kullanıcı o gün uygulamayı kullanıyor muydu (başlangıç tarihinden önceki günler ortalamaya girmez)
   getWeeklyData: () => {
     const days = [];
     const today = new Date();
-    const dayNames = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
     for (let i = 6; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(today.getDate() - i);
       const k = dateKey(d);
-      const dayName = dayNames[d.getDay()];
+      const isTracked = !store.startDate || k >= store.startDate;
       if (k === store.lastDate) {
-        days.push({ day: dayName, fullDate: k, ml: store.totalMl, goal: store.goalMl });
+        days.push({ dayIndex: d.getDay(), fullDate: k, ml: store.totalMl, goal: store.goalMl, isTracked });
       } else {
         const historyItem = store.dailyHistory[k] || { ml: 0, goal: store.goalMl };
-        days.push({ day: dayName, fullDate: k, ml: historyItem.ml, goal: historyItem.goal });
+        days.push({ dayIndex: d.getDay(), fullDate: k, ml: historyItem.ml, goal: historyItem.goal, isTracked });
       }
     }
     return days;
@@ -177,14 +221,7 @@ const getApi = (snapshot) => ({
   ...actions,
 });
 
-const emit = () => listeners.forEach((l) => l(store));
-
-const persist = async () => {
-  try {
-    await AsyncStorage.setItem('DAILY_GOAL_ML', String(store.goalMl)); 
-    await AsyncStorage.setItem(KEY, JSON.stringify(store));
-  } catch {}
-};
+let hydratePromise = null;
 
 async function hydrate() {
   try {
@@ -195,33 +232,36 @@ async function hydrate() {
       AsyncStorage.getItem(STORAGE_KEYS.notifications),
       AsyncStorage.getItem(STORAGE_KEYS.sound),
     ]);
-    
-    const today = dateKey();
-    let parsedStore = raw ? JSON.parse(raw) : {};
-    let parsedProfile = legacyProfile ? JSON.parse(legacyProfile) : null;
 
+    const today = dateKey();
+    const parsedStore = raw ? JSON.parse(raw) : {};
+    const parsedProfile = legacyProfile ? JSON.parse(legacyProfile) : null;
+
+    // Profil ekranında yapılan düzenlemeler store'da durur; eski ONBOARD_PROFILE sadece yedek.
     const activeProfile = {
-      weight: parsedProfile?.weightKg || parsedStore.profile?.weight || 70,
-      height: parsedProfile?.heightCm || parsedStore.profile?.height || 170,
-      wakeAt: parsedProfile?.wakeAt || parsedStore.profile?.wakeAt || '08:00',
-      sleepAt: parsedProfile?.sleepAt || parsedStore.profile?.sleepAt || '23:00',
-      gender: parsedProfile?.gender || parsedStore.profile?.gender || 'male'
+      weight: parsedStore.profile?.weight || parsedProfile?.weightKg || 70,
+      height: parsedStore.profile?.height || parsedProfile?.heightCm || 170,
+      wakeAt: parsedStore.profile?.wakeAt || parsedProfile?.wakeAt || '08:00',
+      sleepAt: parsedStore.profile?.sleepAt || parsedProfile?.sleepAt || '23:00',
+      gender: parsedStore.profile?.gender || parsedProfile?.gender || 'male',
     };
 
     const recGoal = calculateGoal(activeProfile.weight, activeProfile.height);
 
-    let finalGoal = 2500;
-    if (legacyGoalRaw) {
+    let finalGoal = recGoal;
+    if (parsedStore.goalMl && parsedStore.goalMl > 0) {
+      finalGoal = parsedStore.goalMl;
+    } else if (legacyGoalRaw) {
       const lg = parseInt(legacyGoalRaw);
       if (!isNaN(lg) && lg > 0) finalGoal = lg;
-    } else if (parsedStore.goalMl && parsedStore.goalMl > 0) {
-      finalGoal = parsedStore.goalMl;
-    } else {
-      finalGoal = recGoal;
     }
 
+    // Eski kullanıcılarda startDate yok: geçmişteki en eski günü kullan
+    const historyKeys = Object.keys(parsedStore.dailyHistory || {}).sort();
+    const startDate = parsedStore.startDate || historyKeys[0] || parsedStore.lastDate || today;
+
     // AYARLARI OKU (Eğer null ise true kabul et)
-    const isNotifOn = notifRaw !== '0'; 
+    const isNotifOn = notifRaw !== '0';
     const isSoundOn = soundRaw !== '0';
 
     store = {
@@ -231,38 +271,35 @@ async function hydrate() {
       recommendedGoal: recGoal,
       profile: activeProfile,
       lastDate: parsedStore.lastDate || today,
+      startDate,
       isHydrated: true,
       dailyHistory: parsedStore.dailyHistory || {},
       badges: parsedStore.badges || {},
       notificationsEnabled: isNotifOn,
       soundEnabled: isSoundOn,
     };
-
-    // Gün değişimi
-    const diffDays = diffInDays(store.lastDate, today);
-    if (diffDays > 0) {
-      const prevDate = store.lastDate;
-      const updatedHistory = { 
-        ...store.dailyHistory,
-        [prevDate]: { ml: store.totalMl, goal: store.goalMl }
-      };
-      const newStreak = (store.totalMl >= store.goalMl) ? (store.streakDays + 1) : 0;
-
-      store = {
-        ...store,
-        totalMl: 0,
-        todayGlasses: 0,
-        lastDate: today,
-        streakDays: newStreak,
-        dailyHistory: updatedHistory,
-      };
-      await persist();
-    }
     emit();
+
+    await rolloverIfNeeded();
   } catch (e) {
     console.warn("Hydrate error:", e);
   }
 }
+
+export const ensureHydrated = () => {
+  if (!hydratePromise) hydratePromise = hydrate();
+  return hydratePromise;
+};
+
+// Gece yarısını yakalamak için tek bir zamanlayıcı (eskiden her hook kendi interval'ını kuruyordu)
+let rolloverTimer = null;
+const startRolloverWatch = () => {
+  if (rolloverTimer) return;
+  rolloverTimer = setInterval(rolloverIfNeeded, 60000);
+  AppState.addEventListener('change', (st) => {
+    if (st === 'active') rolloverIfNeeded();
+  });
+};
 
 export function useHydrationStore(selector) {
   const [snapshot, setSnapshot] = useState(store);
@@ -270,45 +307,12 @@ export function useHydrationStore(selector) {
   useEffect(() => {
     const sub = (s) => setSnapshot(s);
     listeners.add(sub);
-    if (!store.isHydrated) hydrate();
+    // Abone olmadan önce gelen güncellemeyi kaçırmamak için
+    if (snapshot !== store) setSnapshot(store);
+    ensureHydrated();
+    startRolloverWatch();
     return () => listeners.delete(sub);
   }, []);
-
-  useEffect(() => {
-    const id = setInterval(async () => {
-      const today = dateKey();
-      if (store.lastDate !== today) {
-        // Gece yarısı sıfırlama...
-        const prevDate = store.lastDate;
-        const updatedHistory = { 
-          ...store.dailyHistory,
-          [prevDate]: { ml: store.totalMl, goal: store.goalMl }
-        };
-        store = {
-          ...store,
-          totalMl: 0,
-          todayGlasses: 0,
-          lastDate: today,
-          streakDays: (store.totalMl >= store.goalMl) ? store.streakDays + 1 : 0,
-          dailyHistory: updatedHistory
-        };
-        await persist();
-        emit();
-      }
-    }, 60000);
-    return () => clearInterval(id);
-  }, []);
-
-  // --- ACTIONS ---
-  // Hook içinde artık sadece dışarıdaki action'lara referans veriyoruz.
-  const add = actions.add;
-  const setGoalMl = actions.setGoalMl;
-  const updateProfile = actions.updateProfile;
-  const setNotifications = actions.setNotifications;
-  const setSound = actions.setSound;
-  const resetToday = actions.resetToday;
-  const resetAll = actions.resetAll;
-  const getWeeklyData = actions.getWeeklyData;
 
   const api = getApi(snapshot);
   return typeof selector === 'function' ? selector(api) : api;
@@ -326,6 +330,6 @@ useHydrationStore.setState = async (partial, shouldPersist = true) => {
   if (!next || typeof next !== 'object') return;
 
   store = { ...store, ...next };
-  if (shouldPersist) await persist();
   emit();
+  if (shouldPersist) await persist();
 };

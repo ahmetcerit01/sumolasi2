@@ -1,0 +1,543 @@
+import { createContext, useContext } from 'react';
+import { I18n } from 'i18n-js';
+import { getLocales } from 'expo-localization';
+
+// --------------------
+// i18n (Çoklu Dil)
+// Ekranlar LanguageContext'i buradan alır; App.js'den import etmek require cycle yaratıyordu.
+// --------------------
+export const translations = {
+  tr: {
+    app: { name: 'Su Molası', tagline: 'Sağlıklı bir mola zamanı.' },
+    common: { ok: 'Tamam', cancel: 'İptal', close: 'Kapat', next: 'DEVAM ET', done: 'TAMAMLA' },
+    units: { ml: 'ml', kg: 'kg', cm: 'cm', liter: 'L' },
+    days: {
+      short: { 0: 'Paz', 1: 'Pzt', 2: 'Sal', 3: 'Çar', 4: 'Per', 5: 'Cum', 6: 'Cmt' },
+    },
+    settings: {
+      language: 'Dil',
+      english: 'English',
+      turkish: 'Türkçe',
+      notifications: 'Bildirimler',
+      soundFx: 'Ses Efektleri',
+    },
+    profile: {
+      userTitle: 'Su Savaşçısı',
+      badgeCount: { one: '%{count} Rozet', other: '%{count} Rozet' },
+      level: 'Seviye %{level}',
+      weight: 'Kilo',
+      height: 'Boy',
+      wake: 'Uyanış',
+      sleep: 'Uyku',
+      editInfo: 'Bilgileri Düzenle',
+      editTitle: 'Profili Düzenle',
+      weightInput: 'Kilo (kg)',
+      heightInput: 'Boy (cm)',
+      saveAndCalc: 'Kaydet ve Hesapla',
+      dailyGoal: 'Günlük Hedef',
+      recommended: 'Önerilen',
+      updateGoal: 'Hedefi Güncelle',
+      chooseGoal: 'Hedefini Seç',
+      tip: 'İpucu',
+      invalidInput: 'Lütfen geçerli bir kilo ve boy girin.',
+      updatedTitle: 'Güncellendi',
+      updatedMsg: 'Profil bilgilerin ve önerilen hedefin güncellendi! 🚀',
+      goalSavedTitle: 'Başarılı',
+      goalSavedMsg: 'Günlük hedefin güncellendi! 🎉',
+      saveError: 'Kaydedilirken sorun oluştu.',
+      facts: [
+        'Limon dilimli su, C vitamini desteği sağlar ve ferahlatır.',
+        'Güne bir bardak suyla başlamak metabolizmayı harekete geçirir.',
+        'Yeterli su tüketimi cildin bariyer fonksiyonunu destekler.',
+        'Öğünlerden önce su içmek tokluk hissini artırabilir.',
+        'Sıcak havalarda terle birlikte su kaybı artar; günlük alımı artır.',
+        'Su; kas fonksiyonları, dolaşım ve ısı dengesi için kritiktir.',
+        'Azar azar ama düzenli içmek, tek seferde çok içmekten daha konforludur.',
+      ],
+    },
+    home: {
+      today: 'Bugün',
+      goodMorning: 'Günaydın',
+      goodDay: 'İyi günler',
+      goodEvening: 'İyi akşamlar',
+      ready: 'Su molası vermeye hazır mısın?',
+      dailyGoal: 'Günlük Hedef',
+      quickAdd: 'Hızlı Ekle',
+      custom: 'Özel',
+      tipOfDay: 'Günün İpucu',
+      streakDone: '%{days} Günlük Seri!',
+      streakHint: 'Seri başlatmak için hedefini tamamla',
+      percent: '%%{pct}',
+      tips: [
+        'Sabah uyanınca bir bardak su içmek metabolizmanı hızlandırır.',
+        'Beyninin büyük kısmı sudan oluşur. Odaklanmak için su iç!',
+        'Yemeklerden 30 dakika önce su içmek sindirimi kolaylaştırır.',
+        'Baş ağrısının en yaygın nedenlerinden biri susuzluktur.',
+        'Cildinin parlaması için pahalı kremlere değil, suya ihtiyacın var.',
+        'Su içmek kas yorgunluğunu azaltır ve performansı artırır.',
+        'Soğuk su içmek vücudun ısısını dengelemeye yardımcı olur.',
+      ],
+    },
+    quickAdd: {
+      cup: 'Bardak',
+      espresso: 'Kupa',
+      bottle: 'Şişe',
+    },
+    menu: {
+      history: 'Geçmiş',
+      reminders: 'Hatırlatıcı',
+      badges: 'Rozetler',
+      profile: 'Profil',
+    },
+    tabs: {
+      home: 'Ana Sayfa',
+      history: 'Geçmiş',
+      reminders: 'Hatırlatıcılar',
+      badges: 'Rozetler',
+      profile: 'Profil',
+    },
+    dev: {
+      title: 'Geliştirici',
+      reset: 'Sıfırla',
+      delete: 'Sil',
+    },
+    modal: {
+      enterAmount: 'Miktar Girin',
+      placeholderAmount: 'Örn: 150',
+      add: 'Ekle',
+    },
+    alert: {
+      error: 'Hata',
+      validAmount: 'Lütfen geçerli bir miktar girin.',
+    },
+    history: {
+      title: 'Geçmiş Raporu',
+      subtitle: 'Son 7 günün su tüketim analizi',
+      weekTotal: 'Bu Hafta Toplam',
+      dailyPerformance: 'Günlük Performans',
+      goalLabel: 'Hedef %{goal} ml',
+      dailyAvg: 'Günlük Ort.',
+      bestDay: 'En İyi (%{ml} ml)',
+      noData: 'Veri Yok',
+      goalMet: 'Hedef Tutuldu',
+      belowGoal: 'Hedef Altında',
+      dayLabel: '%{day} Günü',
+    },
+    notifications: {
+      channelName: 'Su Hatırlatıcıları',
+      title: 'Su Molası',
+      body: 'Bir bardak su içme zamanı!',
+    },
+    reminders: {
+      title: 'Hatırlatıcılar',
+      intervalTitle: 'Bildirim Aralığı',
+      profileTimesInfo: 'Bu saatler profil ayarlarından (uyanma/uyuma) otomatik alınır.',
+      frequencyTitle: 'Bildirim Sıklığı',
+      everyXHours: '%{hours} saatte bir',
+      previewTitle: 'Örnek Günlük Plan',
+      wake: 'Uyanış',
+      sleep: 'Uyku',
+      disabledInline: 'Hatırlatıcı kapalı.',
+      save: 'Kaydet',
+
+      testPanel: 'Test Paneli',
+      test1m: '1 Dk Test',
+      onboard: 'Onboard',
+      cancelAll: 'Hepsini İptal Et',
+
+      savedTitle: 'Kaydedildi',
+      disabledMsg: 'Hatırlatıcılar kapatıldı.',
+      greatTitle: 'Harika!',
+      goalAlreadyDone: 'Bugünkü hedefini zaten tamamladın.',
+      noTimeLeftToday: 'Bugün için planlanacak saat kalmadı. Yarın sabah başlayacak.',
+      scheduledCount: { one: '%{count} hatırlatıcı planlandı.', other: '%{count} hatırlatıcı planlandı.' },
+      errorTitle: 'Hata',
+      scheduleFailed: 'Planlama yapılamadı.',
+      permissionTitle: 'Bildirim İzni Gerekli',
+      permissionMsg: 'Hatırlatıcıların çalışması için Ayarlar’dan Su Molası bildirimlerine izin ver.',
+      openSettings: 'Ayarları Aç',
+      plannedTitle: 'Planlandı',
+      testInOneMinuteMsg: '1 dk sonra bildirim gelecek.',
+      clearedTitle: 'Temizlendi',
+    },
+    badges: {
+      title: 'Koleksiyon',
+      subtitle: 'Başarılarını tamamla, rozetleri kap!',
+      levelLabel: 'Rozet Seviyesi',
+      motivationComplete: 'Efsanesin! 🏆',
+      motivationProgress: 'Yolun başındasın, devam et!',
+      earned: 'Kazanıldı',
+      locked: 'KİLİTLİ',
+      congrats: 'TEBRİKLER!',
+      newBadge: 'Yeni bir rozet kazandın',
+      awesome: 'Harika!',
+      items: {
+        first_sip: {
+          title: 'İlk Yudum',
+          description: 'Su molası yolculuğunun ilk adımı.',
+          howToEarn: 'Uygulamada ilk kez su ekle.',
+        },
+        sunrise: {
+          title: 'Güne Erken Başlayan',
+          description: 'Güne erken bir yudumla başlamak harika bir alışkanlık.',
+          howToEarn: "Sabah 09:00'dan önce su ekle.",
+        },
+        moon: {
+          title: 'Gece Bekçisi',
+          description: 'Gece de hidrasyonu unutmayanlara.',
+          howToEarn: 'Gece 23:00 veya sonrasında su ekle.',
+        },
+        overflow_glass: {
+          title: 'Hedef Ustası',
+          description: 'Hedefinin çok üstüne çıktın!',
+          howToEarn: "Günlük hedefinin en az %150'sine ulaş.",
+        },
+        calendar5: {
+          title: 'Bilinçli Tüketici',
+          description: 'İstikrarlı bir başlangıç.',
+          howToEarn: 'Art arda 5 gün boyunca günlük hedefini tamamla.',
+        },
+        sparkling: {
+          title: 'Serinleten',
+          description: 'Bugün bardak bardak içtin!',
+          howToEarn: 'Bir günde en az 10 kez su ekle (10 bardak).',
+        },
+        calendar7: {
+          title: 'Disiplinli',
+          description: 'Bir haftalık tam disiplin.',
+          howToEarn: 'Art arda 7 gün boyunca günlük hedefini tamamla.',
+        },
+        medal_bronze: {
+          title: 'Bronz Şampiyon',
+          description: 'İstikrar meyvelerini veriyor.',
+          howToEarn: 'Art arda 10 gün boyunca günlük hedefini tamamla.',
+        },
+        medal_silver: {
+          title: 'Gümüş Şampiyon',
+          description: 'Alışkanlık kazanıldı, devam!',
+          howToEarn: 'Art arda 20 gün boyunca günlük hedefini tamamla.',
+        },
+        medal_gold: {
+          title: 'Altın Şampiyon',
+          description: 'Üst düzey istikrar.',
+          howToEarn: 'Art arda 30 gün boyunca günlük hedefini tamamla.',
+        },
+      },
+    },
+    onboard: {
+      loading: {
+        bmi: 'Vücut kitle indeksin analiz ediliyor...',
+        water: 'Günlük su ihtiyacın hesaplanıyor...',
+        plan: 'Sana özel plan hazırlanıyor...',
+      },
+      gender: {
+        title: 'Cinsiyetini Seç',
+        subtitle: 'Sana en uygun su ihtiyacını hesaplayabilmemiz için gerekli.',
+        male: 'Erkek',
+        female: 'Kadın',
+      },
+      weight: {
+        title: 'Kilon Kaç?',
+        subtitle: 'Kilo, su ihtiyacını belirleyen en önemli faktördür.',
+      },
+      height: {
+        title: 'Boyun Kaç?',
+        subtitle: 'Boy uzunluğu metabolizma hızını etkiler.',
+      },
+      wake: {
+        title: 'Kaçta Uyanırsın?',
+        subtitle: 'Güne ne zaman başladığını bilmeliyiz.',
+      },
+      sleep: {
+        title: 'Kaçta Uyursun?',
+        subtitle: 'Seni uykunda rahatsız etmemek için önemli.',
+      },
+      result: {
+        title: 'Günlük Su Hedefin',
+        subtitle: 'Bu hedefe göre günlük su takibini başlatabilirsin.',
+      },
+    },
+  },
+  en: {
+    app: { name: 'Water Break', tagline: 'Time for a healthy break.' },
+    common: { ok: 'OK', cancel: 'Cancel', close: 'Close', next: 'NEXT', done: 'FINISH' },
+    units: { ml: 'ml', kg: 'kg', cm: 'cm', liter: 'L' },
+    days: {
+      short: { 0: 'Sun', 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat' },
+    },
+    settings: {
+      language: 'Language',
+      english: 'English',
+      turkish: 'Türkçe',
+      notifications: 'Notifications',
+      soundFx: 'Sound Effects',
+    },
+    profile: {
+      userTitle: 'Water Warrior',
+      badgeCount: { one: '%{count} Badge', other: '%{count} Badges' },
+      level: 'Level %{level}',
+      weight: 'Weight',
+      height: 'Height',
+      wake: 'Wake',
+      sleep: 'Sleep',
+      editInfo: 'Edit Info',
+      editTitle: 'Edit Profile',
+      weightInput: 'Weight (kg)',
+      heightInput: 'Height (cm)',
+      saveAndCalc: 'Save & Calculate',
+      dailyGoal: 'Daily Goal',
+      recommended: 'Recommended',
+      updateGoal: 'Update Goal',
+      chooseGoal: 'Choose Your Goal',
+      tip: 'Tip',
+      invalidInput: 'Please enter a valid weight and height.',
+      updatedTitle: 'Updated',
+      updatedMsg: 'Your profile and recommended goal were updated! 🚀',
+      goalSavedTitle: 'Saved',
+      goalSavedMsg: 'Your daily goal was updated! 🎉',
+      saveError: 'Something went wrong while saving.',
+      facts: [
+        'Water with a slice of lemon adds vitamin C and feels refreshing.',
+        'Starting the day with a glass of water gets your metabolism going.',
+        'Drinking enough water supports your skin barrier.',
+        'Drinking water before meals can help you feel full.',
+        'You lose more water through sweat in hot weather; drink more.',
+        'Water is essential for muscles, circulation and body temperature.',
+        'Small, regular sips are more comfortable than drinking a lot at once.',
+      ],
+    },
+    home: {
+      today: 'Today',
+      goodMorning: 'Good morning',
+      goodDay: 'Good day',
+      goodEvening: 'Good evening',
+      ready: 'Ready for a water break?',
+      dailyGoal: 'Daily Goal',
+      quickAdd: 'Quick Add',
+      custom: 'Custom',
+      tipOfDay: 'Tip of the Day',
+      streakDone: '%{days}-day streak!',
+      streakHint: 'Complete your goal to start a streak',
+      percent: '%{pct}%',
+      tips: [
+        'Drinking a glass of water after waking up can boost metabolism.',
+        'Your brain is mostly water—drink to stay focused.',
+        'Drinking water 30 minutes before meals can help digestion.',
+        'One of the most common causes of headaches is dehydration.',
+        'For glowing skin, water matters more than expensive creams.',
+        'Hydration can reduce muscle fatigue and improve performance.',
+        'Cold water may help regulate body temperature.',
+      ],
+    },
+    quickAdd: {
+      cup: 'Glass',
+      espresso: 'Mug',
+      bottle: 'Bottle',
+    },
+    menu: {
+      history: 'History',
+      reminders: 'Reminders',
+      badges: 'Badges',
+      profile: 'Profile',
+    },
+    tabs: {
+      home: 'Home',
+      history: 'History',
+      reminders: 'Reminders',
+      badges: 'Badges',
+      profile: 'Profile',
+    },
+    dev: {
+      title: 'Developer',
+      reset: 'Reset',
+      delete: 'Delete',
+    },
+    modal: {
+      enterAmount: 'Enter amount',
+      placeholderAmount: 'e.g., 150',
+      add: 'Add',
+    },
+    alert: {
+      error: 'Error',
+      validAmount: 'Please enter a valid amount.',
+    },
+    history: {
+      title: 'History Report',
+      subtitle: 'Your water intake analysis for the last 7 days',
+      weekTotal: 'This Week Total',
+      dailyPerformance: 'Daily Performance',
+      goalLabel: 'Goal %{goal} ml',
+      dailyAvg: 'Daily Avg',
+      bestDay: 'Best (%{ml} ml)',
+      noData: 'No Data',
+      goalMet: 'Goal Met',
+      belowGoal: 'Below Goal',
+      dayLabel: '%{day}',
+    },
+    notifications: {
+      channelName: 'Water Reminders',
+      title: 'Water Break',
+      body: 'Time for a glass of water!',
+    },
+    reminders: {
+      title: 'Reminders',
+      intervalTitle: 'Notification Window',
+      profileTimesInfo: 'These hours are automatically taken from your profile (wake/sleep).',
+      frequencyTitle: 'Notification Frequency',
+      everyXHours: 'Every %{hours}h',
+      previewTitle: 'Daily Preview',
+      wake: 'Wake',
+      sleep: 'Sleep',
+      disabledInline: 'Reminders are off.',
+      save: 'Save',
+
+      testPanel: 'Test Panel',
+      test1m: '1 Min Test',
+      onboard: 'Onboard',
+      cancelAll: 'Cancel All',
+
+      savedTitle: 'Saved',
+      disabledMsg: 'Reminders have been turned off.',
+      greatTitle: 'Awesome!',
+      goalAlreadyDone: 'You already completed today’s goal.',
+      noTimeLeftToday: 'No time left to schedule today. It will start tomorrow morning.',
+      scheduledCount: { one: '%{count} reminder scheduled.', other: '%{count} reminders scheduled.' },
+      errorTitle: 'Error',
+      scheduleFailed: 'Scheduling failed.',
+      permissionTitle: 'Notifications Needed',
+      permissionMsg: 'Allow notifications for Water Break in Settings so reminders can work.',
+      openSettings: 'Open Settings',
+      plannedTitle: 'Planned',
+      testInOneMinuteMsg: 'You will get a notification in 1 minute.',
+      clearedTitle: 'Cleared',
+    },
+    badges: {
+      title: 'Collection',
+      subtitle: 'Complete achievements and unlock badges!',
+      levelLabel: 'Badge Level',
+      motivationComplete: 'Legendary! 🏆',
+      motivationProgress: 'Just getting started—keep going!',
+      earned: 'Earned',
+      locked: 'LOCKED',
+      congrats: 'CONGRATS!',
+      newBadge: 'You earned a new badge',
+      awesome: 'Awesome!',
+      items: {
+        first_sip: {
+          title: 'First Sip',
+          description: 'Your first step on the water-break journey.',
+          howToEarn: 'Add water for the first time in the app.',
+        },
+        sunrise: {
+          title: 'Early Starter',
+          description: 'Starting the day with an early sip is a great habit.',
+          howToEarn: 'Add water before 09:00 in the morning.',
+        },
+        moon: {
+          title: 'Night Watch',
+          description: 'For those who don’t forget hydration at night.',
+          howToEarn: 'Add water at 23:00 or later.',
+        },
+        overflow_glass: {
+          title: 'Goal Master',
+          description: 'You went far beyond your goal!',
+          howToEarn: 'Reach at least 150% of your daily goal.',
+        },
+        calendar5: {
+          title: 'Mindful Drinker',
+          description: 'A steady start.',
+          howToEarn: 'Complete your daily goal 5 days in a row.',
+        },
+        sparkling: {
+          title: 'Chilled',
+          description: 'You drank glass after glass today!',
+          howToEarn: 'Add water at least 10 times in a single day.',
+        },
+        calendar7: {
+          title: 'Disciplined',
+          description: 'A full week of discipline.',
+          howToEarn: 'Complete your daily goal 7 days in a row.',
+        },
+        medal_bronze: {
+          title: 'Bronze Champion',
+          description: 'Consistency is paying off.',
+          howToEarn: 'Complete your daily goal 10 days in a row.',
+        },
+        medal_silver: {
+          title: 'Silver Champion',
+          description: 'Habit unlocked - keep going!',
+          howToEarn: 'Complete your daily goal 20 days in a row.',
+        },
+        medal_gold: {
+          title: 'Gold Champion',
+          description: 'Top-tier consistency.',
+          howToEarn: 'Complete your daily goal 30 days in a row.',
+        },
+      },
+    },
+    onboard: {
+      loading: {
+        bmi: 'Analyzing your BMI...',
+        water: 'Calculating your daily water need...',
+        plan: 'Preparing a personalized plan...',
+      },
+      gender: {
+        title: 'Select your gender',
+        subtitle: 'We need this to calculate the best daily water goal for you.',
+        male: 'Male',
+        female: 'Female',
+      },
+      weight: {
+        title: 'What is your weight?',
+        subtitle: 'Weight is one of the most important factors for hydration needs.',
+      },
+      height: {
+        title: 'What is your height?',
+        subtitle: 'Height can affect your metabolism.',
+      },
+      wake: {
+        title: 'What time do you wake up?',
+        subtitle: 'We should know when your day starts.',
+      },
+      sleep: {
+        title: 'What time do you sleep?',
+        subtitle: 'Important so we don’t disturb you while sleeping.',
+      },
+      result: {
+        title: 'Your Daily Water Goal',
+        subtitle: 'You can start tracking your water with this goal.',
+      },
+    },
+  },
+};
+
+export const LANGUAGE_KEY = 'APP_LANGUAGE';
+
+export const i18n = new I18n(translations);
+i18n.enableFallback = true;
+i18n.defaultLocale = 'en';
+
+// Uygulamada desteklediğimiz diller
+export const normalizeLang = (tag) => {
+  const base = (tag || 'en').split('-')[0].toLowerCase();
+  return base === 'tr' ? 'tr' : 'en';
+};
+
+// Kayıtlı bir seçim yoksa cihaz dilini kullan
+export const getDeviceLang = () => {
+  try {
+    return normalizeLang(getLocales()?.[0]?.languageCode);
+  } catch {
+    return 'en';
+  }
+};
+
+i18n.locale = getDeviceLang();
+
+export const LanguageContext = createContext({
+  locale: i18n.locale,
+  t: (key, opts) => i18n.t(key, opts),
+  setLanguage: async (_lang) => {},
+});
+
+export const useLanguage = () => useContext(LanguageContext);

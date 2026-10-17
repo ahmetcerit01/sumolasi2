@@ -16,7 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "../theme/colors";
 import { S } from "../theme/spacing";
 import { useHydrationStore } from "../storage/useHydrationStore";
-import { LanguageContext } from "../../App";
+import { LanguageContext } from '../i18n';
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const CHART_HEIGHT = 220;
@@ -26,10 +26,12 @@ export default function HistoryScreen() {
   const { t } = useContext(LanguageContext);
   
   // Store Verileri
-  const weeklyData = useHydrationStore((s) => s.getWeeklyData());
+  const rawWeekly = useHydrationStore((s) => s.getWeeklyData());
+  // Gün adları aktif dile göre
+  const weeklyData = rawWeekly.map((d) => ({ ...d, day: t(`days.short.${d.dayIndex}`) }));
   const currentGoal = useHydrationStore((s) => s.goalMl); 
   
-  const [selectedDay, setSelectedDay] = useState(null);
+  const [selectedDate, setSelectedDate] = useState(null);
   const [animationKey, setAnimationKey] = useState(0); // Animasyonları tetiklemek için anahtar
 
   // Sayfa Animasyonu (Fade & Slide)
@@ -54,34 +56,11 @@ export default function HistoryScreen() {
     }, []) 
   );
 
-  // --- VERİ TAKİBİ VE GÜNCELLEME (DÜZELTİLDİ) ---
-  useEffect(() => {
-    if (weeklyData && weeklyData.length > 0) {
-      // Listenin son elemanı (Bugün)
-      const todayItem = weeklyData[weeklyData.length - 1];
+  // Seçili günü tarih olarak tutuyoruz; veri ve dil değişince güncel hali listeden türetilir.
+  // Seçim yoksa veya hafta kaydıysa bugün (listenin son elemanı) gösterilir.
+  const selectedDay = weeklyData.find((d) => d.fullDate === selectedDate) || weeklyData[weeklyData.length - 1];
 
-      if (!selectedDay) {
-        // 1. Hiç gün seçili değilse (ilk açılış), bugünü seç
-        setSelectedDay(todayItem);
-      } else {
-        // 2. Zaten bir gün seçiliyse, o günün GÜNCEL verisini bul
-        // (Böylece geçmişe tıklayınca sayfa yenilense bile o günde kalırsın)
-        const updatedSelectedDay = weeklyData.find(d => d.fullDate === selectedDay.fullDate);
-        
-        if (updatedSelectedDay) {
-          // Sadece veri (ml) değiştiyse state güncelle (Gereksiz render önler)
-          if (updatedSelectedDay.ml !== selectedDay.ml) {
-            setSelectedDay(updatedSelectedDay);
-          }
-        } else {
-          // Eğer seçili gün artık listede yoksa (örn: hafta değişti), bugüne dön
-          setSelectedDay(todayItem);
-        }
-      }
-    }
-  }, [weeklyData]); // selectedDay'i buraya eklemedik, böylece döngüye girmez
-
-  if (!selectedDay || !weeklyData || weeklyData.length === 0) {
+  if (!selectedDay) {
     return <View style={styles.container} />;
   }
 
@@ -90,7 +69,10 @@ export default function HistoryScreen() {
   const chartScaleMax = Math.max(maxIntake, currentGoal, 2500);
   const targetLinePosition = (currentGoal / chartScaleMax) * CHART_HEIGHT;
   const totalWeekly = weeklyData.reduce((acc, curr) => acc + (curr.ml || 0), 0);
-  const avgWeekly = Math.round(totalWeekly / weeklyData.length);
+  // Uygulamayı kullanmaya başlamadan önceki günler ortalamayı düşürmesin
+  const trackedDays = weeklyData.filter((d) => d.isTracked);
+  const trackedTotal = trackedDays.reduce((acc, curr) => acc + (curr.ml || 0), 0);
+  const avgWeekly = trackedDays.length ? Math.round(trackedTotal / trackedDays.length) : 0;
   const bestDay = weeklyData.reduce((prev, current) => 
     ((prev.ml || 0) > (current.ml || 0)) ? prev : current
   , { ml: 0, day: '-' });
@@ -130,7 +112,7 @@ export default function HistoryScreen() {
             <View style={styles.summaryRow}>
               <View>
                 <Text style={styles.summaryLabel}>{t('history.weekTotal')}</Text>
-                <Text style={styles.summaryValue}>{(totalWeekly / 1000).toFixed(1)} L</Text>
+                <Text style={styles.summaryValue}>{(totalWeekly / 1000).toFixed(1)} {t('units.liter')}</Text>
               </View>
               <View style={styles.summaryIconBox}>
                 <Ionicons name="stats-chart" size={24} color="#fff" />
@@ -141,13 +123,17 @@ export default function HistoryScreen() {
 
         {/* GRAFİK ALANI */}
         <View style={styles.chartSection}>
-          <Text style={styles.sectionTitle}>{t('history.dailyPerformance')}</Text>
-          
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>{t('history.dailyPerformance')}</Text>
+            {/* Hedef etiketi grafiğin içindeyken son çubuğun altında kalıyordu */}
+            <View style={styles.targetChip}>
+              <View style={styles.targetChipLine} />
+              <Text style={styles.targetLabel}>{t('history.goalLabel', { goal: currentGoal })}</Text>
+            </View>
+          </View>
+
           <View style={styles.chartContainer}>
             <View style={[styles.targetLine, { bottom: targetLinePosition }]} />
-            <Text style={[styles.targetLabel, { bottom: targetLinePosition + 5 }]}>
-              {t('history.goalLabel', { goal: currentGoal })}
-            </Text>
 
             <View style={styles.barsRow}>
               {weeklyData.map((item, index) => {
@@ -161,7 +147,7 @@ export default function HistoryScreen() {
                     activeOpacity={0.8}
                     style={styles.barWrapper}
                     // Tıklanınca state'i güncelle
-                    onPress={() => setSelectedDay(item)}
+                    onPress={() => setSelectedDate(item.fullDate)}
                   >
                     {isSelected && (
                       <Animated.View style={styles.bubble}>
@@ -201,7 +187,7 @@ export default function HistoryScreen() {
             <View style={[styles.iconCircle, { backgroundColor: "#EFF6FF" }]}>
               <Ionicons name="water-outline" size={20} color={COLORS.primaryEnd} />
             </View>
-            <Text style={styles.statValue}>{avgWeekly} ml</Text>
+            <Text style={styles.statValue}>{avgWeekly} {t('units.ml')}</Text>
             <Text style={styles.statLabel}>{t('history.dailyAvg')}</Text>
           </View>
 
@@ -286,7 +272,10 @@ const styles = StyleSheet.create({
   chartContainer: { height: CHART_HEIGHT + 50, justifyContent: "flex-end" },
   barsRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", height: CHART_HEIGHT },
   targetLine: { position: "absolute", left: 0, right: 0, height: 1, backgroundColor: "#9CA3AF", borderStyle: "dashed", borderWidth: 1, borderColor: "#9CA3AF", opacity: 0.3, zIndex: -1 },
-  targetLabel: { position: "absolute", right: 0, fontSize: 10, color: "#9CA3AF", fontWeight: "700", backgroundColor: "#FAFAFA", paddingLeft: 4 },
+  sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 40 },
+  targetChip: { flexDirection: "row", alignItems: "center", gap: 6 },
+  targetChipLine: { width: 14, height: 0, borderTopWidth: 2, borderColor: "#9CA3AF", borderStyle: "dashed", opacity: 0.6 },
+  targetLabel: { fontSize: 11, color: "#9CA3AF", fontWeight: "700" },
   barWrapper: { alignItems: "center", width: (SCREEN_WIDTH - 60) / 7 },
   barContainer: { width: 14, height: CHART_HEIGHT, justifyContent: "flex-end", backgroundColor: "rgba(229, 231, 235, 0.3)", borderRadius: 10, overflow: "hidden" },
   barBackground: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "#F3F4F6", borderRadius: 10 },

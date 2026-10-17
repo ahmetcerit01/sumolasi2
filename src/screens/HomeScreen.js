@@ -35,30 +35,9 @@ import fincan from "../../assets/fincan.png";
 const MALE_AVATAR = require('../../assets/illustrations/male.png');
 const FEMALE_AVATAR = require('../../assets/illustrations/female.png');
 
-import { LanguageContext } from "../../App";
+import { LanguageContext } from '../i18n';
 
 const { width, height } = Dimensions.get("window");
-
-// --- İPUÇLARI HAVUZU ---
-const WATER_TIPS_TR = [
-  "Sabah uyanınca bir bardak su içmek metabolizmanı %24 hızlandırır.",
-  "Beyninin %75'i sudan oluşur. Odaklanmak için su iç!",
-  "Yemeklerden 30 dakika önce su içmek sindirimi kolaylaştırır.",
-  "Baş ağrısının en yaygın nedenlerinden biri susuzluktur.",
-  "Cildinin parlaması için pahalı kremlere değil, suya ihtiyacın var.",
-  "Su içmek kas yorgunluğunu azaltır ve performansı artırır.",
-  "Soğuk su içmek vücudun ısısını dengelemeye yardımcı olur."
-];
-
-const WATER_TIPS_EN = [
-  "Drinking a glass of water after waking up can boost metabolism.",
-  "Your brain is mostly water—drink to stay focused.",
-  "Drinking water 30 minutes before meals can help digestion.",
-  "One of the most common causes of headaches is dehydration.",
-  "For glowing skin, water matters more than expensive creams.",
-  "Hydration can reduce muscle fatigue and improve performance.",
-  "Cold water may help regulate body temperature."
-];
 
 export default function HomeScreen({ navigation }) {
   const insets = useSafeAreaInsets();
@@ -84,8 +63,10 @@ export default function HomeScreen({ navigation }) {
   const [customAmount, setCustomAmount] = useState("");
 
   // Rastgele İpucu Seç (Her açılışta değişmemesi için useMemo)
-  const tipsPool = useMemo(() => (locale === 'tr' ? WATER_TIPS_TR : WATER_TIPS_EN), [locale]);
-  const dailyTip = useMemo(() => tipsPool[Math.floor(Math.random() * tipsPool.length)], [tipsPool]);
+  // İpuçları çeviri dosyasından; dil değişince aynı ipucunun diğer dildeki hali gösterilir
+  const tipIndex = useMemo(() => Math.floor(Math.random() * 7), []);
+  const tipsPool = t('home.tips');
+  const dailyTip = Array.isArray(tipsPool) ? tipsPool[tipIndex % tipsPool.length] : '';
 
   const scrollY = useRef(new Animated.Value(0)).current;
   const bgAnim = useRef(new Animated.Value(0)).current;
@@ -122,23 +103,8 @@ export default function HomeScreen({ navigation }) {
   }, []);
 
   // iOS Widget/App Group senkronu (Native Module)
-  // Not: SharedWaterStore native modülü iOS tarafında ekli olmalı.
+  // Not: SharedWaterStore native modülü widget adımında eklenecek; yoksa sessizce geçilir.
   const { SharedWaterStore } = NativeModules;
-
-  // DEBUG: Native module bağlantısı geliyor mu?
-  useEffect(() => {
-    if (Platform.OS === "ios") {
-      // Bu log Xcode console'a düşer
-      console.log("SharedWaterStore module:", SharedWaterStore);
-
-      // Fonksiyonlar varsa bugünkü değeri de çekelim
-      if (SharedWaterStore && typeof SharedWaterStore.getTodayWater === "function") {
-        SharedWaterStore.getTodayWater((value) => {
-          console.log("SharedWaterStore getTodayWater:", value);
-        });
-      }
-    }
-  }, []);
 
   const syncTodayWaterToWidget = (nextTotalMl) => {
     if (Platform.OS !== "ios") return;
@@ -225,7 +191,7 @@ export default function HomeScreen({ navigation }) {
             <Text style={styles.greeting}>{greeting},</Text>
             <Text style={styles.subGreeting}>{t('home.ready')}</Text>
           </Animated.View>
-          <TouchableOpacity style={styles.profileBtn} onPress={() => navigation.navigate("Profil")}>
+          <TouchableOpacity style={styles.profileBtn} onPress={() => navigation.navigate("Profile")}>
             <Image
               source={
                 (profile?.gender === 'female' || profile?.gender === 'woman' || profile?.gender === 'kadın')
@@ -246,7 +212,7 @@ export default function HomeScreen({ navigation }) {
                 <Text style={styles.goalValue}>{safeGoal} ml</Text>
              </View>
              <View style={styles.percentBadge}>
-                <Text style={styles.percentText}>%{pctText}</Text>
+                <Text style={styles.percentText}>{t('home.percent', { pct: pctText })}</Text>
              </View>
           </View>
 
@@ -255,7 +221,7 @@ export default function HomeScreen({ navigation }) {
              
              <View style={styles.absoluteCenter}>
                 <Text style={styles.bigTotal}>{totalMl}</Text>
-                <Text style={styles.mlLabel}>ml</Text>
+                <Text style={styles.mlLabel}>{t('units.ml')}</Text>
              </View>
           </View>
 
@@ -301,13 +267,14 @@ export default function HomeScreen({ navigation }) {
         </View>
 
         <View style={styles.gridContainer}>
-            <MenuCard title={t('menu.history')} icon="calendar-outline" color="#4DB6AC" onPress={() => navigation.navigate("Geçmiş")} />
-            <MenuCard title={t('menu.reminders')} icon="alarm-outline" color="#E57373" onPress={() => navigation.navigate("Hatırlatıcılar")} />
-            <MenuCard title={t('menu.badges')} icon="ribbon-outline" color="#F06292" onPress={() => navigation.navigate("Rozetler")} />
-            <MenuCard title={t('menu.profile')} icon="person-outline" color="#7986CB" onPress={() => navigation.navigate("Profil")} />
+            <MenuCard title={t('menu.history')} icon="calendar-outline" color="#4DB6AC" onPress={() => navigation.navigate("History")} />
+            <MenuCard title={t('menu.reminders')} icon="alarm-outline" color="#E57373" onPress={() => navigation.navigate("Reminders")} />
+            <MenuCard title={t('menu.badges')} icon="ribbon-outline" color="#F06292" onPress={() => navigation.navigate("Badges")} />
+            <MenuCard title={t('menu.profile')} icon="person-outline" color="#7986CB" onPress={() => navigation.navigate("Profile")} />
         </View>
 
-        {/* --- Geliştirici Paneli (En Altta Gizli Gibi) --- */}
+        {/* --- Geliştirici Paneli: yalnızca geliştirme sürümünde (mağaza sürümünde tek dokunuşla tüm veriyi siliyordu) --- */}
+        {__DEV__ && (
         <View style={styles.devPanel}>
            <Text style={styles.devTitle}>{t('dev.title')}</Text>
            <View style={styles.devRow}>
@@ -316,6 +283,7 @@ export default function HomeScreen({ navigation }) {
            <TouchableOpacity onPress={() => { resetAll(); syncTodayWaterToWidget(0); }}><Text style={[styles.devLink, {color:'#E57373'}]}>{t('dev.delete')}</Text></TouchableOpacity>
            </View>
         </View>
+        )}
 
       </Animated.ScrollView>
 
@@ -335,7 +303,7 @@ export default function HomeScreen({ navigation }) {
                 onChangeText={setCustomAmount}
                 maxLength={4}
               />
-              <Text style={styles.unitText}>ml</Text>
+              <Text style={styles.unitText}>{t('units.ml')}</Text>
             </View>
             <TouchableOpacity style={styles.saveBtn} onPress={handleCustomAdd}>
               <Text style={styles.saveBtnText}>{t('modal.add')}</Text>

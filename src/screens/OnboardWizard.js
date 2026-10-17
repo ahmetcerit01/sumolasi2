@@ -21,6 +21,7 @@ import LottieView from 'lottie-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useHydrationStore } from '../storage/useHydrationStore';
+import { scheduleReminders, DEFAULT_INTERVAL_HOURS } from '../utils/reminders';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -39,6 +40,10 @@ const IMG_MALE_LENGTH = require('../../assets/illustrations/male-length.png');
 const IMG_FEMALE_LENGTH = require('../../assets/illustrations/female-length.png');
 
 const STEPS = ['gender', 'weight','height', 'wake', 'sleep', 'loading', 'result'];
+// Alttaki geri/devam butonları (60pt) + boşluk; içerik bunların altına girmesin
+const BOTTOM_NAV_SPACE = 100;
+
+const toHHMM = (d) => `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 
 export default function OnboardWizard({ onDone, onShowPaywall, t: tProp, locale: localeProp, setLanguage: setLanguageProp }) {
   const insets = useSafeAreaInsets();
@@ -127,10 +132,17 @@ export default function OnboardWizard({ onDone, onShowPaywall, t: tProp, locale:
     callback();
   };
 
-  const next = () => {
+  const next = async () => {
     // Sonuç ekranındayken (result) buton artık onboarding'i bitirmeli.
     // NOT: result son adım olduğu için `isLast` kontrolü önce gelirse buton çalışmaz.
     if (step === 'result') {
+      // Bildirim iznini kullanıcı hedefini gördükten sonra iste ve varsayılan hatırlatıcıları kur.
+      // Eskiden izin uygulama açılır açılmaz isteniyor, hatırlatıcılar ise hiç kurulmuyordu.
+      try {
+        await scheduleReminders({ wakeAt: toHHMM(wakeAt), sleepAt: toHHMM(sleepAt), intervalHours: DEFAULT_INTERVAL_HOURS });
+      } catch (e) {
+        console.warn('Reminder scheduling failed', e);
+      }
       onDone?.();
       return;
     }
@@ -160,8 +172,8 @@ export default function OnboardWizard({ onDone, onShowPaywall, t: tProp, locale:
             weightKg: weightKg,
             height: height,
             heightCm: height,
-            wakeAt: `${String(wakeAt.getHours()).padStart(2,'0')}:${String(wakeAt.getMinutes()).padStart(2,'0')}`,
-            sleepAt: `${String(sleepAt.getHours()).padStart(2,'0')}:${String(sleepAt.getMinutes()).padStart(2,'0')}`,
+            wakeAt: toHHMM(wakeAt),
+            sleepAt: toHHMM(sleepAt),
           };
 
           await AsyncStorage.multiSet([
@@ -242,17 +254,6 @@ export default function OnboardWizard({ onDone, onShowPaywall, t: tProp, locale:
     }
   };
 
-  // i18n: Bazı çeviri kütüphaneleri key yoksa "[missing ... translation]" gibi bir string döndürür.
-  // Bu string truthy olduğu için `||` fallback çalışmaz. Bu yardımcı ile temiz fallback yapıyoruz.
-  const safeT = (key, fallback) => {
-    const value = t?.(key);
-    if (!value) return fallback;
-    if (typeof value === 'string' && value.toLowerCase().includes('missing') && value.toLowerCase().includes('translation')) {
-      return fallback;
-    }
-    return value;
-  };
-
   const bgTopColor = bgAnim.interpolate({ inputRange: [0, 1], outputRange: ['#E3F2FD', '#F3E5F5'] });
 
   return (
@@ -300,7 +301,7 @@ export default function OnboardWizard({ onDone, onShowPaywall, t: tProp, locale:
           </View>
         )}
 
-        <View style={styles.contentContainer}>
+        <View style={[styles.contentContainer, { paddingBottom: insets.bottom + BOTTOM_NAV_SPACE }]}>
           {step !== 'loading' && step !== 'result' && (
             <View style={styles.glassCard}>
               
@@ -320,7 +321,7 @@ export default function OnboardWizard({ onDone, onShowPaywall, t: tProp, locale:
                         {Array.from({length:150}, (_,i) => 30+i).map(v=><Picker.Item key={v} label={`${v}`} value={v} />)}
                       </Picker>
                     </View>
-                    <Text style={styles.unitText}>kg</Text>
+                    <Text style={styles.unitText}>{t('units.kg')}</Text>
                   </View>
                 </View>
               )}
@@ -334,14 +335,14 @@ export default function OnboardWizard({ onDone, onShowPaywall, t: tProp, locale:
                         {Array.from({length:100}, (_,i) => 120+i).map(v=><Picker.Item key={v} label={`${v}`} value={v}/>)}
                       </Picker>
                     </View>
-                    <Text style={styles.unitText}>cm</Text>
+                    <Text style={styles.unitText}>{t('units.cm')}</Text>
                   </View>
                 </View>
               )}
 
               {(step === 'wake' || step === 'sleep') && (
                 <View style={styles.centerContent}>
-                  <Image source={step==='wake'?IMG_WAKE:(gender==='male'?IMG_NAP_MALE:IMG_NAP_FEMALE)} style={styles.illustration} />
+                  <Image source={step==='wake'?IMG_WAKE:(gender==='male'?IMG_NAP_MALE:IMG_NAP_FEMALE)} style={[styles.illustration, styles.illustrationSmall]} />
                   
                   <View style={styles.timeCard}>
                     {Platform.OS === 'ios' ? (
@@ -349,7 +350,7 @@ export default function OnboardWizard({ onDone, onShowPaywall, t: tProp, locale:
                         value={step==='wake'?wakeAt:sleepAt} 
                         mode="time" 
                         display="spinner" 
-                        onChange={(e,d)=>d && (step==='wake'?setWakeAt(d):setSleepAt(d))} 
+                        onValueChange={(e,d)=>d && (step==='wake'?setWakeAt(d):setSleepAt(d))} 
                         style={styles.iosPicker}
                         textColor="#1A237E"
                       />
@@ -370,7 +371,8 @@ export default function OnboardWizard({ onDone, onShowPaywall, t: tProp, locale:
                         value={step==='wake'?wakeAt:sleepAt} 
                         mode="time" 
                         is24Hour 
-                        onChange={(e,d)=>{ (step==='wake'?setShowWake(false):setShowSleep(false)); if(d) (step==='wake'?setWakeAt(d):setSleepAt(d)); }} 
+                        onValueChange={(e,d)=>{ (step==='wake'?setShowWake(false):setShowSleep(false)); if(d) (step==='wake'?setWakeAt(d):setSleepAt(d)); }}
+                        onDismiss={()=>(step==='wake'?setShowWake(false):setShowSleep(false))} 
                      />
                   )}
                 </View>
@@ -400,12 +402,12 @@ export default function OnboardWizard({ onDone, onShowPaywall, t: tProp, locale:
           {step === 'result' && (
             <View style={styles.resultContainer}>
               <View style={styles.resultCard}>
-                <Text style={styles.resultTitle}>{safeT('onboard.result.title', 'Günlük Su Hedefin')}</Text>
+                <Text style={styles.resultTitle}>{t('onboard.result.title')}</Text>
                 <Text style={styles.resultValue}>
-                  {calculatedGoalMl ? `${calculatedGoalMl} ml` : '-- ml'}
+                  {calculatedGoalMl ? `${calculatedGoalMl} ${t('units.ml')}` : `-- ${t('units.ml')}`}
                 </Text>
                 <Text style={styles.resultSub}>
-                  {safeT('onboard.result.subtitle', 'Bu hedefe göre günlük su takibini başlatabilirsin.')}
+                  {t('onboard.result.subtitle')}
                 </Text>
               </View>
             </View>
@@ -436,9 +438,7 @@ export default function OnboardWizard({ onDone, onShowPaywall, t: tProp, locale:
                 start={{x:0, y:0}} end={{x:1, y:0}}
               >
                 <Text style={styles.nextBtnText}>
-                  {step === 'result'
-                    ? safeT('common.done', 'FINISH')
-                    : (isLast ? safeT('common.done', 'DONE') : safeT('common.next', 'NEXT'))}
+                  {step === 'result' ? t('common.done') : t('common.next')}
                 </Text>
                 <Ionicons name="arrow-forward" size={20} color="#fff" />
               </LinearGradient>
@@ -501,7 +501,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 32, fontWeight: '800', color: '#1A237E', marginBottom: 8 },
   subtitle: { fontSize: 16, color: '#546E7A', lineHeight: 22 },
 
-  contentContainer: { flex: 1, justifyContent: 'center', paddingHorizontal: 20, paddingBottom: 100 },
+  contentContainer: { flex: 1, justifyContent: 'center', paddingHorizontal: 20 },
   glassCard: {
     backgroundColor: 'rgba(255,255,255,0.7)',
     borderRadius: 30,
@@ -525,6 +525,8 @@ const styles = StyleSheet.create({
 
   centerContent: { alignItems: 'center', justifyContent: 'center' },
   illustration: { width: 200, height: 200, resizeMode: 'contain', marginBottom: 20 },
+  // Saat seçici yüksek olduğu için uyanış/uyku adımlarında görsel küçülür
+  illustrationSmall: { width: 140, height: 140, marginBottom: 12 },
   pickerWrapper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   pickerGlass: { height: 180, width: 120, overflow: 'hidden', borderRadius: 20, backgroundColor: '#F0F4F8', borderWidth: 1, borderColor: '#E1F5FE' },
   picker: { width: 120, height: 180 },

@@ -9,7 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useAudioPlayer } from 'expo-audio';
-import { LanguageContext } from '../../App';
+import { LanguageContext } from '../i18n';
 
 import BadgeIcon from '../components/BadgeIcon';
 import { BADGES } from '../constants/badges';

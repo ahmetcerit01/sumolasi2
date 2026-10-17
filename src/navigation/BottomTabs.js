@@ -10,16 +10,14 @@ import HistoryScreen from '../screens/HistoryScreen';
 import RemindersScreen from '../screens/RemindersScreen';
 import BadgesScreen from '../screens/BadgesScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import { useLanguage } from '../i18n';
 
 const Tab = createBottomTabNavigator();
 const { width } = Dimensions.get('window');
 
-export default function BottomTabs({ t: tProp }) {
-  // App.js'den prop olarak gelen çeviri fonksiyonu. (Require cycle olmaması için App import etmiyoruz)
-  const t = tProp || ((key, opts) => {
-    // i18n library yoksa defaultValue dönsün
-    return opts?.defaultValue ?? key;
-  });
+export default function BottomTabs() {
+  // Dil değişince sekme etiketleri de güncellensin diye context'ten alıyoruz
+  const { t } = useLanguage();
   return (
     <Tab.Navigator
       screenOptions={{
@@ -29,51 +27,51 @@ export default function BottomTabs({ t: tProp }) {
       }}
     >
       <Tab.Screen
-        name="Ana Sayfa"
+        name="Home"
         component={HomeScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} name="home" label={t('tabs.home', { defaultValue: 'Ana Sayfa' })} />
+            <TabIcon focused={focused} name="home" label={t('tabs.home')} />
           ),
         }}
       />
 
       <Tab.Screen
-        name="Geçmiş"
+        name="History"
         component={HistoryScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} name="calendar" label={t('tabs.history', { defaultValue: 'Geçmiş' })} />
+            <TabIcon focused={focused} name="calendar" label={t('tabs.history')} />
           ),
         }}
       />
 
       <Tab.Screen
-        name="Hatırlatıcılar"
+        name="Reminders"
         component={RemindersScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} name="alarm" label={t('tabs.reminders', { defaultValue: 'Hatırlatıcılar' })} />
+            <TabIcon focused={focused} name="alarm" label={t('tabs.reminders')} />
           ),
         }}
       />
 
       <Tab.Screen
-        name="Rozetler"
+        name="Badges"
         component={BadgesScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} name="ribbon" label={t('tabs.badges', { defaultValue: 'Rozetler' })} />
+            <TabIcon focused={focused} name="ribbon" label={t('tabs.badges')} />
           ),
         }}
       />
 
       <Tab.Screen
-        name="Profil"
+        name="Profile"
         component={ProfileScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} name="person" label={t('tabs.profile', { defaultValue: 'Profil' })} />
+            <TabIcon focused={focused} name="person" label={t('tabs.profile')} />
           ),
         }}
       />
