@@ -159,5 +159,5 @@ export default function Mascot({ mood = 'normal', size = 120, style, accessibili
 
 const styles = StyleSheet.create({
   abs: { position: 'absolute' },
-  z: { fontFamily: 'Nunito_900Black' },
+  z: { fontFamily: 'Inter_700Bold' },
 });

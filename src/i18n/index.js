@@ -9,7 +9,7 @@ import { getLocales } from 'expo-localization';
 export const translations = {
   tr: {
     app: { name: 'Su Molası', tagline: 'Sağlıklı bir mola zamanı.' },
-    common: { ok: 'Tamam', cancel: 'İptal', close: 'Kapat', next: 'DEVAM ET', done: 'TAMAMLA' },
+    common: { ok: 'Tamam', cancel: 'İptal', close: 'Kapat', next: 'DEVAM ET', done: 'TAMAMLA', continue: 'Devam edelim' },
     units: { ml: 'ml', kg: 'kg', cm: 'cm', liter: 'L' },
     days: {
       short: { 0: 'Paz', 1: 'Pzt', 2: 'Sal', 3: 'Çar', 4: 'Per', 5: 'Cum', 6: 'Cmt' },
@@ -129,6 +129,7 @@ export const translations = {
     dev: {
       title: 'Geliştirici',
       reset: 'Sıfırla',
+      intro: 'Intro',
       delete: 'Sil',
     },
     modal: {
@@ -345,6 +346,24 @@ export const translations = {
       },
     },
     onboard: {
+      flow: {
+        brand: 'su molası',
+        skip: 'Atla',
+        back: 'Geri',
+        welcome: { tag: 'Küçük bir başlangıç', title: 'Her şey bir damlayla başlar.', body: 'Kendine ayırdığın küçük bir mola.\nGününe iyi gelen bir alışkanlık.', cta: 'Birlikte başlayalım' },
+        units: { tag: 'Sana göre', title: 'Önce senin ölçülerinden başlayalım.', body: 'Alıştığın birimleri seç. Sonra her şeyi sana göre ayarlayalım.', weight: 'Ağırlık birimi', height: 'Boy birimi', kg: 'Kilogram', lb: 'Pound', cm: 'Santimetre', ftin: 'Feet / inch' },
+        goalStep: 'Senin hedefin · %{n} / 3',
+        weight: { title: 'Kilon kaç?', body: 'Başlangıç hedefini oluşturmak için küçük bir bilgi.', hint: 'Hedefini daha sonra dilediğin gibi değiştirebilirsin.' },
+        height: { title: 'Boyun kaç?', body: 'Bir adım daha, profilin biraz daha sana benziyor.' },
+        rhythm: { title: 'Gününün ritmi nasıl?', body: 'Su molaların, sen uyanıkken gelsin.', wake: 'Güne başlarken', wakeSub: 'Uyanma saatin', sleep: 'Günü bitirirken', sleepSub: 'Uyuma saatin', note: 'Gece sessiz. Gün içinde senin ritminde.', cta: 'Planımı oluştur' },
+        loading: { tag: 'Parçalar bir araya geliyor', title: 'Sana uygun bir başlangıç.', body: 'Günlük su hedefini ve mola ritmini hazırlıyoruz.' },
+        goal: { tag: 'Tam sana göre', title: 'Her damla hedefine yakınlaştırır.', body: 'İlk hedefin hazır. Küçük molalarla gününe yayabilirsin.', perDay: 'ml / gün', cta: 'Molalarımı ayarlayalım' },
+        remind: { tag: 'Senin mola ritmin', title: 'Ne sıklıkla su molası verelim?', dialTop: 'Bir su molası', dialSub: 'dakikada bir', summary: '%{from} – %{to} arasında · yaklaşık %{count} hatırlatma', cta: 'Molalarımı ayarla', none: 'Şimdilik hatırlatma istemiyorum', m30: '30 dk', h1: '1 sa', h15: '1,5 sa', h2: '2 sa' },
+        notify: { tag: 'Son bir dokunuş', title: 'Mola vakti geldiğinde haberin olsun.', body: 'Seçtiğin saatlerde nazik bir hatırlatma.', previewApp: 'Su Molası', previewNow: 'şimdi', previewTitle: 'Kendine küçük bir mola ver.', previewBody: 'Bir bardak su, güne iyi gelen küçük bir adım.', hint: 'Bildirim tercihini istediğin zaman değiştirebilirsin.', cta: 'Bildirimlere izin ver' },
+        ready: { tag: 'İyi bir alışkanlığa merhaba', title: 'Bir damla.\nSonra bir yenisi.', body: 'Her şeyi hazırladık.\nŞimdi ilk su molanla başlayabilirsin.', goalLine: 'Günlük hedefin · %{amount}', remindLine: 'Her %{interval} bir hatırlatma', cta: 'Su molasına başla' },
+        everyMin: '%{n} dakikada',
+        everyHour: '%{n} saatte',
+      },
       loading: {
         bmi: 'Vücut kitle indeksin analiz ediliyor...',
         water: 'Günlük su ihtiyacın hesaplanıyor...',
@@ -380,7 +399,7 @@ export const translations = {
   },
   en: {
     app: { name: 'Water Break', tagline: 'Time for a healthy break.' },
-    common: { ok: 'OK', cancel: 'Cancel', close: 'Close', next: 'NEXT', done: 'FINISH' },
+    common: { ok: 'OK', cancel: 'Cancel', close: 'Close', next: 'NEXT', done: 'FINISH', continue: 'Continue' },
     units: { ml: 'ml', kg: 'kg', cm: 'cm', liter: 'L' },
     days: {
       short: { 0: 'Sun', 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat' },
@@ -500,6 +519,7 @@ export const translations = {
     dev: {
       title: 'Developer',
       reset: 'Reset',
+      intro: 'Intro',
       delete: 'Delete',
     },
     modal: {
@@ -716,6 +736,24 @@ export const translations = {
       },
     },
     onboard: {
+      flow: {
+        brand: 'water break',
+        skip: 'Skip',
+        back: 'Back',
+        welcome: { tag: 'A small beginning', title: 'It all starts with a drop.', body: 'A small break just for you.\nA habit that does your day good.', cta: "Let's begin together" },
+        units: { tag: 'Made for you', title: "Let's start with your measurements.", body: "Pick the units you're used to. We'll tailor everything to you.", weight: 'Weight unit', height: 'Height unit', kg: 'Kilogram', lb: 'Pound', cm: 'Centimetre', ftin: 'Feet / inch' },
+        goalStep: 'Your goal · %{n} / 3',
+        weight: { title: 'How much do you weigh?', body: 'A small detail to shape your starting goal.', hint: 'You can change your goal any time later.' },
+        height: { title: 'How tall are you?', body: 'One more step, your profile looks more like you.' },
+        rhythm: { title: "What's your daily rhythm?", body: 'Water breaks should come while you are awake.', wake: 'Starting the day', wakeSub: 'Wake-up time', sleep: 'Ending the day', sleepSub: 'Bedtime', note: 'Quiet at night. In your rhythm during the day.', cta: 'Create my plan' },
+        loading: { tag: 'Pieces coming together', title: 'A start that fits you.', body: 'Preparing your daily water goal and break rhythm.' },
+        goal: { tag: 'Made just for you', title: 'Every drop brings you closer.', body: 'Your first goal is ready. Spread it across your day with small breaks.', perDay: 'ml / day', cta: 'Set up my breaks' },
+        remind: { tag: 'Your break rhythm', title: 'How often should we take a water break?', dialTop: 'One water break', dialSub: 'minutes apart', summary: 'Between %{from} – %{to} · about %{count} reminders', cta: 'Set my breaks', none: "I don't want reminders for now", m30: '30 min', h1: '1 h', h15: '1.5 h', h2: '2 h' },
+        notify: { tag: 'One last touch', title: "Know when it's time for a break.", body: 'A gentle reminder at the times you chose.', previewApp: 'Water Break', previewNow: 'now', previewTitle: 'Give yourself a small break.', previewBody: 'A glass of water, a small step that does your day good.', hint: 'You can change notification preferences any time.', cta: 'Allow notifications' },
+        ready: { tag: 'Hello to a good habit', title: 'One drop.\nThen another.', body: "We've set everything up.\nNow you can start your first water break.", goalLine: 'Daily goal · %{amount}', remindLine: 'A reminder every %{interval}', cta: 'Start my water breaks' },
+        everyMin: '%{n} minutes',
+        everyHour: '%{n} hours',
+      },
       loading: {
         bmi: 'Analyzing your BMI...',
         water: 'Calculating your daily water need...',

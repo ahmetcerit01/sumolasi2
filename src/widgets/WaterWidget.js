@@ -70,7 +70,7 @@ const WaterWidget = (props, environment) => {
   // --- tema ---
   const dark = environment.colorScheme === 'dark';
   const C = dark
-    ? { bg1: '#122230', bg2: '#0E1C28', ink: '#EAF3FA', ink2: '#9DB0C0', accent: '#5AB2FF', onAccent: '#0B1620', track: '#16324A', done: '#4CC79A' }
+    ? { bg1: '#132130', bg2: '#0A131D', ink: '#F2F6FA', ink2: '#8C9DAF', accent: '#5AD3F0', onAccent: '#06202B', track: '#1C2D3C', done: '#5FD0A8' }
     : { bg1: '#FFFFFF', bg2: '#EEF6FC', ink: '#0F2233', ink2: '#5B6B7A', accent: '#2B8FE8', onAccent: '#FFFFFF', track: '#E3F0FB', done: '#2FA37A' };
   const accent = done ? C.done : C.accent;
 

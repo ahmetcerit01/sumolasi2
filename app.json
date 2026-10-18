@@ -57,10 +57,10 @@
         {
           "image": "./assets/splash-transparent.png",
           "imageWidth": 1,
-          "backgroundColor": "#FFFFFF",
+          "backgroundColor": "#F6FAFD",
           "dark": {
             "image": "./assets/splash-transparent.png",
-            "backgroundColor": "#FFFFFF"
+            "backgroundColor": "#0A131D"
           }
         }
       ],

@@ -308,6 +308,9 @@ export default function ProfileScreen() {
               <TouchableOpacity style={[styles.devBtn, { backgroundColor: c.chip }]} onPress={() => DeviceEventEmitter.emit('OPEN_ONBOARD')}>
                 <Text style={[type.labelStrong, { color: c.chipInk }]}>{t('reminders.onboard')}</Text>
               </TouchableOpacity>
+              <TouchableOpacity style={[styles.devBtn, { backgroundColor: c.chip }]} onPress={() => DeviceEventEmitter.emit('PREVIEW_INTRO')}>
+                <Text style={[type.labelStrong, { color: c.chipInk }]}>{t('dev.intro')}</Text>
+              </TouchableOpacity>
               <TouchableOpacity style={[styles.devBtn, { backgroundColor: c.chip }]} onPress={() => useHydrationStore.getState().resetToday()}>
                 <Text style={[type.labelStrong, { color: c.chipInk }]}>{t('dev.reset')}</Text>
               </TouchableOpacity>

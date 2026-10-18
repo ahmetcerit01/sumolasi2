@@ -29,13 +29,15 @@ import { Accelerometer } from 'expo-sensors';
 //
 // props: width, height, progress (0..1+), addSignal (her eklemede artan sayı), colors (tema)
 
+// Bardağın alta doğru daralma oranı (her yandan). Onboarding'deki parçacık bardağı da bunu kullanır.
+export const GLASS_INSET_RATIO = 0.1;
 const MAX_FILL = 0.9; // tam dolu bardakta ağızda boşluk kalsın
 const TILT_LIMIT = 0.42;
 
 export default function SkiaGlass({ width = 236, height = 300, progress = 0, addSignal = 0, colors }) {
   const W = width;
   const H = height;
-  const inset = W * 0.1; // bardağın alta doğru daralması
+  const inset = W * GLASS_INSET_RATIO; // bardağın alta doğru daralması
 
   // Bardak gövdesi (alt köşeleri yuvarlatılmış yamuk)
   const glassPath = useMemo(() => {

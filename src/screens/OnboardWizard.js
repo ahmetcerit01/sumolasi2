@@ -1,530 +1,645 @@
-import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  Image, 
-  TouchableOpacity, 
-  Platform, 
-  Animated, 
-  Easing, 
-  Dimensions,
-  LayoutAnimation,
-  UIManager,
-  StatusBar
-} from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Picker } from '@react-native-picker/picker';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Platform, Pressable, StatusBar, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import Animated, {
+  Easing,
+  FadeIn,
+  FadeInDown,
+  FadeOut,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Svg, { Circle, Path } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useHydrationStore } from '../storage/useHydrationStore';
-import { scheduleReminders, DEFAULT_INTERVAL_HOURS } from '../utils/reminders';
-import { useTheme } from '../theme/theme';
-import { fmtNumber } from '../utils/format';
-import Mascot from '../components/Mascot';
+import { computeReminderTimes, disableReminders, scheduleReminders } from '../utils/reminders';
+import { fonts, useTheme } from '../theme/theme';
+import { fmtNumber, upper } from '../utils/format';
+import ParticleMorph from '../animation/ParticleMorph';
+import { SCENE } from '../animation/particleScenes';
+import ValueScale from '../components/onboarding/ValueScale';
+import IntervalDial from '../components/onboarding/IntervalDial';
 
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
+// Onboarding: 10 adım. Tek bir parçacık sürüsü bütün akış boyunca yaşar; "kahraman" adımlarda
+// (karşılama, hazırlanıyor, hedef, hazırsın) şekil alır, form adımlarında soluk bir toz olarak arkada kalır.
+// Kayıt: hedef "hazırlanıyor" adımında hesaplanıp kaydedilir; HAS_ONBOARDED en sonda yazılır.
+// preview: geliştirici önizlemesi — hiçbir şey kaydedilmez, izin istenmez.
 
-const { width, height } = Dimensions.get('window');
+const STEPS = ['welcome', 'units', 'weight', 'height', 'rhythm', 'loading', 'goal', 'remind', 'notify', 'ready'];
+const HERO = { welcome: SCENE.DROP, loading: SCENE.RHYTHM, goal: SCENE.GLASS, ready: SCENE.DROP };
+const LB = 2.20462;
+const INTERVAL_CHIPS = [
+  { min: 30, key: 'm30' },
+  { min: 60, key: 'h1' },
+  { min: 90, key: 'h15' },
+  { min: 120, key: 'h2' },
+];
 
-// Görseller
-const IMG_MALE = require('../../assets/illustrations/male.png');
-const IMG_FEMALE = require('../../assets/illustrations/female.png');
-const IMG_WAKE = require('../../assets/illustrations/wakeup.png');
-const IMG_NAP_MALE = require('../../assets/illustrations/nap-male.png');
-const IMG_NAP_FEMALE = require('../../assets/illustrations/nap-female.png');
-const IMG_MALE_LENGTH = require('../../assets/illustrations/male-length.png');
-const IMG_FEMALE_LENGTH = require('../../assets/illustrations/female-length.png');
+const toHHMM = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+const atTime = (h, m) => {
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return d;
+};
+const fmtFtIn = (inches) => `${Math.floor(inches / 12)}′${inches % 12}″`;
 
-const STEPS = ['gender', 'weight','height', 'wake', 'sleep', 'loading', 'result'];
-// Alttaki geri/devam butonları (60pt) + boşluk; içerik bunların altına girmesin
-const BOTTOM_NAV_SPACE = 100;
+export const computeGoalMl = (weightKg, heightCm) => {
+  let ml = weightKg * 35;
+  if (heightCm > 170) ml += (heightCm - 170) * 10;
+  if (heightCm < 160) ml -= (160 - heightCm) * 10;
+  return Math.max(1200, Math.min(5000, Math.round(ml)));
+};
 
-const toHHMM = (d) => `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-
-export default function OnboardWizard({ onDone, onShowPaywall, t: tProp, locale: localeProp, setLanguage: setLanguageProp }) {
+export default function OnboardWizard({ onDone, introActive = true, preview = false, t: tProp, locale = 'en', setLanguage = () => {} }) {
+  const t = tProp || ((k) => k);
   const insets = useSafeAreaInsets();
+  const { width, height } = useWindowDimensions();
   const { c, type, dark } = useTheme();
+  const reduceMotion = useReducedMotion();
   const styles = useMemo(() => makeStyles(c, type), [c]);
-  // NOTE: App.js ile döngü (require cycle) olmaması için artık LanguageContext'i buradan import etmiyoruz.
-  // App.js bu ekrana t / locale / setLanguage prop'larını geçmeli.
-  const t = tProp || ((key) => key);
-  const locale = localeProp || 'en';
-  const setLanguage = setLanguageProp || (() => {});
-  
-  const getInitialDate = (h, m) => {
-    const d = new Date();
-    d.setHours(h, m, 0, 0);
-    return d;
+
+  const [step, setStep] = useState('welcome');
+  const [weightUnit, setWeightUnit] = useState('kg');
+  const [heightUnit, setHeightUnit] = useState('cm');
+  const [weightKg, setWeightKg] = useState(70);
+  const [heightCm, setHeightCm] = useState(170);
+  const [wakeAt, setWakeAt] = useState(atTime(8, 0));
+  const [sleepAt, setSleepAt] = useState(atTime(23, 0));
+  const [editing, setEditing] = useState(null); // 'wake' | 'sleep'
+  const [goalMl, setGoalMl] = useState(computeGoalMl(70, 170));
+  const [intervalMin, setIntervalMin] = useState(120);
+  const [remindersOn, setRemindersOn] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  const index = STEPS.indexOf(step);
+  const hero = step in HERO;
+  const go = (s) => {
+    setEditing(null);
+    setStep(s);
   };
 
-  const [stepIndex, setStepIndex] = useState(0);
-  const [gender, setGender] = useState('male');
-  const [weight, setWeight] = useState(70);
-  const [height, setHeight] = useState(170);
-  const [wakeAt, setWakeAt] = useState(getInitialDate(8, 0));
-  const [sleepAt, setSleepAt] = useState(getInitialDate(23, 0));
-  const [unit, setUnit] = useState('kg'); 
-  const [calculatedGoalMl, setCalculatedGoalMl] = useState(null);
+  // ---- Kayıt ---------------------------------------------------------------------------
+  const persistProfile = async (goal) => {
+    if (preview) return;
+    const weight = Math.round(weightKg);
+    const profileData = {
+      unit: weightUnit,
+      weightUnit,
+      heightUnit,
+      weight,
+      weightKg: weight,
+      height: heightCm,
+      heightCm,
+      wakeAt: toHHMM(wakeAt),
+      sleepAt: toHHMM(sleepAt),
+    };
+    try {
+      await AsyncStorage.multiSet([
+        ['ONBOARD_PROFILE', JSON.stringify(profileData)],
+        ['DAILY_GOAL_ML', String(goal)],
+      ]);
+      const store = useHydrationStore.getState();
+      await store.updateProfile({ weight, height: heightCm, wakeAt: profileData.wakeAt, sleepAt: profileData.sleepAt });
+      await store.setGoalMl(goal);
+    } catch (e) {
+      console.warn('Save failed', e);
+    }
+  };
 
-  const [showWake, setShowWake] = useState(Platform.OS === 'ios');
-  const [showSleep, setShowSleep] = useState(Platform.OS === 'ios');
-
-  const [loadingIdx, setLoadingIdx] = useState(0);
-  const progress = useRef(new Animated.Value(0)).current;
-  const pulse = useRef(new Animated.Value(1)).current;
-
-  const loadingPhrases = useMemo(() => [
-    t('onboard.loading.bmi'),
-    t('onboard.loading.water'),
-    t('onboard.loading.plan'),
-  ], [t]);
-
-  const isFirst = stepIndex === 0;
-  const isLast  = stepIndex === STEPS.length - 1;
-  const step = STEPS[stepIndex];
-
-  useEffect(() => {
-    const target = Math.min(stepIndex / (STEPS.length - 2), 1); 
-    Animated.timing(progress, { toValue: target, duration: 500, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
-  }, [stepIndex]);
-
+  // Hazırlanıyor: hedefi hesapla + kaydet, ilerleme çubuğu dolunca hedef ekranına geç
+  const loadProg = useSharedValue(0);
   useEffect(() => {
     if (step !== 'loading') return;
-    
-    const pulseLoop = Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulse, { toValue: 1.1, duration: 800, useNativeDriver: true }),
-          Animated.timing(pulse, { toValue: 1, duration: 800, useNativeDriver: true })
-        ])
-    );
-
-    pulseLoop.start();
-
-    const timer = setInterval(() => setLoadingIdx(i => (i+1)%3), 1500);
-    
-    return () => { 
-        clearInterval(timer);
-        pulseLoop.stop();
-    };
+    const goal = computeGoalMl(weightKg, heightCm);
+    setGoalMl(goal);
+    persistProfile(goal);
+    loadProg.value = 0;
+    loadProg.value = withTiming(1, { duration: reduceMotion ? 900 : 2600, easing: Easing.inOut(Easing.cubic) });
+    const timer = setTimeout(() => go('goal'), reduceMotion ? 1100 : 2900);
+    return () => clearTimeout(timer);
   }, [step]);
+  const loadBar = useAnimatedStyle(() => ({ width: `${loadProg.value * 100}%` }));
 
-  const animateTransition = (callback) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    callback();
+  // ---- Gezinme -------------------------------------------------------------------------
+  const back = () => {
+    if (step === 'goal') return go('rhythm');
+    if (step === 'ready') return go(remindersOn ? 'notify' : 'remind');
+    if (index > 0) go(STEPS[index - 1]);
   };
 
-  const next = async () => {
-    // Sonuç ekranındayken (result) buton artık onboarding'i bitirmeli.
-    // NOT: result son adım olduğu için `isLast` kontrolü önce gelirse buton çalışmaz.
-    if (step === 'result') {
-      // Bildirim iznini kullanıcı hedefini gördükten sonra iste ve varsayılan hatırlatıcıları kur.
-      // Eskiden izin uygulama açılır açılmaz isteniyor, hatırlatıcılar ise hiç kurulmuyordu.
+  const skip = async () => {
+    if (step === 'welcome') return go('units');
+    if (['units', 'weight', 'height', 'rhythm'].includes(step)) return go('loading');
+    if (step === 'goal') return go('remind');
+    if (step === 'remind') return go('notify');
+    if (step === 'notify') {
+      setRemindersOn(false);
+      if (!preview) disableReminders().catch(() => {});
+      return go('ready');
+    }
+  };
+
+  const noReminders = () => {
+    setRemindersOn(false);
+    if (!preview) disableReminders().catch(() => {});
+    go('ready');
+  };
+
+  const allowNotifications = async () => {
+    if (busy) return;
+    setBusy(true);
+    let on = true;
+    if (!preview) {
       try {
-        await scheduleReminders({ wakeAt: toHHMM(wakeAt), sleepAt: toHHMM(sleepAt), intervalHours: DEFAULT_INTERVAL_HOURS });
+        const n = await scheduleReminders({ wakeAt: toHHMM(wakeAt), sleepAt: toHHMM(sleepAt), intervalHours: intervalMin / 60 });
+        on = n >= 0;
       } catch (e) {
         console.warn('Reminder scheduling failed', e);
+        on = false;
       }
-      onDone?.();
-      return;
     }
-
-    if (isLast) return;
-
-    const nextStep = stepIndex + 1;
-
-    animateTransition(() => {
-      setStepIndex(nextStep);
-    });
-
-    if (STEPS[nextStep] === 'loading') {
-      setTimeout(async () => {
-        try {
-          const weightKg = unit === 'kg' ? weight : Math.round(weight / 2.20462);
-          let dailyGoalMl = weightKg * 35;
-          if (height > 170) dailyGoalMl += (height - 170) * 10;
-          if (height < 160) dailyGoalMl -= (160 - height) * 10;
-          dailyGoalMl = Math.max(1200, Math.min(5000, Math.round(dailyGoalMl)));
-          setCalculatedGoalMl(dailyGoalMl);
-
-          const profileData = {
-            gender,
-            unit,
-            weight: weightKg,
-            weightKg: weightKg,
-            height: height,
-            heightCm: height,
-            wakeAt: toHHMM(wakeAt),
-            sleepAt: toHHMM(sleepAt),
-          };
-
-          await AsyncStorage.multiSet([
-            ['ONBOARD_PROFILE', JSON.stringify(profileData)],
-            ['DAILY_GOAL_ML', String(dailyGoalMl)],
-            ['HAS_ONBOARDED', '1'],
-          ]);
-
-          const store = useHydrationStore.getState();
-          await store.updateProfile({
-            weight: weightKg,
-            height: height,
-            wakeAt: profileData.wakeAt,
-            sleepAt: profileData.sleepAt,
-            gender: gender
-          });
-          await store.setGoalMl(dailyGoalMl);
-
-        } catch (e) {
-          console.warn('Save failed', e);
-        } finally {
-          // Sonuç ekranına geç (kullanıcı hedefi görsün)
-          animateTransition(() => {
-            setStepIndex(prevIdx => {
-              const resultIdx = STEPS.indexOf('result');
-              return resultIdx > -1 ? resultIdx : prevIdx;
-            });
-          });
-        }
-      }, 3000);
-    }
-  };
-  useEffect(() => {
-    if (step !== 'result') return;
-
-    const run = async () => {
-      try {
-        const shown = await AsyncStorage.getItem('PAYWALL_SHOWN_AFTER_ONBOARD');
-        if (shown === '1') return;
-
-        // Kullanıcı günlük hedefi görsün diye kısa bir gecikme
-        setTimeout(() => {
-          onShowPaywall?.();
-        }, 600);
-
-        await AsyncStorage.setItem('PAYWALL_SHOWN_AFTER_ONBOARD', '1');
-      } catch (e) {
-        // Sessiz geç
-      }
-    };
-
-    run();
-  }, [step, onShowPaywall]);
-
-  const prev = () => { 
-    if (!isFirst) animateTransition(() => setStepIndex(stepIndex - 1)); 
+    setRemindersOn(on);
+    setBusy(false);
+    go('ready');
   };
 
-  const getTitle = () => {
-    switch (step) {
-      case 'gender': return t('onboard.gender.title');
-      case 'weight': return t('onboard.weight.title');
-      case 'height': return t('onboard.height.title');
-      case 'wake':   return t('onboard.wake.title');
-      case 'sleep':  return t('onboard.sleep.title');
-      default: return '';
-    }
+  const finish = async () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    if (!preview) await AsyncStorage.setItem('HAS_ONBOARDED', '1').catch(() => {});
+    onDone?.();
   };
 
-  const getSubtitle = () => {
-    switch (step) {
-      case 'gender': return t('onboard.gender.subtitle');
-      case 'weight': return t('onboard.weight.subtitle');
-      case 'height': return t('onboard.height.subtitle');
-      case 'wake':   return t('onboard.wake.subtitle');
-      case 'sleep':  return t('onboard.sleep.subtitle');
-      default: return '';
-    }
-  };
+  const CTA = {
+    welcome: { label: t('onboard.flow.welcome.cta'), onPress: () => go('units') },
+    units: { label: t('common.continue'), onPress: () => go('weight') },
+    weight: { label: t('common.continue'), onPress: () => go('height') },
+    height: { label: t('common.continue'), onPress: () => go('rhythm') },
+    rhythm: { label: t('onboard.flow.rhythm.cta'), onPress: () => go('loading') },
+    goal: { label: t('onboard.flow.goal.cta'), onPress: () => go('remind') },
+    remind: { label: t('onboard.flow.remind.cta'), onPress: () => go('notify') },
+    notify: { label: t('onboard.flow.notify.cta'), onPress: allowNotifications },
+    ready: { label: t('onboard.flow.ready.cta'), onPress: finish, icon: 'water' },
+  }[step];
+
+  // ---- Parçacık sahnesi yerleşimi: üstteki boş alanın ortası ---------------------------
+  const stageTop = insets.top + 52;
+  const stageBottom = height - 430;
+  const stageCy = (stageTop + stageBottom) / 2;
+  const stageR = Math.min(width * 0.27, ((stageBottom - stageTop) / 2) * 0.82);
+
+  const intervalText =
+    intervalMin % 60 === 0
+      ? t('onboard.flow.everyHour', { n: intervalMin / 60 })
+      : t('onboard.flow.everyMin', { n: intervalMin });
+  const reminderCount = computeReminderTimes(toHHMM(wakeAt), toHHMM(sleepAt), intervalMin / 60).length;
 
   return (
     <View style={styles.container}>
-      <StatusBar translucent barStyle={c.statusBar} backgroundColor="transparent" />
+      <StatusBar barStyle={c.statusBar} backgroundColor="transparent" translucent />
 
-      <SafeAreaView style={[styles.safe, { paddingTop: insets.top }]} edges={['top']}>
-        
-        {/* --- LANGUAGE TOGGLE (Step 1 Only) --- */}
-        {isFirst && (
-          <View style={[styles.langToggle, { top: insets.top + 15 }]}>
-            <TouchableOpacity 
-              onPress={() => setLanguage('en')}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Text style={[styles.langText, locale === 'en' && styles.langActive]}>English</Text>
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        <ParticleMorph
+          key={`${width}x${height}`}
+          width={width}
+          height={height}
+          centerX={width / 2}
+          centerY={stageCy}
+          radius={stageR}
+          scene={HERO[step] ?? SCENE.SCATTER}
+          dim={hero ? 0 : 0.6}
+          colors={c}
+          dark={dark}
+          reduceMotion={reduceMotion}
+          active={introActive}
+          transitionMs={1000}
+          entryMs={1600}
+        />
+      </View>
+
+      {/* üst çubuk */}
+      <View style={[styles.topBar, { marginTop: insets.top + 6 }]}>
+        <View style={styles.topLeft}>
+          {index > 0 && step !== 'loading' && (
+            <TouchableOpacity onPress={back} hitSlop={12} accessibilityRole="button" accessibilityLabel={t('onboard.flow.back')} style={styles.backBtn}>
+              <Ionicons name="chevron-back" size={24} color={c.ink2} />
             </TouchableOpacity>
-            
-            <Text style={styles.langSep}>|</Text>
-            
-            <TouchableOpacity 
-              onPress={() => setLanguage('tr')}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Text style={[styles.langText, locale === 'tr' && styles.langActive]}>Türkçe</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {step !== 'loading' && step !== 'result' && (
-          <View style={styles.header}>
-            <View style={styles.progressContainer}>
-              <Animated.View style={[styles.progressBar, { 
-                width: progress.interpolate({ inputRange: [0, 1], outputRange: ['5%', '100%'] }) 
-              }]} />
-            </View>
-            <Text style={styles.title}>{getTitle()}</Text>
-            <Text style={styles.subtitle}>{getSubtitle()}</Text>
-          </View>
-        )}
-
-        <View style={[styles.contentContainer, { paddingBottom: insets.bottom + BOTTOM_NAV_SPACE }]}>
-          {step !== 'loading' && step !== 'result' && (
-            <View style={styles.glassCard}>
-              
-              {step === 'gender' && (
-                <View style={styles.genderRow}>
-                  <Avatar styles={styles} label={t('onboard.gender.male')} active={gender==='male'} img={IMG_MALE} onPress={()=>setGender('male')} color={c.accent} />
-                  <Avatar styles={styles} label={t('onboard.gender.female')} active={gender==='female'} img={IMG_FEMALE} onPress={()=>setGender('female')} color={dark ? '#F28CA6' : '#D9506F'} />
-                </View>
-              )}
-
-              {step === 'weight' && (
-                <View style={styles.centerContent}>
-                  <Image source={gender==='male'?IMG_MALE:IMG_FEMALE} style={styles.illustration} />
-                  <View style={styles.pickerWrapper}>
-                    <View style={styles.pickerGlass}>
-                      <Picker selectedValue={weight} onValueChange={setWeight} style={styles.picker} itemStyle={styles.pickerItem} themeVariant={dark ? 'dark' : 'light'}>
-                        {Array.from({length:150}, (_,i) => 30+i).map(v=><Picker.Item key={v} label={`${v}`} value={v} />)}
-                      </Picker>
-                    </View>
-                    <Text style={styles.unitText}>{t('units.kg')}</Text>
-                  </View>
-                </View>
-              )}
-
-              {step === 'height' && (
-                <View style={styles.centerContent}>
-                  <Image source={gender==='male'?IMG_MALE_LENGTH:IMG_FEMALE_LENGTH} style={styles.illustration} />
-                  <View style={styles.pickerWrapper}>
-                    <View style={styles.pickerGlass}>
-                      <Picker selectedValue={height} onValueChange={setHeight} style={styles.picker} itemStyle={styles.pickerItem} themeVariant={dark ? 'dark' : 'light'}>
-                        {Array.from({length:100}, (_,i) => 120+i).map(v=><Picker.Item key={v} label={`${v}`} value={v}/>)}
-                      </Picker>
-                    </View>
-                    <Text style={styles.unitText}>{t('units.cm')}</Text>
-                  </View>
-                </View>
-              )}
-
-              {(step === 'wake' || step === 'sleep') && (
-                <View style={styles.centerContent}>
-                  <Image source={step==='wake'?IMG_WAKE:(gender==='male'?IMG_NAP_MALE:IMG_NAP_FEMALE)} style={[styles.illustration, styles.illustrationSmall]} />
-                  
-                  <View style={styles.timeCard}>
-                    {Platform.OS === 'ios' ? (
-                      <DateTimePicker 
-                        value={step==='wake'?wakeAt:sleepAt} 
-                        mode="time" 
-                        display="spinner" 
-                        onValueChange={(e,d)=>d && (step==='wake'?setWakeAt(d):setSleepAt(d))} 
-                        style={styles.iosPicker}
-                        textColor={c.ink}
-                        themeVariant={dark ? 'dark' : 'light'}
-                      />
-                    ) : (
-                      <TouchableOpacity onPress={()=>(step==='wake'?setShowWake(true):setShowSleep(true))} style={styles.androidTimeBtn}>
-                         <Text style={styles.androidTimeTxt}>
-                           {step==='wake' 
-                             ? `${String(wakeAt.getHours()).padStart(2,'0')}:${String(wakeAt.getMinutes()).padStart(2,'0')}` 
-                             : `${String(sleepAt.getHours()).padStart(2,'0')}:${String(sleepAt.getMinutes()).padStart(2,'0')}`}
-                         </Text>
-                         <Ionicons name="time-outline" size={24} color={c.onAccent} />
-                      </TouchableOpacity>
-                    )}
-                  </View>
-
-                  {(step==='wake'?showWake:showSleep) && Platform.OS==='android' && (
-                     <DateTimePicker 
-                        value={step==='wake'?wakeAt:sleepAt} 
-                        mode="time" 
-                        is24Hour 
-                        onValueChange={(e,d)=>{ (step==='wake'?setShowWake(false):setShowSleep(false)); if(d) (step==='wake'?setWakeAt(d):setSleepAt(d)); }}
-                        onDismiss={()=>(step==='wake'?setShowWake(false):setShowSleep(false))} 
-                     />
-                  )}
-                </View>
-              )}
-
+          )}
+          <View style={[styles.logoRing, { borderColor: c.accent }]} />
+          <Text style={styles.brand}>{t('onboard.flow.brand')}</Text>
+        </View>
+        <View style={styles.topRight}>
+          {step === 'welcome' && (
+            <View style={styles.lang}>
+              {['tr', 'en'].map((l, i) => (
+                <React.Fragment key={l}>
+                  {i > 0 && <Text style={styles.langSep}>·</Text>}
+                  <TouchableOpacity onPress={() => setLanguage(l)} hitSlop={8} accessibilityRole="button">
+                    <Text style={[styles.langText, locale === l && { color: c.accentInk }]}>{l.toUpperCase()}</Text>
+                  </TouchableOpacity>
+                </React.Fragment>
+              ))}
             </View>
           )}
-
-          {step === 'loading' && (
-            <View style={styles.loadingContainer}>
-              <Animated.View style={{ transform: [{ scale: pulse }] }}>
-                <Mascot mood="happy" size={150} />
-              </Animated.View>
-              <Text style={styles.loadingText}>{loadingPhrases[loadingIdx]}</Text>
-              <View style={styles.loadingDots}>
-                {[0, 1, 2].map((i) => (
-                  <View key={i} style={[styles.dot, { backgroundColor: c.accent, opacity: i === loadingIdx ? 1 : 0.3 }]} />
-                ))}
-              </View>
-            </View>
-          )}
-          {step === 'result' && (
-            <View style={styles.resultContainer}>
-              <Mascot mood="celebrate" size={140} />
-              <View style={styles.resultCard}>
-                <Text style={styles.resultTitle}>{t('onboard.result.title')}</Text>
-                <Text style={styles.resultValue}>
-                  {calculatedGoalMl ? `${fmtNumber(calculatedGoalMl)} ${t('units.ml')}` : `-- ${t('units.ml')}`}
-                </Text>
-                <Text style={styles.resultSub}>
-                  {t('onboard.result.subtitle')}
-                </Text>
-              </View>
-            </View>
+          {step !== 'loading' && step !== 'ready' && (
+            <TouchableOpacity onPress={skip} hitSlop={12} accessibilityRole="button">
+              <Text style={styles.skip}>{t('onboard.flow.skip')}</Text>
+            </TouchableOpacity>
           )}
         </View>
+      </View>
 
-        {/* --- ALT BUTONLAR (ABSOLUTE POSITION) --- */}
-        {step !== 'loading' && (
-          <View style={[styles.bottomNav, { 
-             bottom: insets.bottom + 20, 
-             justifyContent: (isFirst || step === 'result') ? 'center' : 'space-between'
-          }]}>
-            
-            {!isFirst && step !== 'result' && (
-              <TouchableOpacity onPress={prev} style={styles.backBtn}>
-                <Ionicons name="arrow-back" size={24} color={c.ink2} />
-              </TouchableOpacity>
-            )}
-            
-            <TouchableOpacity 
-              onPress={next} 
-              style={[styles.nextBtn, !isFirst && step !== 'result' && { marginLeft: 20 }]}
-              activeOpacity={0.8}
-            >
-              <View style={styles.nextBtnInner}>
-                <Text style={styles.nextBtnText}>
-                  {step === 'result' ? t('common.done') : t('common.next')}
-                </Text>
-                <Ionicons name="arrow-forward" size={20} color={c.onAccent} />
+      {/* adım içeriği */}
+      <Animated.View
+        key={step}
+        entering={FadeInDown.duration(420).delay(120)}
+        exiting={FadeOut.duration(140)}
+        style={[styles.body, hero && styles.heroBody]}
+      >
+        {step === 'welcome' && (
+          <HeroText styles={styles} tag={t('onboard.flow.welcome.tag')} title={t('onboard.flow.welcome.title')} body={t('onboard.flow.welcome.body')} />
+        )}
+
+        {step === 'units' && (
+          <>
+            <Header styles={styles} tag={t('onboard.flow.units.tag')} title={t('onboard.flow.units.title')} body={t('onboard.flow.units.body')} />
+            <View style={styles.formArea}>
+              <Text style={styles.groupLabel}>{t('onboard.flow.units.weight')}</Text>
+              <View style={styles.optRow}>
+                <Option styles={styles} c={c} on={weightUnit === 'kg'} title={t('onboard.flow.units.kg')} sub="kg" onPress={() => setWeightUnit('kg')} />
+                <Option styles={styles} c={c} on={weightUnit === 'lb'} title={t('onboard.flow.units.lb')} sub="lb" onPress={() => setWeightUnit('lb')} />
               </View>
-            </TouchableOpacity>
+              <Text style={[styles.groupLabel, { marginTop: 28 }]}>{t('onboard.flow.units.height')}</Text>
+              <View style={styles.optRow}>
+                <Option styles={styles} c={c} on={heightUnit === 'cm'} title={t('onboard.flow.units.cm')} sub="cm" onPress={() => setHeightUnit('cm')} />
+                <Option styles={styles} c={c} on={heightUnit === 'ftin'} title={t('onboard.flow.units.ftin')} sub="ft / in" onPress={() => setHeightUnit('ftin')} />
+              </View>
+            </View>
+          </>
+        )}
+
+        {step === 'weight' && (
+          <>
+            <Header styles={styles} tag={t('onboard.flow.goalStep', { n: 1 })} title={t('onboard.flow.weight.title')} body={t('onboard.flow.weight.body')} />
+            <View style={styles.scaleArea}>
+              {weightUnit === 'kg' ? (
+                <ValueScale value={Math.round(weightKg)} min={35} max={150} onChange={setWeightKg} unit="kg" minLabel="35 kg" maxLabel="150 kg" />
+              ) : (
+                <ValueScale value={Math.round(weightKg * LB)} min={77} max={330} onChange={(lb) => setWeightKg(lb / LB)} unit="lb" minLabel="77 lb" maxLabel="330 lb" />
+              )}
+            </View>
+            <Text style={[styles.hint, { marginBottom: 20 }]}>{t('onboard.flow.weight.hint')}</Text>
+          </>
+        )}
+
+        {step === 'height' && (
+          <>
+            <Header styles={styles} tag={t('onboard.flow.goalStep', { n: 2 })} title={t('onboard.flow.height.title')} body={t('onboard.flow.height.body')} />
+            <View style={styles.scaleArea}>
+              {heightUnit === 'cm' ? (
+                <ValueScale value={heightCm} min={130} max={210} onChange={setHeightCm} unit="cm" minLabel="130 cm" maxLabel="210 cm" />
+              ) : (
+                <ValueScale
+                  value={Math.round(heightCm / 2.54)}
+                  min={51}
+                  max={83}
+                  onChange={(inch) => setHeightCm(Math.round(inch * 2.54))}
+                  format={fmtFtIn}
+                  minLabel={fmtFtIn(51)}
+                  maxLabel={fmtFtIn(83)}
+                />
+              )}
+            </View>
+          </>
+        )}
+
+        {step === 'rhythm' && (
+          <>
+            <Header styles={styles} tag={t('onboard.flow.goalStep', { n: 3 })} title={t('onboard.flow.rhythm.title')} body={t('onboard.flow.rhythm.body')} />
+            <View style={styles.formArea}>
+              <TimeRow styles={styles} c={c} title={t('onboard.flow.rhythm.wake')} sub={t('onboard.flow.rhythm.wakeSub')} value={toHHMM(wakeAt)} on={editing === 'wake'} onPress={() => setEditing(editing === 'wake' ? null : 'wake')} />
+              <TimeRow styles={styles} c={c} title={t('onboard.flow.rhythm.sleep')} sub={t('onboard.flow.rhythm.sleepSub')} value={toHHMM(sleepAt)} on={editing === 'sleep'} onPress={() => setEditing(editing === 'sleep' ? null : 'sleep')} />
+              {editing ? (
+                <Animated.View entering={FadeIn.duration(200)} style={styles.pickerWrap}>
+                  <DateTimePicker
+                    value={editing === 'wake' ? wakeAt : sleepAt}
+                    mode="time"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    is24Hour
+                    minuteInterval={5}
+                    themeVariant={dark ? 'dark' : 'light'}
+                    textColor={c.ink}
+                    onValueChange={(e, d) => {
+                      if (Platform.OS !== 'ios') setEditing(null);
+                      if (d) (editing === 'wake' ? setWakeAt : setSleepAt)(d);
+                    }}
+                    onDismiss={() => setEditing(null)}
+                  />
+                </Animated.View>
+              ) : (
+                <Animated.View entering={FadeIn.duration(250)}>
+                  <DayArc c={c} width={width - 56} wakeAt={wakeAt} sleepAt={sleepAt} />
+                  <Text style={[styles.hint, { marginTop: 26 }]}>{t('onboard.flow.rhythm.note')}</Text>
+                </Animated.View>
+              )}
+            </View>
+          </>
+        )}
+
+        {step === 'loading' && (
+          <>
+            <HeroText styles={styles} tag={t('onboard.flow.loading.tag')} title={t('onboard.flow.loading.title')} body={t('onboard.flow.loading.body')} />
+            <View style={[styles.loadTrack, { backgroundColor: c.track }]}>
+              <Animated.View style={[styles.loadFill, { backgroundColor: c.accent }, loadBar]} />
+            </View>
+            <View style={{ height: 96 }} />
+          </>
+        )}
+
+        {step === 'goal' && (
+          <>
+            <HeroText styles={styles} tag={t('onboard.flow.goal.tag')} title={t('onboard.flow.goal.title')} body={t('onboard.flow.goal.body')} />
+            <View style={styles.goalRow}>
+              <Text style={[type.display, styles.goalNum, { color: c.accent }]}>{fmtNumber(goalMl)}</Text>
+              <Text style={[type.heading, { color: c.ink2, fontSize: 22, marginLeft: 8 }]}>{t('onboard.flow.goal.perDay')}</Text>
+            </View>
+          </>
+        )}
+
+        {step === 'remind' && (
+          <View style={styles.remindWrap}>
+            <Text style={[styles.overline, { textAlign: 'center' }]}>{upper(t('onboard.flow.remind.tag'))}</Text>
+            <Text style={[styles.title, { textAlign: 'center' }]}>{t('onboard.flow.remind.title')}</Text>
+            <View style={{ marginTop: 18 }}>
+              <IntervalDial minutes={intervalMin} onChange={setIntervalMin} topLabel={t('onboard.flow.remind.dialTop')} subLabel={t('onboard.flow.remind.dialSub')} />
+            </View>
+            <View style={[styles.chips, { borderColor: c.divider, backgroundColor: c.card }]}>
+              {INTERVAL_CHIPS.map((ch) => {
+                const on = ch.min === intervalMin;
+                return (
+                  <TouchableOpacity
+                    key={ch.key}
+                    onPress={() => {
+                      Haptics.selectionAsync().catch(() => {});
+                      setIntervalMin(ch.min);
+                    }}
+                    style={[styles.chip, on && { backgroundColor: c.chip }]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: on }}
+                  >
+                    <Text style={[type.bodyStrong, { fontSize: 15, color: on ? c.chipInk : c.ink2 }]}>{t(`onboard.flow.remind.${ch.key}`)}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <Text style={[type.bodyStrong, { color: c.ink, fontSize: 15, textAlign: 'center', marginTop: 18 }]}>
+              {t('onboard.flow.remind.summary', { from: toHHMM(wakeAt), to: toHHMM(sleepAt), count: reminderCount })}
+            </Text>
+            <Text style={[styles.hint, { textAlign: 'center', marginTop: 4 }]}>{t('onboard.flow.rhythm.note')}</Text>
           </View>
         )}
 
-      </SafeAreaView>
+        {step === 'notify' && (
+          <>
+            <Header styles={styles} tag={t('onboard.flow.notify.tag')} title={t('onboard.flow.notify.title')} body={t('onboard.flow.notify.body')} />
+            <View style={styles.formArea}>
+              <View style={[styles.notif, { backgroundColor: c.card, borderColor: c.divider }]}>
+                <View style={styles.notifHead}>
+                  <View style={[styles.notifIcon, { backgroundColor: c.accent }]}>
+                    <Ionicons name="water" size={13} color={c.onAccent} />
+                  </View>
+                  <Text style={[type.label, { color: c.ink2, flex: 1 }]}>{upper(t('onboard.flow.notify.previewApp'))}</Text>
+                  <Text style={[type.label, { color: c.ink3 }]}>{t('onboard.flow.notify.previewNow')}</Text>
+                </View>
+                <Text style={[type.bodyStrong, { color: c.ink, fontSize: 17, marginTop: 10 }]}>{t('onboard.flow.notify.previewTitle')}</Text>
+                <Text style={[type.body, { color: c.ink2, fontSize: 15, marginTop: 4, lineHeight: 21 }]}>{t('onboard.flow.notify.previewBody')}</Text>
+              </View>
+              <Text style={[styles.hint, { marginTop: 26 }]}>{t('onboard.flow.notify.hint')}</Text>
+            </View>
+          </>
+        )}
+
+        {step === 'ready' && (
+          <>
+            <HeroText styles={styles} tag={t('onboard.flow.ready.tag')} title={t('onboard.flow.ready.title')} body={t('onboard.flow.ready.body')} />
+            <View style={{ marginTop: 18, gap: 8 }}>
+              <CheckLine styles={styles} c={c} text={t('onboard.flow.ready.goalLine', { amount: `${fmtNumber(goalMl)} ml` })} />
+              {remindersOn && <CheckLine styles={styles} c={c} text={t('onboard.flow.ready.remindLine', { interval: intervalText })} />}
+            </View>
+          </>
+        )}
+      </Animated.View>
+
+      {/* alt: ana buton + ilerleme */}
+      <View style={[styles.bottom, { paddingBottom: insets.bottom + 10 }]}>
+        {CTA ? (
+          <PrimaryButton styles={styles} c={c} label={CTA.label} icon={CTA.icon} onPress={CTA.onPress} disabled={busy} />
+        ) : (
+          <View style={{ height: 60 }} />
+        )}
+        {step === 'remind' ? (
+          <TouchableOpacity onPress={noReminders} hitSlop={8} style={styles.secondary} accessibilityRole="button">
+            <Text style={[type.label, { color: c.ink2, fontSize: 14, textDecorationLine: 'underline' }]}>{t('onboard.flow.remind.none')}</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.secondary} />
+        )}
+        <View style={styles.progress}>
+          {STEPS.map((s, i) => (
+            <View
+              key={s}
+              style={[
+                styles.seg,
+                { backgroundColor: i <= index ? c.accent : c.track, opacity: i < index ? 0.45 : 1 },
+                i === index && { height: 4 },
+              ]}
+            />
+          ))}
+        </View>
+      </View>
     </View>
   );
 }
 
-const Avatar = ({styles, label, active, img, onPress, color}) => (
-  <TouchableOpacity onPress={onPress} activeOpacity={0.9} style={[styles.avatarCard, active && {borderColor: color, transform:[{scale:1.05}]}]}>
-    <View style={[styles.avatarCircle, active && {backgroundColor: color+'20'}]}>
-       <Image source={img} style={styles.avatarImg} />
-    </View>
-    <Text style={[styles.avatarLabel, active && styles.avatarLabelActive, active && {color}]}>{label}</Text>
-    {active && <View style={[styles.checkBadge, {backgroundColor: color}]}><Ionicons name="checkmark" size={16} color="#fff"/></View>}
+// ---- Parçalar ----------------------------------------------------------------------------
+
+const Header = ({ styles, tag, title, body }) => (
+  <View style={styles.header}>
+    <Text style={styles.overline}>{upper(tag)}</Text>
+    <Text style={styles.title}>{title}</Text>
+    {body ? <Text style={styles.bodyText}>{body}</Text> : null}
+  </View>
+);
+
+const HeroText = ({ styles, tag, title, body }) => (
+  <View>
+    <Text style={styles.overline}>{upper(tag)}</Text>
+    <Text style={styles.title}>{title}</Text>
+    <Text style={styles.bodyText}>{body}</Text>
+  </View>
+);
+
+const Option = ({ styles, c, on, title, sub, onPress }) => (
+  <TouchableOpacity
+    onPress={() => {
+      Haptics.selectionAsync().catch(() => {});
+      onPress();
+    }}
+    activeOpacity={0.85}
+    style={[styles.option, { backgroundColor: on ? c.chip : c.card, borderColor: on ? c.accent : c.divider }]}
+    accessibilityRole="radio"
+    accessibilityState={{ selected: on }}
+  >
+    <Text style={[styles.optTitle, { color: on ? c.accentInk : c.ink }]}>{title}</Text>
+    <Text style={[styles.optSub, { color: c.ink2 }]}>{sub}</Text>
   </TouchableOpacity>
 );
 
-// Tema token'larıyla stiller (açık/koyu)
-const makeStyles = (c, type) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: c.bg },
-  safe: { flex: 1 },
+const TimeRow = ({ styles, c, title, sub, value, on, onPress }) => (
+  <TouchableOpacity
+    onPress={onPress}
+    activeOpacity={0.85}
+    style={[styles.timeRow, { backgroundColor: c.card, borderColor: on ? c.accent : 'transparent' }]}
+    accessibilityRole="button"
+    accessibilityLabel={`${title}, ${value}`}
+  >
+    <View style={{ flex: 1 }}>
+      <Text style={styles.timeTitle}>{title}</Text>
+      <Text style={styles.timeSub}>{sub}</Text>
+    </View>
+    <View style={[styles.timePill, { backgroundColor: c.cardAlt }]}>
+      <Text style={[styles.timeValue, { color: c.accentInk }]}>{value}</Text>
+      <Ionicons name="time-outline" size={22} color={c.ink} />
+    </View>
+  </TouchableOpacity>
+);
 
-  langToggle: {
-    position: 'absolute',
-    right: 22,
-    zIndex: 100,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: c.card,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
-  },
-  langText: { ...type.label, fontSize: 14, color: c.ink3 },
-  langActive: { ...type.labelStrong, fontSize: 14, color: c.accentInk },
-  langSep: { marginHorizontal: 8, color: c.ink3, fontSize: 12 },
+// Gün yayı: uyanıştan uykuya; güneş şu anki saatin gün içindeki yerinde durur.
+// Uyku saatlerindeyse yayın ortasında soluk bir ay görünür.
+function DayArc({ c, width, wakeAt, sleepAt }) {
+  const H = 64;
+  const y0 = 52;
+  const cy = -16;
+  const now = new Date();
+  const toMin = (d) => d.getHours() * 60 + d.getMinutes();
+  const start = toMin(wakeAt);
+  let end = toMin(sleepAt);
+  if (end <= start) end += 1440;
+  let cur = toMin(now);
+  if (cur < start) cur += 1440;
+  const night = cur > end;
+  const f = night ? 0.5 : Math.max(0.06, Math.min(0.94, (cur - start) / (end - start)));
+  const orb = night ? '#C9D8EA' : '#F5C77E';
+  const sx = (1 - f) * (1 - f) * 0 + 2 * f * (1 - f) * (width / 2) + f * f * width;
+  const sy = (1 - f) * (1 - f) * y0 + 2 * f * (1 - f) * cy + f * f * y0;
+  return (
+    <Svg width={width} height={H} style={{ marginTop: 26 }}>
+      <Path d={`M 0 ${y0} Q ${width / 2} ${cy} ${width} ${y0}`} stroke={c.ink3} strokeOpacity={0.6} strokeWidth={1.2} fill="none" />
+      <Circle cx={sx} cy={sy} r={18} fill={orb} fillOpacity={0.12} />
+      <Circle cx={sx} cy={sy} r={10} fill={orb} />
+    </Svg>
+  );
+}
 
-  header: { paddingHorizontal: 22, marginTop: 56, marginBottom: 10 },
-  progressContainer: { height: 6, backgroundColor: c.track, borderRadius: 3, overflow: 'hidden', marginBottom: 22 },
-  progressBar: { height: '100%', backgroundColor: c.accent, borderRadius: 3 },
-  title: { ...type.title, color: c.ink, marginBottom: 6 },
-  subtitle: { ...type.body, color: c.ink2, lineHeight: 22 },
+const CheckLine = ({ styles, c, text }) => (
+  <View style={styles.checkLine}>
+    <Ionicons name="checkmark" size={20} color={c.accent} />
+    <Text style={[styles.hint, { color: c.ink2, marginLeft: 10 }]}>{text}</Text>
+  </View>
+);
 
-  contentContainer: { flex: 1, justifyContent: 'center', paddingHorizontal: 20 },
-  glassCard: {
-    backgroundColor: c.card,
-    borderRadius: 28,
-    padding: 20,
-    shadowColor: c.shadowColor,
-    shadowOpacity: c.shadowOpacity,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
-    minHeight: 380,
-    justifyContent: 'center',
-  },
+function PrimaryButton({ styles, c, label, icon, onPress, disabled }) {
+  const pressed = useSharedValue(0);
+  const anim = useAnimatedStyle(() => ({ transform: [{ scale: 1 - pressed.value * 0.03 }] }));
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      onPressIn={() => (pressed.value = withTiming(1, { duration: 90 }))}
+      onPressOut={() => (pressed.value = withTiming(0, { duration: 160 }))}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <Animated.View style={[styles.cta, { backgroundColor: c.accent, shadowColor: c.accent, opacity: disabled ? 0.7 : 1 }, anim]}>
+        <Text style={styles.ctaText} numberOfLines={1}>{label}</Text>
+        <Ionicons name={icon ? `${icon}-outline` : 'arrow-forward'} size={24} color={c.onAccent} />
+      </Animated.View>
+    </Pressable>
+  );
+}
 
-  genderRow: { flexDirection: 'row', justifyContent: 'space-around' },
-  avatarCard: { alignItems: 'center', padding: 15, borderRadius: 22, borderWidth: 2, borderColor: 'transparent', backgroundColor: c.cardAlt },
-  avatarCircle: { width: 120, height: 120, borderRadius: 60, backgroundColor: c.card, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
-  avatarImg: { width: 100, height: 100, resizeMode: 'contain' },
-  avatarLabel: { ...type.bodyStrong, fontSize: 18, color: c.ink2 },
-  avatarLabelActive: { fontFamily: type.title.fontFamily },
-  checkBadge: { position: 'absolute', top: 10, right: 10, width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+const makeStyles = (c, type) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: c.bg },
+    topBar: { height: 44, paddingHorizontal: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    topLeft: { flexDirection: 'row', alignItems: 'center' },
+    backBtn: { marginRight: 14, marginLeft: -6 },
+    logoRing: { width: 9, height: 9, borderRadius: 5, borderWidth: 1.5, marginRight: 10, opacity: 0.8 },
+    brand: { ...type.bodyStrong, fontSize: 17, color: c.ink, letterSpacing: 0.2 },
+    topRight: { flexDirection: 'row', alignItems: 'center', gap: 18 },
+    lang: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    langText: { ...type.labelStrong, fontSize: 13, color: c.ink3 },
+    langSep: { color: c.ink3 },
+    skip: { ...type.body, fontSize: 16, color: c.ink2 },
 
-  centerContent: { alignItems: 'center', justifyContent: 'center' },
-  illustration: { width: 200, height: 200, resizeMode: 'contain', marginBottom: 20 },
-  // Saat seçici yüksek olduğu için uyanış/uyku adımlarında görsel küçülür
-  illustrationSmall: { width: 140, height: 140, marginBottom: 12 },
-  pickerWrapper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-  pickerGlass: { height: 180, width: 120, overflow: 'hidden', borderRadius: 20, backgroundColor: c.cardAlt },
-  picker: { width: 120, height: 180 },
-  pickerItem: { fontSize: 32, fontFamily: type.title.fontFamily, color: c.ink },
-  unitText: { ...type.heading, color: c.ink3, marginLeft: 15 },
+    body: { flex: 1, paddingHorizontal: 28 },
+    heroBody: { justifyContent: 'flex-end', paddingBottom: 36 },
+    header: { marginTop: 28 },
+    overline: { ...type.overline, color: c.accent, marginBottom: 16 },
+    title: { ...type.title, fontSize: 34, lineHeight: 40, letterSpacing: -1.2, color: c.ink },
+    bodyText: { ...type.body, fontFamily: fonts.medium, fontSize: 16, lineHeight: 25, color: c.ink2, marginTop: 14 },
+    hint: { ...type.body, fontFamily: fonts.medium, fontSize: 15, lineHeight: 22, color: c.ink2 },
 
-  timeCard: { backgroundColor: c.cardAlt, padding: 10, borderRadius: 20, alignItems: 'center', justifyContent: 'center', minWidth: 200 },
-  iosPicker: { width: 200 },
-  androidTimeBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.accent, paddingVertical: 15, paddingHorizontal: 30, borderRadius: 18 },
-  androidTimeTxt: { ...type.display, fontSize: 36, color: c.onAccent, marginRight: 10 },
+    formArea: { marginTop: 30 },
+    groupLabel: { ...type.body, fontSize: 15, color: c.ink2, marginBottom: 14 },
+    optRow: { flexDirection: 'row', gap: 14 },
+    option: { flex: 1, borderRadius: 22, borderWidth: 1.5, paddingHorizontal: 20, paddingVertical: 20 },
+    optTitle: { ...type.bodyStrong, fontSize: 18 },
+    optSub: { ...type.body, fontSize: 15, marginTop: 8 },
 
-  loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 18 },
-  loadingText: { ...type.heading, fontSize: 20, color: c.ink, textAlign: 'center', paddingHorizontal: 24 },
-  loadingDots: { flexDirection: 'row', gap: 8 },
-  dot: { width: 10, height: 10, borderRadius: 5 },
+    scaleArea: { flex: 1, justifyContent: 'center' },
 
-  bottomNav: {
-    position: 'absolute',
-    left: 22,
-    right: 22,
-    flexDirection: 'row',
-    alignItems: 'center',
-    zIndex: 999,
-  },
-  backBtn: { width: 56, height: 56, borderRadius: 28, backgroundColor: c.card, alignItems: 'center', justifyContent: 'center' },
-  nextBtn: { flex: 1, borderRadius: 999, backgroundColor: c.accent, shadowColor: c.accent, shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 8 }, elevation: 5 },
-  nextBtnInner: { height: 58, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  nextBtnText: { ...type.heading, fontSize: 18, color: c.onAccent },
-  resultContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20, gap: 8 },
-  resultCard: {
-    width: '100%',
-    backgroundColor: c.card,
-    borderRadius: 28,
-    padding: 26,
-    shadowColor: c.shadowColor,
-    shadowOpacity: c.shadowOpacity,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
-    alignItems: 'center',
-  },
-  resultTitle: { ...type.heading, color: c.ink, textAlign: 'center', marginBottom: 6 },
-  resultValue: { ...type.display, fontSize: 46, color: c.accentInk, textAlign: 'center', marginBottom: 10 },
-  resultSub: { ...type.body, fontSize: 15, color: c.ink2, textAlign: 'center', lineHeight: 22 },
-});
+    timeRow: { flexDirection: 'row', alignItems: 'center', borderRadius: 24, borderWidth: 1.5, padding: 18, paddingLeft: 20, marginBottom: 14 },
+    timeTitle: { ...type.bodyStrong, fontSize: 17, color: c.ink },
+    timeSub: { ...type.body, fontSize: 14, color: c.ink2, marginTop: 4 },
+    timePill: { flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12 },
+    timeValue: { ...type.heading, fontSize: 24, letterSpacing: -0.5 },
+    pickerWrap: { alignItems: 'center', marginTop: 4 },
+
+    loadTrack: { height: 4, borderRadius: 2, overflow: 'hidden', marginTop: 28 },
+    loadFill: { height: '100%', borderRadius: 2 },
+
+    goalRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: 18 },
+    goalNum: { fontSize: 58, lineHeight: 66, letterSpacing: -2.5 },
+
+    remindWrap: { flex: 1, paddingTop: 14 },
+    chips: { flexDirection: 'row', borderRadius: 999, borderWidth: 1, padding: 5, marginTop: 18 },
+    chip: { flex: 1, alignItems: 'center', paddingVertical: 11, borderRadius: 999 },
+
+    notif: { borderRadius: 24, borderWidth: 1, padding: 20 },
+    notifHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    notifIcon: { width: 22, height: 22, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
+
+    checkLine: { flexDirection: 'row', alignItems: 'center' },
+
+    bottom: { paddingHorizontal: 28 },
+    cta: {
+      height: 60,
+      borderRadius: 30,
+      paddingHorizontal: 26,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      shadowOpacity: 0.3,
+      shadowRadius: 18,
+      shadowOffset: { width: 0, height: 8 },
+    },
+    ctaText: { ...type.bodyStrong, fontSize: 18, color: c.onAccent, flex: 1, marginRight: 12 },
+    secondary: { height: 34, alignItems: 'center', justifyContent: 'center' },
+    progress: { flexDirection: 'row', gap: 6, marginTop: 2 },
+    seg: { flex: 1, height: 3, borderRadius: 2 },
+  });

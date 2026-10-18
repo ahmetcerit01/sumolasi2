@@ -23,7 +23,7 @@ const WaterActivity = (props, environment) => {
   const num = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, sep);
 
   const dimmed = environment.isLuminanceReduced;
-  const accent = dimmed ? '#FFFFFF' : done ? '#4CC79A' : '#5AB2FF';
+  const accent = dimmed ? '#FFFFFF' : done ? '#5FD0A8' : '#5AD3F0';
   const ink2 = '#B7C7D6';
   const status = done ? labels.doneLabel || '' : props.next ? (labels.nextLabel || '') + ' ' + props.next : '';
 
@@ -31,7 +31,7 @@ const WaterActivity = (props, environment) => {
 
   return {
     banner: (
-      <VStack alignment="leading" spacing={8} modifiers={[padding({ all: 16 }), activityBackgroundTint('#0B1620')]}>
+      <VStack alignment="leading" spacing={8} modifiers={[padding({ all: 16 }), activityBackgroundTint('#0A131D')]}>
         <HStack spacing={8}>
           {drop(18)}
           <Text modifiers={[font({ weight: 'bold', size: 15, design: 'rounded' }), foregroundStyle('#FFFFFF')]}>{labels.title || 'Su Molası'}</Text>

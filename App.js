@@ -7,12 +7,11 @@ import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   useFonts,
-  Nunito_500Medium,
-  Nunito_600SemiBold,
-  Nunito_700Bold,
-  Nunito_800ExtraBold,
-  Nunito_900Black,
-} from '@expo-google-fonts/nunito';
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+} from '@expo-google-fonts/inter';
 import { useTheme } from './src/theme/theme';
 
 // Navigasyon ve Ekranlar
@@ -68,11 +67,10 @@ export default function App() {
     return { ...base, colors: { ...base.colors, background: c.bg, card: c.card, text: c.ink, primary: c.accent } };
   }, [dark, c]);
   const [fontsLoaded] = useFonts({
-    Nunito_500Medium,
-    Nunito_600SemiBold,
-    Nunito_700Bold,
-    Nunito_800ExtraBold,
-    Nunito_900Black,
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
   });
 
   useEffect(() => {
@@ -124,9 +122,20 @@ export default function App() {
     return () => sub.remove();
   }, []);
 
+  // Geliştirici: yalnızca giriş hikâyesini önizle (kayıtlı veriye ve onboarding durumuna dokunmaz)
+  const [introPreview, setIntroPreview] = useState(false);
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('PREVIEW_INTRO', () => {
+      setIntroPreview(true);
+      setShowOnboard(true);
+    });
+    return () => sub.remove();
+  }, []);
+
   // Onboard bittiğinde çağrılacak
   const handleOnboardDone = () => {
     setShowOnboard(false);
+    setIntroPreview(false);
   };
 
   return (
@@ -167,6 +176,8 @@ export default function App() {
                 {({ t, locale, setLanguage }) => (
                   <OnboardWizard
                     onDone={handleOnboardDone}
+                    introActive={splashFinished}
+                    preview={introPreview}
                     t={t}
                     locale={locale}
                     setLanguage={setLanguage}
