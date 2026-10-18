@@ -21,7 +21,9 @@ import {
   font,
   foregroundStyle,
   frame,
+  buttonBorderShape,
   gaugeStyle,
+  kerning,
   minimumScaleFactor,
   monospacedDigit,
   offset,
@@ -67,11 +69,11 @@ const WaterWidget = (props, environment) => {
   const sep = labels.sep || '.';
   const num = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, sep);
 
-  // --- tema ---
+  // --- tema (uygulamayla aynı): koyu lacivert + camgöbeği ışık, açık beyaz + su mavisi ---
   const dark = environment.colorScheme === 'dark';
   const C = dark
-    ? { bg1: '#132130', bg2: '#0A131D', ink: '#F2F6FA', ink2: '#8C9DAF', accent: '#5AD3F0', onAccent: '#06202B', track: '#1C2D3C', done: '#5FD0A8' }
-    : { bg1: '#FFFFFF', bg2: '#EEF6FC', ink: '#0F2233', ink2: '#5B6B7A', accent: '#2B8FE8', onAccent: '#FFFFFF', track: '#E3F0FB', done: '#2FA37A' };
+    ? { bg1: '#14263A', bg2: '#08111A', ink: '#F2F6FA', ink2: '#8C9DAF', accent: '#5AD3F0', onAccent: '#06202B', track: '#1C2D3C', done: '#5FD0A8', dot: 0.5 }
+    : { bg1: '#FFFFFF', bg2: '#E9F3FC', ink: '#0F2233', ink2: '#5B6B7A', accent: '#2B8FE8', onAccent: '#FFFFFF', track: '#E3F0FB', done: '#2FA37A', dot: 0.3 };
   const accent = done ? C.done : C.accent;
 
   // --- Damla'nın modu ---
@@ -93,7 +95,9 @@ const WaterWidget = (props, environment) => {
   // Damla: 160pt'lik tuvalde şekiller, `size` ile ölçeklenir (uygulamadaki Mascot ile aynı geometri)
   const mascot = (size) => {
     const INK = '#0F2233';
-    const BODY = { thirsty: '#AFCFEA', normal: '#4FA9F0', happy: '#3A9BF2', celebrate: '#2B8FE8', sleepy: '#4A79A8' };
+    const BODY = dark
+      ? { thirsty: '#86AFC4', normal: '#5AD3F0', happy: '#48C6EC', celebrate: '#3CB8E4', sleepy: '#3F7C9C' }
+      : { thirsty: '#AFCFEA', normal: '#4FA9F0', happy: '#3A9BF2', celebrate: '#2B8FE8', sleepy: '#4A79A8' };
     const at = (x, y, w, h) => [frame({ width: w, height: h }), offset({ x: x, y: y })];
     // yay (gülümseme / kapalı göz): halkanın yarısı görünür
     const arc = (x, y, w, up) => (
@@ -171,28 +175,43 @@ const WaterWidget = (props, environment) => {
 
   const family = environment.widgetFamily;
 
-  // --- Kilit ekranı ---
+  // --- Kilit ekranı araç takımları (sistem bunları tek renkli/saydam çizer) ---
   if (family === 'accessoryInline') {
-    return <Text>{num(total) + ' / ' + num(goal) + ' ml'}</Text>;
+    return (
+      <HStack spacing={4}>
+        <Image systemName="drop.fill" />
+        <Text>{pctText + ' · ' + num(total) + ' ml'}</Text>
+      </HStack>
+    );
   }
 
   if (family === 'accessoryCircular') {
+    // Halka + ortada yüzde (Gauge etiketleri widget'ta çizilmediği için üstüne bindirilir)
     return (
-      <Gauge value={ratio} modifiers={[gaugeStyle('circularCapacity'), widgetURL('sumolasi://')]}>
-        <Image systemName="drop.fill" />
-      </Gauge>
+      <ZStack modifiers={[widgetURL('sumolasi://')]}>
+        <Gauge value={ratio} modifiers={[gaugeStyle('circularCapacity')]} />
+        <VStack spacing={0}>
+          <Image systemName={done ? 'checkmark' : 'drop.fill'} size={10} />
+          {!done && <Text modifiers={[font({ weight: 'bold', size: 14 }), monospacedDigit(), minimumScaleFactor(0.6)]}>{String(pct)}</Text>}
+        </VStack>
+      </ZStack>
     );
   }
 
   if (family === 'accessoryRectangular') {
     return (
-      <VStack alignment="leading" spacing={2} modifiers={[widgetURL('sumolasi://')]}>
+      <VStack alignment="leading" spacing={3} modifiers={[widgetURL('sumolasi://')]}>
         <HStack spacing={4}>
-          <Image systemName="drop.fill" />
-          <Text modifiers={[font({ weight: 'semibold', size: 13 })]}>{labels.title || 'Su Molası'}</Text>
+          <Image systemName="drop.fill" size={11} />
+          <Text modifiers={[font({ weight: 'semibold', size: 11 }), kerning(1)]}>{(labels.title || 'Su Molası').toUpperCase()}</Text>
+          <Spacer />
+          <Text modifiers={[font({ weight: 'bold', size: 12 }), monospacedDigit()]}>{done ? '✓' : pctText}</Text>
         </HStack>
-        <Text modifiers={[font({ weight: 'bold', size: 15, design: 'rounded' }), monospacedDigit()]}>{num(total) + ' / ' + num(goal) + ' ml'}</Text>
-        <ProgressView value={ratio} />
+        <HStack alignment="lastTextBaseline" spacing={3}>
+          <Text modifiers={[font({ weight: 'bold', size: 19 }), monospacedDigit(), minimumScaleFactor(0.7)]}>{num(total)}</Text>
+          <Text modifiers={[font({ weight: 'medium', size: 12 }), opacity(0.7), minimumScaleFactor(0.7)]}>{'/ ' + num(goal) + ' ml'}</Text>
+        </HStack>
+        <Gauge value={ratio} modifiers={[gaugeStyle('linearCapacity')]} />
       </VStack>
     );
   }
@@ -203,55 +222,91 @@ const WaterWidget = (props, environment) => {
     'widget'
   );
   const addButton = (i, target, width) => (
-    <Button target={target} onPress={() => addWater(amounts[i])} modifiers={[buttonStyle('borderedProminent'), tint(C.accent)]}>
-      <Text modifiers={[font({ weight: 'heavy', size: 14, design: 'rounded' }), foregroundStyle(C.onAccent), frame(width ? { width: width } : { maxWidth: 200 })]}>
+    <Button target={target} onPress={() => addWater(amounts[i])} modifiers={[buttonStyle('borderedProminent'), buttonBorderShape('capsule'), tint(C.accent)]}>
+      <Text modifiers={[font({ weight: 'semibold', size: 14 }), foregroundStyle(C.onAccent), monospacedDigit(), frame(width ? { width: width } : { maxWidth: 200 })]}>
         {'+' + num(amounts[i]) + ' ml'}
       </Text>
     </Button>
   );
   const amountLine = (size) => (
     <HStack alignment="lastTextBaseline" spacing={4}>
-      <Text modifiers={[font({ weight: 'black', size: size, design: 'rounded' }), foregroundStyle(C.ink), monospacedDigit(), minimumScaleFactor(0.6), contentTransition('numericText')]}>
+      <Text modifiers={[font({ weight: 'bold', size: size }), kerning(-0.8), foregroundStyle(C.ink), monospacedDigit(), minimumScaleFactor(0.6), contentTransition('numericText')]}>
         {num(total)}
       </Text>
-      <Text modifiers={[font({ weight: 'bold', size: 12, design: 'rounded' }), foregroundStyle(C.ink2), minimumScaleFactor(0.7)]}>{'/ ' + num(goal) + ' ml'}</Text>
+      <Text modifiers={[font({ weight: 'medium', size: 12 }), foregroundStyle(C.ink2), minimumScaleFactor(0.7)]}>{'/ ' + num(goal) + ' ml'}</Text>
     </HStack>
+  );
+  const overline = (
+    <Text modifiers={[font({ weight: 'semibold', size: 10 }), kerning(1.6), foregroundStyle(C.accent), minimumScaleFactor(0.8)]}>
+      {(labels.title || 'Su Molası').toUpperCase()}
+    </Text>
+  );
+  // Arka planda uygulamanın parçacık dilinden sabit, soluk ışık noktaları
+  const dots = (W, H) => (
+    <ZStack alignment="topLeading" modifiers={[frame({ width: W, height: H })]}>
+      {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].map((i) => {
+        const sz = 1.6 + ((i * 7) % 5) * 0.45;
+        return (
+          <Circle
+            key={i}
+            modifiers={[
+              foregroundStyle(C.accent),
+              opacity(C.dot * (0.35 + ((i * 13) % 7) / 10)),
+              frame({ width: sz, height: sz }),
+              offset({ x: (((i * 47 + 13) % 97) / 97) * W, y: (((i * 29 + 31) % 89) / 89) * H }),
+            ]}
+          />
+        );
+      })}
+    </ZStack>
   );
 
   if (family === 'systemMedium') {
     return (
-      <HStack spacing={10} modifiers={[background, widgetURL('sumolasi://')]}>
-        <VStack alignment="leading" spacing={6}>
-          <HStack spacing={6}>
-            {mascot(70)}
-            <Text modifiers={[font({ weight: 'bold', size: 14, design: 'rounded' }), foregroundStyle(C.ink2), minimumScaleFactor(0.8)]}>{moodLine}</Text>
-          </HStack>
-          <Spacer />
-          {amountLine(24)}
-          <ProgressView value={ratio} modifiers={[tint(accent)]} />
-        </VStack>
-        <VStack spacing={7}>
-          {addButton(0, 'add-small', 92)}
-          {addButton(1, 'add-medium', 92)}
-          {addButton(2, 'add-large', 92)}
-        </VStack>
-      </HStack>
+      <ZStack alignment="topLeading" modifiers={[background, widgetURL('sumolasi://')]}>
+        {dots(320, 140)}
+        <HStack spacing={12}>
+          <VStack alignment="leading" spacing={4}>
+            <HStack>
+              {overline}
+              <Spacer />
+              <Text modifiers={[font({ weight: 'bold', size: 12 }), foregroundStyle(accent), monospacedDigit()]}>{pctText}</Text>
+            </HStack>
+            <HStack spacing={8}>
+              {mascot(56)}
+              <Text modifiers={[font({ weight: 'medium', size: 13 }), foregroundStyle(C.ink2), minimumScaleFactor(0.8)]}>{moodLine}</Text>
+            </HStack>
+            <Spacer />
+            {amountLine(26)}
+            <ProgressView value={ratio} modifiers={[tint(accent)]} />
+          </VStack>
+          <VStack spacing={7}>
+            {addButton(0, 'add-small', 92)}
+            {addButton(1, 'add-medium', 92)}
+            {addButton(2, 'add-large', 92)}
+          </VStack>
+        </HStack>
+      </ZStack>
     );
   }
 
   // systemSmall (varsayılan)
   return (
-    <VStack alignment="leading" spacing={4} modifiers={[background, widgetURL('sumolasi://')]}>
-      <HStack alignment="top">
-        {mascot(54)}
+    <ZStack alignment="topLeading" modifiers={[background, widgetURL('sumolasi://')]}>
+      {dots(140, 140)}
+      <VStack alignment="leading" spacing={4}>
+        <HStack>
+          {overline}
+          <Spacer />
+          <Text modifiers={[font({ weight: 'bold', size: 12 }), foregroundStyle(accent), monospacedDigit()]}>{pctText}</Text>
+        </HStack>
+        {mascot(46)}
         <Spacer />
-        <Text modifiers={[font({ weight: 'black', size: 14, design: 'rounded' }), foregroundStyle(accent), monospacedDigit()]}>{pctText}</Text>
-      </HStack>
-      <Spacer />
-      {amountLine(22)}
-      <ProgressView value={ratio} modifiers={[tint(accent)]} />
-      {addButton(0, 'add-small')}
-    </VStack>
+        {amountLine(24)}
+        <ProgressView value={ratio} modifiers={[tint(accent)]} />
+        {addButton(0, 'add-small')}
+      </VStack>
+    </ZStack>
   );
 };
 

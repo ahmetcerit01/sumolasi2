@@ -73,7 +73,7 @@ export default function ProfileScreen() {
   }, []);
 
   // Kilit ekranı canlı etkinliği (yalnızca iOS)
-  const [liveOn, setLiveOn] = useState(true);
+  const [liveOn, setLiveOn] = useState(false);
   useEffect(() => {
     getLiveActivityEnabled().then(setLiveOn).catch(() => {});
   }, []);

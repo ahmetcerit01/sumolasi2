@@ -167,6 +167,8 @@ export const translations = {
     },
     premium: {
       title: 'Su Molası Premium',
+      tag: 'Su Molası Premium',
+      heroTitle: 'Günün tamamı için küçük molalar.',
       subtitle: 'Suyun yanında günlük ihtiyaçlarını da unutma.',
       benefits: {
         meds: 'Sınırsız vitamin ve ilaç hatırlatıcısı',
@@ -230,8 +232,8 @@ export const translations = {
     live: {
       next: 'Sıradaki',
       done: 'Hedef tamam!',
-      setting: 'Kilit ekranında ilerleme',
-      settingHint: 'Gün içinde kilit ekranında ve Dynamic Island\'da ilerlemeni gösterir.',
+      setting: 'Canlı Etkinlik',
+      settingHint: 'Açıkken ilerlemen gün içinde kilit ekranında bildirim kartı olarak ve Dynamic Island\'da görünür. Kalıcı bir gösterge için kilit ekranına araç takımı ekle: kilit ekranına basılı tut → Özelleştir → Kilit Ekranı → Araç takımı ekle → Su Molası.',
     },
     widget: {
       moods: {
@@ -561,6 +563,8 @@ export const translations = {
     },
     premium: {
       title: 'Water Break Premium',
+      tag: 'Water Break Premium',
+      heroTitle: 'Small breaks for your whole day.',
       subtitle: 'Remember your daily needs, not just water.',
       benefits: {
         meds: 'Unlimited vitamin and medication reminders',
@@ -624,8 +628,8 @@ export const translations = {
     live: {
       next: 'Next',
       done: 'Goal reached!',
-      setting: 'Progress on Lock Screen',
-      settingHint: 'Shows your progress on the Lock Screen and in the Dynamic Island during the day.',
+      setting: 'Live Activity',
+      settingHint: 'When on, your progress appears as a card on the Lock Screen and in the Dynamic Island. For a permanent glance, add a Lock Screen widget: touch and hold the Lock Screen → Customize → Lock Screen → Add Widgets → Water Break.',
     },
     widget: {
       moods: {

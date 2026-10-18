@@ -9,7 +9,8 @@ import { computeReminderTimes, getReminderSettings } from '../utils/reminders';
 // - Hedef tamamlanınca kutlama hali 30 dk gösterilir, sonra kapanır; o gün yeniden açılmaz.
 // - Gün değişince ya da ayar kapatılınca hemen kapanır.
 
-export const LIVE_ACTIVITY_KEY = 'LIVE_ACTIVITY_ENABLED';
+// v2: kilit ekranında araç takımları öne çıktığı için Canlı Etkinlik herkes için bir kez kapatıldı (isteğe bağlı açılır)
+export const LIVE_ACTIVITY_KEY = 'LIVE_ACTIVITY_ENABLED_V2';
 const DONE_DAY_KEY = 'LIVE_ACTIVITY_DONE_DAY';
 const CELEBRATE_MS = 30 * 60 * 1000;
 const STALE_MS = 4 * 60 * 60 * 1000;
@@ -28,8 +29,8 @@ if (Platform.OS === 'ios') {
 export const isLiveActivitySupported = () => !!WaterActivity;
 
 export async function getLiveActivityEnabled() {
-  // Hiç ayarlanmamışsa açık
-  return (await AsyncStorage.getItem(LIVE_ACTIVITY_KEY)) !== '0';
+  // Varsayılan kapalı: kilit ekranında kalıcı ilerleme için araç takımları önerilir; Canlı Etkinlik isteğe bağlı
+  return (await AsyncStorage.getItem(LIVE_ACTIVITY_KEY)) === '1';
 }
 
 const pad = (n) => (n < 10 ? `0${n}` : `${n}`);
