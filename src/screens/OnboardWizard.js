@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, StatusBar, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import Animated, {
   Easing,
+  withDelay,
   FadeIn,
   FadeInDown,
   FadeOut,
@@ -16,6 +17,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { scheduleOnRN } from 'react-native-worklets';
 import { useHydrationStore } from '../storage/useHydrationStore';
 import { computeReminderTimes, disableReminders, scheduleReminders } from '../utils/reminders';
 import { fonts, useTheme } from '../theme/theme';
@@ -55,7 +57,7 @@ export const computeGoalMl = (weightKg, heightCm) => {
   return Math.max(1200, Math.min(5000, Math.round(ml)));
 };
 
-export default function OnboardWizard({ onDone, introActive = true, preview = false, t: tProp, locale = 'en', setLanguage = () => {} }) {
+export default function OnboardWizard({ onDone, onLeaveStart, introActive = true, preview = false, t: tProp, locale = 'en', setLanguage = () => {} }) {
   const t = tProp || ((k) => k);
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -168,10 +170,26 @@ export default function OnboardWizard({ onDone, introActive = true, preview = fa
     go('ready');
   };
 
+  // Çıkış geçişi: yazılar söner, damla küçülüp ana ekrandaki bardağın içine iner,
+  // ardından bütün ekran yumuşakça ana sayfaya karışır (ana sayfa bu sırada arkada hazırdır).
+  const [leaving, setLeaving] = useState(false);
+  const uiFade = useSharedValue(1);
+  const exitP = useSharedValue(0);
+  const sceneFade = useSharedValue(1);
   const finish = async () => {
+    if (leaving) return;
+    setLeaving(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     if (!preview) await AsyncStorage.setItem('HAS_ONBOARDED', '1').catch(() => {});
-    onDone?.();
+    onLeaveStart?.();
+    const done = () => onDone?.();
+    if (reduceMotion) {
+      sceneFade.value = withTiming(0, { duration: 400 }, (f) => f && scheduleOnRN(done));
+      return;
+    }
+    uiFade.value = withTiming(0, { duration: 260 });
+    exitP.value = withDelay(120, withTiming(1, { duration: 900, easing: Easing.inOut(Easing.cubic) }));
+    sceneFade.value = withDelay(760, withTiming(0, { duration: 640, easing: Easing.out(Easing.quad) }, (f) => f && scheduleOnRN(done)));
   };
 
   const CTA = {
@@ -191,6 +209,13 @@ export default function OnboardWizard({ onDone, introActive = true, preview = fa
   const stageBottom = height - 430;
   const stageCy = (stageTop + stageBottom) / 2;
   const stageR = Math.min(width * 0.27, ((stageBottom - stageTop) / 2) * 0.82);
+  // ana ekrandaki bardağın yaklaşık merkezi (damla oraya iner)
+  const glassY = insets.top + height * 0.3;
+  const uiStyle = useAnimatedStyle(() => ({ opacity: uiFade.value }));
+  const sceneStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: exitP.value * (glassY - stageCy) }, { scale: 1 - exitP.value * 0.5 }],
+  }));
+  const rootStyle = useAnimatedStyle(() => ({ opacity: sceneFade.value }));
 
   const intervalText =
     intervalMin % 60 === 0
@@ -199,10 +224,10 @@ export default function OnboardWizard({ onDone, introActive = true, preview = fa
   const reminderCount = computeReminderTimes(toHHMM(wakeAt), toHHMM(sleepAt), intervalMin / 60).length;
 
   return (
-    <View style={styles.container}>
+    <Animated.View style={[styles.container, rootStyle]} pointerEvents={leaving ? 'none' : 'auto'}>
       <StatusBar barStyle={c.statusBar} backgroundColor="transparent" translucent />
 
-      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <Animated.View style={[StyleSheet.absoluteFill, { transformOrigin: [width / 2, stageCy, 0] }, sceneStyle]} pointerEvents="none">
         <ParticleMorph
           key={`${width}x${height}`}
           width={width}
@@ -219,8 +244,9 @@ export default function OnboardWizard({ onDone, introActive = true, preview = fa
           transitionMs={1000}
           entryMs={1600}
         />
-      </View>
+      </Animated.View>
 
+      <Animated.View style={[{ flex: 1 }, uiStyle]}>
       {/* üst çubuk */}
       <View style={[styles.topBar, { marginTop: insets.top + 6 }]}>
         <View style={styles.topLeft}>
@@ -461,7 +487,8 @@ export default function OnboardWizard({ onDone, introActive = true, preview = fa
           ))}
         </View>
       </View>
-    </View>
+      </Animated.View>
+    </Animated.View>
   );
 }
 

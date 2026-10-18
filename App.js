@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import 'react-native-gesture-handler';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { View, DeviceEventEmitter, StatusBar } from 'react-native';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -13,6 +13,7 @@ import {
   Inter_700Bold,
 } from '@expo-google-fonts/inter';
 import { useTheme } from './src/theme/theme';
+import { loadThemePref } from './src/theme/themePreference';
 
 // Navigasyon ve Ekranlar
 import BottomTabs from './src/navigation/BottomTabs';
@@ -26,8 +27,8 @@ import { ensureHydrated, useHydrationStore } from './src/storage/useHydrationSto
 import { i18n, LanguageContext, LANGUAGE_KEY, normalizeLang, getDeviceLang } from './src/i18n';
 import { rescheduleIfEnabled } from './src/utils/reminders';
 import { startWidgetSync, refreshWidgetLabels } from './src/widgets/widgetSync';
-import { PremiumProvider } from './src/premium/PremiumProvider';
-import { PaywallProvider } from './src/premium/Paywall';
+import { PremiumProvider, usePremium } from './src/premium/PremiumProvider';
+import { PaywallProvider, usePaywall } from './src/premium/Paywall';
 import { ensureMedCategory, ensureMedsHydrated, MED_ACTION_TAKEN, useMedsStore } from './src/storage/useMedsStore';
 import { navRef, navigateWhenReady } from './src/navigation/navRef';
 
@@ -132,13 +133,24 @@ export default function App() {
     return () => sub.remove();
   }, []);
 
-  // Onboard bittiğinde çağrılacak
+  // Onboarding çıkış geçişi başlayınca ana sayfa arkada kurulur; geçiş bitince katman kalkar
+  const [leavingOnboard, setLeavingOnboard] = useState(false);
+  const [afterOnboard, setAfterOnboard] = useState(null); // { preview } → Premium önerisi
   const handleOnboardDone = () => {
     setShowOnboard(false);
+    setLeavingOnboard(false);
+    setAfterOnboard({ preview: introPreview, at: Date.now() });
     setIntroPreview(false);
   };
 
+  // Görünüm tercihi yüklenmeden splash çizilmesin (yanlış temada parlamasın)
+  const [themeReady, setThemeReady] = useState(false);
+  useEffect(() => {
+    loadThemePref().finally(() => setThemeReady(true));
+  }, []);
+
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <SafeAreaProvider>
       <PremiumProvider>
       <LanguageContext.Provider
@@ -171,27 +183,33 @@ export default function App() {
 
         {appIsReady && fontsLoaded && (
           <NavigationContainer theme={navTheme} ref={navRef}>
-            {showOnboard ? (
-              <LanguageContext.Consumer>
-                {({ t, locale, setLanguage }) => (
-                  <OnboardWizard
-                    onDone={handleOnboardDone}
-                    introActive={splashFinished}
-                    preview={introPreview}
-                    t={t}
-                    locale={locale}
-                    setLanguage={setLanguage}
-                  />
-                )}
-              </LanguageContext.Consumer>
-            ) : (
-              <BottomTabs />
-            )}
+            {(!showOnboard || leavingOnboard) && <BottomTabs />}
           </NavigationContainer>
         )}
 
+        {/* Onboarding ana sayfanın üstünde bir katman: çıkışta arkadaki ana sayfaya karışır */}
+        {appIsReady && fontsLoaded && showOnboard && (
+          <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+            <LanguageContext.Consumer>
+              {({ t, locale, setLanguage }) => (
+                <OnboardWizard
+                  onDone={handleOnboardDone}
+                  onLeaveStart={() => setLeavingOnboard(true)}
+                  introActive={splashFinished}
+                  preview={introPreview}
+                  t={t}
+                  locale={locale}
+                  setLanguage={setLanguage}
+                />
+              )}
+            </LanguageContext.Consumer>
+          </View>
+        )}
+
+        <AfterOnboardOffer trigger={afterOnboard} />
+
         {/* Fontlar yüklenene kadar yalnızca zemin (yerel splash ile aynı renk) görünür */}
-        {!splashFinished && fontsLoaded && (
+        {!splashFinished && fontsLoaded && themeReady && (
           <AnimatedSplash 
             onAnimationFinish={() => setSplashFinished(true)} 
           />
@@ -202,5 +220,30 @@ export default function App() {
       </LanguageContext.Provider>
       </PremiumProvider>
     </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
+}
+
+// Onboarding bitip ana sayfaya geçilince Premium önerisi (bir kez; Premium olanlara gösterilmez).
+// Geliştirici önizlemesinde her seferinde gösterilir ve kayıt tutulmaz.
+const OFFER_KEY = 'PAYWALL_SHOWN_AFTER_ONBOARD';
+function AfterOnboardOffer({ trigger }) {
+  const { open } = usePaywall();
+  const { isPremium } = usePremium();
+  useEffect(() => {
+    if (!trigger || isPremium) return;
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      if (!trigger.preview) {
+        if ((await AsyncStorage.getItem(OFFER_KEY)) === '1') return;
+        await AsyncStorage.setItem(OFFER_KEY, '1');
+      }
+      if (!cancelled) open();
+    }, 1100);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [trigger]);
+  return null;
 }

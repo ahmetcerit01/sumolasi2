@@ -30,6 +30,10 @@ export const translations = {
       turkish: 'Türkçe',
       notifications: 'Bildirimler',
       soundFx: 'Ses Efektleri',
+      appearance: 'Görünüm',
+      themeSystem: 'Sistem',
+      themeLight: 'Açık',
+      themeDark: 'Koyu',
     },
     profile: {
       userTitle: 'Su Savaşçısı',
@@ -420,6 +424,10 @@ export const translations = {
       turkish: 'Türkçe',
       notifications: 'Notifications',
       soundFx: 'Sound Effects',
+      appearance: 'Appearance',
+      themeSystem: 'System',
+      themeLight: 'Light',
+      themeDark: 'Dark',
     },
     profile: {
       userTitle: 'Water Warrior',

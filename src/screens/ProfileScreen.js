@@ -25,6 +25,7 @@ import * as Notifications from 'expo-notifications';
 import { useHydrationStore } from '../storage/useHydrationStore';
 import { LanguageContext } from '../i18n';
 import { cardShadow, useTheme } from '../theme/theme';
+import { setThemePref, useThemePref } from '../theme/themePreference';
 import { fmtNumber, upper } from '../utils/format';
 import { getLiveActivityEnabled, isLiveActivitySupported, setLiveActivityEnabled } from '../widgets/liveActivity';
 import { syncWidget } from '../widgets/widgetSync';
@@ -53,6 +54,7 @@ const fromHHMM = (s, fb) => {
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { t, locale, setLanguage } = useContext(LanguageContext);
+  const themePref = useThemePref();
   const { c, type, radius } = useTheme();
 
   const goalMl = useHydrationStore((s) => s.goalMl) || 2500;
@@ -270,6 +272,28 @@ export default function ProfileScreen() {
                     <Text style={[on ? type.labelStrong : type.label, { fontSize: 14, color: on ? c.ink : c.ink2 }]}>
                       {l === 'tr' ? 'Türkçe' : 'English'}
                     </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </Row>
+          <Row label={t('settings.appearance')}>
+            <View style={[styles.langSeg, { backgroundColor: c.track }]}>
+              {[
+                ['system', 'themeSystem'],
+                ['light', 'themeLight'],
+                ['dark', 'themeDark'],
+              ].map(([p, key]) => {
+                const on = themePref === p;
+                return (
+                  <TouchableOpacity
+                    key={p}
+                    onPress={() => setThemePref(p)}
+                    style={[styles.langBtn, on && { backgroundColor: c.card }, on && cardShadow(c)]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: on }}
+                  >
+                    <Text style={[on ? type.labelStrong : type.label, { fontSize: 14, color: on ? c.ink : c.ink2 }]}>{t(`settings.${key}`)}</Text>
                   </TouchableOpacity>
                 );
               })}
