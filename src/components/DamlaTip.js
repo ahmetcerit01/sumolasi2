@@ -1,6 +1,6 @@
 import React, { useContext } from 'react';
 import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import Animated, { FadeOutDown, ZoomIn } from 'react-native-reanimated';
+import Animated, { Easing, FadeInDown, FadeOut } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LanguageContext } from '../i18n';
@@ -19,8 +19,9 @@ export default function DamlaTip({ visible, onClose }) {
 
   return (
     <Animated.View
-      entering={ZoomIn.springify().damping(14)}
-      exiting={FadeOutDown.duration(180)}
+      // yumuşak belirme: zıplama yok, yavaşça görünür ve hafifçe yukarı süzülür
+      entering={FadeInDown.duration(750).easing(Easing.out(Easing.cubic))}
+      exiting={FadeOut.duration(250)}
       style={[styles.wrap, { bottom: insets.bottom + 96 }]}
       pointerEvents="box-none"
     >
