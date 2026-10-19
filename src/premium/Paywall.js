@@ -7,6 +7,7 @@ import Constants from 'expo-constants';
 import * as Haptics from 'expo-haptics';
 
 import ParticleMorph from '../animation/ParticleMorph';
+import Mascot from '../components/Mascot';
 import { SCENE } from '../animation/particleScenes';
 import { upper } from '../utils/format';
 import { LanguageContext } from '../i18n';
@@ -20,7 +21,8 @@ const PaywallContext = createContext({ open: () => {} });
 export const usePaywall = () => useContext(PaywallContext);
 
 const legal = Constants.expoConfig?.extra?.legal || {};
-const HERO_H = 270;
+const HERO_H = 290;
+const MASCOT = 150;
 
 function PaywallSheet({ visible, onClose }) {
   const insets = useSafeAreaInsets();
@@ -90,22 +92,25 @@ function PaywallSheet({ visible, onClose }) {
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => onClose(false)}>
       <View style={[styles.root, { backgroundColor: c.bg }]}>
-        {/* parçacıklardan bardak: onboarding ile aynı görsel dil */}
+        {/* kutlayan Damla, çevresinde yörüngede dönen ışık parçacıkları (onboarding'deki "ritim" sahnesi) */}
         <View style={styles.hero} pointerEvents="none">
           {visible && (
             <ParticleMorph
               width={width}
               height={HERO_H}
-              radius={HERO_H * 0.3}
-              centerY={HERO_H * 0.52}
-              scene={SCENE.GLASS}
+              radius={HERO_H * 0.46}
+              centerY={HERO_H * 0.5}
+              scene={SCENE.RHYTHM}
               colors={c}
               dark={dark}
               reduceMotion={reduceMotion}
-              count={340}
+              count={300}
               entryMs={1300}
             />
           )}
+          <View style={[styles.mascot, { top: HERO_H * 0.5 - MASCOT / 2, left: width / 2 - MASCOT / 2 }]}>
+            <Mascot mood="celebrate" size={MASCOT} />
+          </View>
         </View>
 
         <ScrollView contentContainerStyle={{ paddingHorizontal: 26, paddingTop: HERO_H - 30, paddingBottom: insets.bottom + 24 }} showsVerticalScrollIndicator={false}>
@@ -241,6 +246,7 @@ export function PaywallProvider({ children }) {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   hero: { position: 'absolute', top: 0, left: 0, right: 0, height: HERO_H },
+  mascot: { position: 'absolute', width: MASCOT, height: MASCOT },
   topRow: { position: 'absolute', top: 16, left: 20, right: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   devChip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
   close: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },

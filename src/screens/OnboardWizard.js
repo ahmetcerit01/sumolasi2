@@ -219,7 +219,7 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
 
   const intervalText =
     intervalMin % 60 === 0
-      ? t('onboard.flow.everyHour', { n: intervalMin / 60 })
+      ? t('onboard.flow.everyHour', { n: intervalMin / 60, count: intervalMin / 60 })
       : t('onboard.flow.everyMin', { n: intervalMin });
   const reminderCount = computeReminderTimes(toHHMM(wakeAt), toHHMM(sleepAt), intervalMin / 60).length;
 
