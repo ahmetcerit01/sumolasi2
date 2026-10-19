@@ -10,8 +10,8 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-// Damla maskotu: Blender'da üretilen 3B karakterin ruh hali görselleri
-// (docs/damla-3d/damla_moods.py → assets/mascot). Widget aynı görselleri kullanır.
+// Damla maskotu: ruh hali illüstrasyonları (docs/mascot-2d: kaynak görsel + şeffaf kesim betiği
+// → assets/mascot). Widget aynı görselleri kullanır.
 // mood: thirsty | normal | happy | celebrate | sleepy
 
 const IMAGES = {

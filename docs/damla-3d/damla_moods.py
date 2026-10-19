@@ -1,11 +1,12 @@
-"""Damla maskotunu uygulamadaki 5 ruh haliyle üretir ve şeffaf PNG olarak çizer.
+"""Damla maskotunun 3B (Blender) versiyonu: 5 ruh hali, şeffaf PNG.
+Not: Uygulama şu an docs/mascot-2d illüstrasyonlarını kullanıyor; bu betik 3B alternatif olarak duruyor.
 
 Çalıştırma:
   blender --background --python docs/damla-3d/damla_moods.py
 
 Çıktı:
   docs/damla-3d/renders/damla_<mood>.png   (1024 px, thirsty/normal/happy/celebrate/sleepy)
-  Uygulama ve widget 384 px kopyaları kullanır:
+  3B sürüme dönülmek istenirse 384 px kopyalar assets/mascot'a konur:
     for m in thirsty normal happy celebrate sleepy; do
       sips -Z 384 docs/damla-3d/renders/damla_$m.png --out assets/mascot/damla_$m.png; done
   docs/damla-3d/damla.glb          (normal hali, düzenleme/3B kullanım için)

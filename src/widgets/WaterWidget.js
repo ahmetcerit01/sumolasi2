@@ -76,7 +76,7 @@ const WaterWidget = (props, environment) => {
   const mood = moodNow();
   const moodLine = (labels.moods || {})[mood] || '';
 
-  // Damla: uygulamayla aynı 3B karakter görselleri (widget eklentisindeki asset katalog, plugins/withWidgetMascot.js)
+  // Damla: uygulamayla aynı ruh hali görselleri (widget eklentisindeki asset katalog, plugins/withWidgetMascot.js)
   const mascot = (size) => (
     <Image assetName={'damla_' + mood} modifiers={[resizable(), aspectRatio({ contentMode: 'fit' }), frame({ width: size, height: size })]} />
   );
