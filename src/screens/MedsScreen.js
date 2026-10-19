@@ -89,7 +89,7 @@ function MedEditSheet({ visible, med, onClose }) {
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, justifyContent: 'flex-end' }}>
-        <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: c.overlay }]} onPress={onClose} />
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <View style={[styles.sheet, { backgroundColor: c.card, paddingBottom: insets.bottom + 20 }]}>
           <View style={styles.sheetHeader}>
             <Text style={[type.heading, { color: c.ink }]}>{med ? t('meds.editTitle') : t('meds.addTitle')}</Text>
@@ -330,7 +330,7 @@ const styles = StyleSheet.create({
   medRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
   medIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   addBtn: { flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center', borderRadius: 999, paddingVertical: 16 },
-  sheet: { borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 22, gap: 16 },
+  sheet: { borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 22, gap: 16, shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 24, shadowOffset: { width: 0, height: -6 }, elevation: 12 },
   sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   input: { borderRadius: 16, paddingHorizontal: 14, paddingVertical: 13 },
   segment: { flexDirection: 'row', borderRadius: 14, padding: 4, gap: 4 },

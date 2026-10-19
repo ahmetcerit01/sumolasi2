@@ -383,7 +383,7 @@ export default function ProfileScreen() {
       {/* profil düzenleme sayfası */}
       <Modal visible={editing} transparent animationType="slide" onRequestClose={() => setEditing(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, justifyContent: 'flex-end' }}>
-          <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: c.overlay }]} onPress={() => setEditing(false)} />
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setEditing(false)} />
           {form && (
             <View style={[styles.sheet, { backgroundColor: c.card, paddingBottom: insets.bottom + 20 }]}>
               <View style={styles.sheetHeader}>
@@ -465,7 +465,7 @@ const styles = StyleSheet.create({
   langSeg: { flexDirection: 'row', borderRadius: 999, padding: 3 },
   langBtn: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
   devBtn: { flex: 1, borderRadius: 12, paddingVertical: 10, alignItems: 'center' },
-  sheet: { borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 22, gap: 16 },
+  sheet: { borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 22, gap: 16, shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 24, shadowOffset: { width: 0, height: -6 }, elevation: 12 },
   sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   input: { borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12 },
   timeBtn: { flex: 1, borderRadius: 16, padding: 12, gap: 2, borderWidth: 2 },

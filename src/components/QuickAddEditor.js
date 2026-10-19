@@ -42,7 +42,7 @@ export default function QuickAddEditor({ index, item, onClose }) {
   return (
     <Modal visible={!!item} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, justifyContent: 'flex-end' }}>
-        <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: c.overlay }]} onPress={onClose} />
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <View style={[styles.sheet, { backgroundColor: c.card, paddingBottom: insets.bottom + 20 }]}>
           <View style={styles.header}>
             <Text style={[type.heading, { color: c.ink }]}>{t('quickAdd.editTitle')}</Text>
@@ -125,7 +125,7 @@ export default function QuickAddEditor({ index, item, onClose }) {
 }
 
 const styles = StyleSheet.create({
-  sheet: { borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 22, gap: 12 },
+  sheet: { borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 22, gap: 12, shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 24, shadowOffset: { width: 0, height: -6 }, elevation: 12 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
   icons: { flexDirection: 'row', gap: 10 },
   iconBtn: { flex: 1, alignItems: 'center', gap: 4, paddingVertical: 12, borderRadius: 18, borderWidth: 1.5 },
