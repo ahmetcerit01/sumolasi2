@@ -24,7 +24,8 @@ import { todayDoses, useMedsStore, weekAdherence } from '../storage/useMedsStore
 import { usePremium } from '../premium/PremiumProvider';
 import { usePaywall } from '../premium/Paywall';
 
-export const FREE_MED_LIMIT = 1;
+// Vitamin ve ilaç hatırlatıcıları tamamen Premium'a özel (ücretsiz sürümde eklenemez)
+export const FREE_MED_LIMIT = 0;
 const pad = (n) => (n < 10 ? `0${n}` : `${n}`);
 const toHHMM = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const fromHHMM = (s) => {
@@ -210,7 +211,7 @@ export default function MedsScreen({ navigation }) {
   const doses = todayDoses(meds, log);
   const takenCount = doses.filter((d) => d.taken).length;
   const week = weekAdherence(meds, log);
-  const locked = !isPremium && meds.length >= FREE_MED_LIMIT;
+  const locked = !isPremium;
 
   const onAdd = () => {
     if (locked) {
@@ -287,7 +288,7 @@ export default function MedsScreen({ navigation }) {
             {meds.map((m, i) => (
               <TouchableOpacity
                 key={m.id}
-                onPress={() => setSheet({ visible: true, med: m })}
+                onPress={() => (locked ? openPaywall() : setSheet({ visible: true, med: m }))}
                 style={[styles.medRow, i < meds.length - 1 && { borderBottomWidth: 1, borderBottomColor: c.divider }]}
                 accessibilityRole="button"
               >
@@ -308,7 +309,7 @@ export default function MedsScreen({ navigation }) {
           <Ionicons name={locked ? 'lock-closed' : 'add'} size={20} color={c.onAccent} />
           <Text style={[type.bodyStrong, { color: c.onAccent, fontSize: 17 }]}>{t('meds.add')}</Text>
         </TouchableOpacity>
-        {locked && <Text style={[type.label, { color: c.ink2, textAlign: 'center' }]}>{t('meds.freeLimit', { count: FREE_MED_LIMIT })}</Text>}
+        {locked && <Text style={[type.label, { color: c.ink2, textAlign: 'center' }]}>{t('meds.premiumOnly')}</Text>}
       </ScrollView>
 
       <MedEditSheet visible={sheet.visible} med={sheet.med} onClose={() => setSheet({ visible: false, med: null })} />

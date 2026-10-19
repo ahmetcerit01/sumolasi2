@@ -26,7 +26,7 @@ import AnimatedSplash from './src/components/AnimatedSplash';
 import { ensureHydrated, useHydrationStore } from './src/storage/useHydrationStore';
 import { i18n, LanguageContext, LANGUAGE_KEY, normalizeLang, getDeviceLang } from './src/i18n';
 import { rescheduleIfEnabled } from './src/utils/reminders';
-import { startWidgetSync, refreshWidgetLabels } from './src/widgets/widgetSync';
+import { startWidgetSync, refreshWidgetLabels, setWidgetPremium } from './src/widgets/widgetSync';
 import { PremiumProvider, usePremium } from './src/premium/PremiumProvider';
 import { PaywallProvider, usePaywall } from './src/premium/Paywall';
 import { ensureMedCategory, ensureMedsHydrated, MED_ACTION_TAKEN, useMedsStore } from './src/storage/useMedsStore';
@@ -207,6 +207,7 @@ export default function App() {
         )}
 
         <AfterOnboardOffer trigger={afterOnboard} />
+        <PremiumEffects />
 
         {/* Fontlar yüklenene kadar yalnızca zemin (yerel splash ile aynı renk) görünür */}
         {!splashFinished && fontsLoaded && themeReady && (
@@ -245,5 +246,22 @@ function AfterOnboardOffer({ trigger }) {
       clearTimeout(timer);
     };
   }, [trigger]);
+  return null;
+}
+
+// Premium durumuna bağlı işler: widget kilidi ve vitamin/ilaç hatırlatmaları.
+// Premium bilgisi yüklenmeden bir şey yapılmaz (aboneler bir an kilitli görmesin).
+function PremiumEffects() {
+  const { ready, isPremium } = usePremium();
+  useEffect(() => {
+    if (!ready) return;
+    setWidgetPremium(isPremium);
+    (async () => {
+      await ensureMedsHydrated();
+      const meds = useMedsStore.getState();
+      if (isPremium) await meds.rescheduleAll({ activate: true });
+      else await meds.suspendAll();
+    })().catch(() => {});
+  }, [ready, isPremium]);
   return null;
 }

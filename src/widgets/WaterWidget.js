@@ -1,21 +1,7 @@
+import { Button, Circle, Gauge, HStack, Image, ProgressView, Spacer, Text, VStack, ZStack } from '@expo/ui/swift-ui';
 import {
-  Button,
-  Capsule,
-  Circle,
-  Ellipse,
-  Gauge,
-  HStack,
-  Image,
-  ProgressView,
-  Spacer,
-  Text,
-  UnevenRoundedRectangle,
-  VStack,
-  ZStack,
-} from '@expo/ui/swift-ui';
-import {
+  aspectRatio,
   buttonStyle,
-  clipped,
   containerBackground,
   contentTransition,
   font,
@@ -28,9 +14,7 @@ import {
   monospacedDigit,
   offset,
   opacity,
-  rotationEffect,
-  scaleEffect,
-  strokeBorder,
+  resizable,
   tint,
   widgetURL,
 } from '@expo/ui/swift-ui/modifiers';
@@ -92,79 +76,10 @@ const WaterWidget = (props, environment) => {
   const mood = moodNow();
   const moodLine = (labels.moods || {})[mood] || '';
 
-  // Damla: 160pt'lik tuvalde şekiller, `size` ile ölçeklenir (uygulamadaki Mascot ile aynı geometri)
-  const mascot = (size) => {
-    const INK = '#0F2233';
-    const BODY = dark
-      ? { thirsty: '#86AFC4', normal: '#5AD3F0', happy: '#48C6EC', celebrate: '#3CB8E4', sleepy: '#3F7C9C' }
-      : { thirsty: '#AFCFEA', normal: '#4FA9F0', happy: '#3A9BF2', celebrate: '#2B8FE8', sleepy: '#4A79A8' };
-    const at = (x, y, w, h) => [frame({ width: w, height: h }), offset({ x: x, y: y })];
-    // yay (gülümseme / kapalı göz): halkanın yarısı görünür
-    const arc = (x, y, w, up) => (
-      <ZStack alignment="top" modifiers={[frame({ width: w, height: w / 2 }), clipped(), offset({ x: x, y: y })]}>
-        <Circle
-          modifiers={[
-            foregroundStyle('#00000000'),
-            strokeBorder({ color: INK, style: { lineWidth: 3 }, shape: 'circle' }),
-            frame({ width: w, height: w }),
-            offset({ x: 0, y: up ? 0 : -w / 2 }),
-          ]}
-        />
-      </ZStack>
-    );
-    const eyesHappy = mood === 'happy' || mood === 'celebrate';
-    return (
-      <ZStack modifiers={[frame({ width: size, height: size })]}>
-        <ZStack alignment="topLeading" modifiers={[frame({ width: 160, height: 160 }), scaleEffect(size / 160)]}>
-          <UnevenRoundedRectangle
-            topLeadingRadius={0}
-            topTrailingRadius={54}
-            bottomLeadingRadius={54}
-            bottomTrailingRadius={54}
-            modifiers={[foregroundStyle(BODY[mood]), frame({ width: 108, height: 108 }), rotationEffect(45), offset({ x: 26, y: 40 })]}
-          />
-          <Ellipse modifiers={[foregroundStyle('#FFFFFF'), opacity(0.55), frame({ width: 16, height: 26 }), rotationEffect(-22), offset({ x: 50, y: 66 })]} />
-
-          {eyesHappy && <Ellipse modifiers={[foregroundStyle('#FF9DB5'), opacity(0.75), ...at(44, 112, 15, 8)]} />}
-          {eyesHappy && <Ellipse modifiers={[foregroundStyle('#FF9DB5'), opacity(0.75), ...at(101, 112, 15, 8)]} />}
-
-          {mood === 'normal' && <Ellipse modifiers={[foregroundStyle(INK), ...at(60, 92, 10, 14)]} />}
-          {mood === 'normal' && <Ellipse modifiers={[foregroundStyle(INK), ...at(90, 92, 10, 14)]} />}
-          {mood === 'normal' && <Circle modifiers={[foregroundStyle('#FFFFFF'), ...at(62, 94, 3, 3)]} />}
-          {mood === 'normal' && <Circle modifiers={[foregroundStyle('#FFFFFF'), ...at(92, 94, 3, 3)]} />}
-          {eyesHappy && arc(57, 95, 14, true)}
-          {eyesHappy && arc(88, 95, 14, true)}
-          {mood === 'thirsty' && <UnevenRoundedRectangle bottomLeadingRadius={7} bottomTrailingRadius={7} modifiers={[foregroundStyle(INK), ...at(59, 97, 12, 7)]} />}
-          {mood === 'thirsty' && <UnevenRoundedRectangle bottomLeadingRadius={7} bottomTrailingRadius={7} modifiers={[foregroundStyle(INK), ...at(89, 97, 12, 7)]} />}
-          {mood === 'thirsty' && <Capsule modifiers={[foregroundStyle(INK), frame({ width: 15, height: 3 }), rotationEffect(-14), offset({ x: 56, y: 90 })]} />}
-          {mood === 'thirsty' && <Capsule modifiers={[foregroundStyle(INK), frame({ width: 15, height: 3 }), rotationEffect(14), offset({ x: 89, y: 90 })]} />}
-          {mood === 'sleepy' && arc(57, 94, 15, false)}
-          {mood === 'sleepy' && arc(87, 94, 15, false)}
-
-          {(mood === 'normal' || mood === 'happy') && arc(mood === 'happy' ? 68 : 71, 110, mood === 'happy' ? 22 : 16, false)}
-          {mood === 'celebrate' && <UnevenRoundedRectangle bottomLeadingRadius={13} bottomTrailingRadius={13} modifiers={[foregroundStyle(INK), ...at(67, 110, 26, 14)]} />}
-          {mood === 'celebrate' && <Ellipse modifiers={[foregroundStyle('#FF8FA8'), ...at(74, 117, 12, 6)]} />}
-          {mood === 'thirsty' && <Ellipse modifiers={[foregroundStyle(INK), ...at(75, 112, 9, 11)]} />}
-          {mood === 'sleepy' && <Capsule modifiers={[foregroundStyle(INK), ...at(74, 114, 12, 3)]} />}
-
-          {mood === 'thirsty' && (
-            <UnevenRoundedRectangle
-              topLeadingRadius={0}
-              topTrailingRadius={7}
-              bottomLeadingRadius={7}
-              bottomTrailingRadius={7}
-              modifiers={[foregroundStyle('#CFE8FB'), frame({ width: 13, height: 13 }), rotationEffect(45), offset({ x: 116, y: 62 })]}
-            />
-          )}
-          {mood === 'celebrate' && <Image systemName="sparkle" color="#F6B73C" size={20} modifiers={[offset({ x: 12, y: 44 })]} />}
-          {mood === 'celebrate' && <Image systemName="sparkle" color="#F6B73C" size={15} modifiers={[offset({ x: 128, y: 26 })]} />}
-          {mood === 'celebrate' && <Image systemName="sparkle" color="#5CC8F0" size={13} modifiers={[offset({ x: 132, y: 96 })]} />}
-          {mood === 'sleepy' && <Text modifiers={[font({ weight: 'black', size: 18, design: 'rounded' }), foregroundStyle('#7B93AA'), offset({ x: 112, y: 26 })]}>z</Text>}
-          {mood === 'sleepy' && <Text modifiers={[font({ weight: 'black', size: 13, design: 'rounded' }), foregroundStyle('#9DB0C0'), offset({ x: 126, y: 10 })]}>z</Text>}
-        </ZStack>
-      </ZStack>
-    );
-  };
+  // Damla: uygulamayla aynı 3B karakter görselleri (widget eklentisindeki asset katalog, plugins/withWidgetMascot.js)
+  const mascot = (size) => (
+    <Image assetName={'damla_' + mood} modifiers={[resizable(), aspectRatio({ contentMode: 'fit' }), frame({ width: size, height: size })]} />
+  );
 
   // Butona basınca dönen değer widget'ın yeni props'u olur (uygulama kapalıyken bile).
   const addWater = (ml) => {
@@ -174,6 +89,59 @@ const WaterWidget = (props, environment) => {
   };
 
   const family = environment.widgetFamily;
+
+  // --- Premium değilse kilitli görünüm (dokununca uygulamada Premium ekranı açılır) ---
+  if (!props.premium) {
+    const lockedTitle = labels.lockedTitle || 'Premium';
+    const lockedBody = labels.lockedBody || '';
+    if (family === 'accessoryInline') {
+      return (
+        <HStack spacing={4}>
+          <Image systemName="lock.fill" />
+          <Text>{(labels.title || 'Su Molası') + ' · Premium'}</Text>
+        </HStack>
+      );
+    }
+    if (family === 'accessoryCircular') {
+      return (
+        <ZStack modifiers={[widgetURL('sumolasi://premium')]}>
+          <Gauge value={0} modifiers={[gaugeStyle('circularCapacity')]} />
+          <Image systemName="lock.fill" size={14} />
+        </ZStack>
+      );
+    }
+    if (family === 'accessoryRectangular') {
+      return (
+        <VStack alignment="leading" spacing={2} modifiers={[widgetURL('sumolasi://premium')]}>
+          <HStack spacing={4}>
+            <Image systemName="drop.fill" size={11} />
+            <Text modifiers={[font({ weight: 'semibold', size: 11 }), kerning(1)]}>{(labels.title || 'Su Molası').toUpperCase()}</Text>
+          </HStack>
+          <HStack spacing={4}>
+            <Image systemName="lock.fill" size={12} />
+            <Text modifiers={[font({ weight: 'bold', size: 15 })]}>{lockedTitle}</Text>
+          </HStack>
+          <Text modifiers={[font({ weight: 'medium', size: 12 }), opacity(0.7)]}>{lockedBody}</Text>
+        </VStack>
+      );
+    }
+    const lockedBg = containerBackground(
+      { type: 'linearGradient', colors: [C.bg1, C.bg2], startPoint: { x: 0, y: 0 }, endPoint: { x: 1, y: 1 } },
+      'widget'
+    );
+    return (
+      <VStack alignment="leading" spacing={6} modifiers={[lockedBg, widgetURL('sumolasi://premium')]}>
+        <Text modifiers={[font({ weight: 'semibold', size: 10 }), kerning(1.6), foregroundStyle(C.accent)]}>{(labels.title || 'Su Molası').toUpperCase()}</Text>
+        <Spacer />
+        <ZStack modifiers={[frame({ width: 40, height: 40 })]}>
+          <Circle modifiers={[foregroundStyle(C.accent), opacity(0.16)]} />
+          <Image systemName="lock.fill" color={C.accent} size={17} />
+        </ZStack>
+        <Text modifiers={[font({ weight: 'bold', size: 17 }), foregroundStyle(C.ink), minimumScaleFactor(0.7)]}>{lockedTitle}</Text>
+        <Text modifiers={[font({ weight: 'medium', size: 13 }), foregroundStyle(C.ink2), minimumScaleFactor(0.7)]}>{lockedBody}</Text>
+      </VStack>
+    );
+  }
 
   // --- Kilit ekranı araç takımları (sistem bunları tek renkli/saydam çizer) ---
   if (family === 'accessoryInline') {
@@ -318,5 +286,6 @@ export default createWidget('WaterWidget', WaterWidget, {
   amounts: [200, 300, 500],
   sleepAt: '23:00',
   lastAddAt: '',
-  labels: { title: 'Su Molası', pctPrefix: true, sep: '.', moods: {} },
+  premium: false,
+  labels: { title: 'Su Molası', pctPrefix: true, sep: '.', moods: {}, lockedTitle: 'Premium', lockedBody: '' },
 });

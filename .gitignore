@@ -40,3 +40,7 @@ yarn-error.*
 /ios
 /android
 assets/sounds/*.wav
+
+# Damla ham render çıktıları (betikten yeniden üretilir)
+docs/damla-3d/renders/
+docs/damla-3d/*.blend

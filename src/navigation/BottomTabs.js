@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { usePaywall } from '../premium/Paywall';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,6 +33,7 @@ function FloatingTabBar({ state, navigation }) {
   const { t } = useLanguage();
   const { c, type } = useTheme();
   const [sheet, setSheet] = useState(false);
+  const { open: openPaywall } = usePaywall();
 
   // Kilit ekranındaki canlı etkinliğe dokununca (sumolasi://add) su ekleme sayfası açılır
   useEffect(() => {
@@ -40,6 +42,8 @@ function FloatingTabBar({ state, navigation }) {
         navigation.navigate('Home');
         setSheet(true);
       }
+      // Kilitli (Premium olmayan) widget'a dokunulunca Premium ekranı
+      if (url && /^sumolasi:\/\/premium/.test(url)) openPaywall();
     };
     Linking.getInitialURL().then(handle).catch(() => {});
     const sub = Linking.addEventListener('url', ({ url }) => handle(url));

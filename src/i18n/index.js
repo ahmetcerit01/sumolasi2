@@ -171,10 +171,11 @@ export const translations = {
       heroTitle: 'Günün tamamı için küçük molalar.',
       subtitle: 'Suyun yanında günlük ihtiyaçlarını da unutma.',
       benefits: {
-        meds: 'Sınırsız vitamin ve ilaç hatırlatıcısı',
+        widgets: 'Ana ekran ve kilit ekranı widget’ları',
+        meds: 'Vitamin ve ilaç hatırlatıcıları',
         taken: 'Bildirimden tek dokunuşla "Aldım"',
         week: 'Haftalık düzen takibi',
-        future: 'Yeni Premium alışkanlıklar geldikçe dahil',
+        future: 'Yakında: gelişmiş istatistikler, kişisel öneriler, Apple Watch',
       },
       plan: { annual: 'Yıllık', monthly: 'Aylık' },
       per: { annual: '/ yıl', monthly: '/ ay' },
@@ -197,7 +198,7 @@ export const translations = {
       active: 'Premium aktif',
       activeSub: 'Tüm Premium özellikler açık. Teşekkürler!',
       upgrade: 'Premium’a geç',
-      upgradeSub: 'Sınırsız vitamin & ilaç hatırlatıcısı',
+      upgradeSub: 'Widget’lar, vitamin & ilaç hatırlatıcıları',
       mockToggle: 'Sahte Premium (geliştirme)',
     },
     meds: {
@@ -220,6 +221,7 @@ export const translations = {
       delete: 'Sil',
       deleteTitle: 'Silinsin mi?',
       deleteMsg: '%{name} ve hatırlatmaları silinecek.',
+      premiumOnly: 'Vitamin ve ilaç hatırlatıcıları Premium’a özel.',
       freeLimit: { one: 'Ücretsiz sürümde %{count} vitamin/ilaç ekleyebilirsin. Fazlası Premium’da.', other: 'Ücretsiz sürümde %{count} vitamin/ilaç ekleyebilirsin. Fazlası Premium’da.' },
       notifTitle: '%{name} zamanı',
       notifBody: 'Bugünkü dozunu aldın mı?',
@@ -232,10 +234,11 @@ export const translations = {
     live: {
       next: 'Sıradaki',
       done: 'Hedef tamam!',
-      setting: 'Canlı Etkinlik',
-      settingHint: 'Açıkken ilerlemen gün içinde kilit ekranında bildirim kartı olarak ve Dynamic Island\'da görünür. Kalıcı bir gösterge için kilit ekranına araç takımı ekle: kilit ekranına basılı tut → Özelleştir → Kilit Ekranı → Araç takımı ekle → Su Molası.',
+      setting: 'Dynamic Island',
+      settingHint: 'Açıkken ilerlemen gün içinde Dynamic Island\'da görünür (iOS bunu kilit ekranında da kısa bir kart olarak gösterir). Kilit ekranında kalıcı gösterge için araç takımı ekle: kilit ekranına basılı tut → Özelleştir → Kilit Ekranı → Araç takımı ekle → Su Molası.',
     },
     widget: {
+      locked: { title: 'Premium widget', body: 'Kilidi açmak için dokun' },
       moods: {
         thirsty: 'Biraz kurudum, bir yudum?',
         normal: 'Güzel gidiyorsun!',
@@ -567,10 +570,11 @@ export const translations = {
       heroTitle: 'Small breaks for your whole day.',
       subtitle: 'Remember your daily needs, not just water.',
       benefits: {
-        meds: 'Unlimited vitamin and medication reminders',
+        widgets: 'Home Screen and Lock Screen widgets',
+        meds: 'Vitamin and medication reminders',
         taken: 'Mark "Taken" right from the notification',
         week: 'Weekly consistency tracking',
-        future: 'New Premium habits included as they arrive',
+        future: 'Coming soon: advanced stats, personal insights, Apple Watch',
       },
       plan: { annual: 'Yearly', monthly: 'Monthly' },
       per: { annual: '/ year', monthly: '/ month' },
@@ -593,7 +597,7 @@ export const translations = {
       active: 'Premium active',
       activeSub: 'All Premium features are unlocked. Thank you!',
       upgrade: 'Go Premium',
-      upgradeSub: 'Unlimited vitamin & medication reminders',
+      upgradeSub: 'Widgets, vitamin & medication reminders',
       mockToggle: 'Mock Premium (development)',
     },
     meds: {
@@ -616,6 +620,7 @@ export const translations = {
       delete: 'Delete',
       deleteTitle: 'Delete?',
       deleteMsg: '%{name} and its reminders will be deleted.',
+      premiumOnly: 'Vitamin and medication reminders are a Premium feature.',
       freeLimit: { one: 'The free version includes %{count} vitamin/medication. Add more with Premium.', other: 'The free version includes %{count} vitamins/medications. Add more with Premium.' },
       notifTitle: 'Time for %{name}',
       notifBody: 'Did you take today’s dose?',
@@ -628,10 +633,11 @@ export const translations = {
     live: {
       next: 'Next',
       done: 'Goal reached!',
-      setting: 'Live Activity',
-      settingHint: 'When on, your progress appears as a card on the Lock Screen and in the Dynamic Island. For a permanent glance, add a Lock Screen widget: touch and hold the Lock Screen → Customize → Lock Screen → Add Widgets → Water Break.',
+      setting: 'Dynamic Island',
+      settingHint: 'When on, your progress appears in the Dynamic Island during the day (iOS also shows it as a small card on the Lock Screen). For a permanent glance, add a Lock Screen widget: touch and hold the Lock Screen → Customize → Lock Screen → Add Widgets → Water Break.',
     },
     widget: {
+      locked: { title: 'Premium widget', body: 'Tap to unlock' },
       moods: {
         thirsty: 'Feeling dry, a sip?',
         normal: 'Doing great!',

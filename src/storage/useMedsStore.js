@@ -19,6 +19,9 @@ const LOG_DAYS = 60;
 let store = { meds: [], log: {}, isHydrated: false };
 const listeners = new Set();
 const emit = () => listeners.forEach((l) => l(store));
+// Premium değilken (suspendAll sonrası) dil değişimi vb. hatırlatmaları yeniden kurmasın
+let active = true;
+
 const persist = async () => {
   try {
     await AsyncStorage.setItem(KEY, JSON.stringify({ meds: store.meds, log: store.log }));
@@ -130,8 +133,19 @@ const actions = {
     await commit({ ...store, log: prunedLog({ ...store.log, [day]: dayLog }) });
   },
 
+  // Premium bitince hatırlatmalar durur (kayıtlar silinmez; yeniden Premium olunca rescheduleAll kurar)
+  suspendAll: async () => {
+    active = false;
+    if (!store.meds.some((m) => (m.notificationIds || []).length)) return;
+    for (const m of store.meds) await cancelMedNotifications(m);
+    await commit({ ...store, meds: store.meds.map((m) => ({ ...m, notificationIds: [] })) });
+  },
+
   // Dil değişince bildirim metinleri yeni dile geçsin
-  rescheduleAll: async () => {
+  // activate: Premium doğrulandı, hatırlatmalar yeniden kurulabilir
+  rescheduleAll: async ({ activate } = {}) => {
+    if (activate) active = true;
+    if (!active) return;
     categoryLocale = null;
     const perm = await Notifications.getPermissionsAsync().catch(() => null);
     if (perm?.status !== 'granted') return;

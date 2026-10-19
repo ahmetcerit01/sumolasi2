@@ -53,9 +53,18 @@ const pullPending = async () => {
   return pending.length;
 };
 
+// Widget'lar Premium'a özel: PremiumProvider durumu buraya bildirir
+let premium = false;
+export const setWidgetPremium = (on) => {
+  if (premium === !!on) return;
+  premium = !!on;
+  syncWidget();
+};
+
 const pushState = () => {
   const s = useHydrationStore.getState();
   WaterWidget.updateSnapshot({
+    premium,
     date: s.lastDate,
     totalMl: s.totalMl || 0,
     goalMl: s.goalMl || 2500,
@@ -65,6 +74,8 @@ const pushState = () => {
     lastAddAt: s.lastAddAt || '', // native tarafa null gönderilemiyor
     labels: {
       title: i18n.t('app.name'),
+      lockedTitle: i18n.t('widget.locked.title'),
+      lockedBody: i18n.t('widget.locked.body'),
       pctPrefix: i18n.locale === 'tr',
       sep: i18n.locale === 'tr' ? '.' : ',',
       moods: {

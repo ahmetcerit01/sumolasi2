@@ -43,6 +43,7 @@ function PaywallSheet({ visible, onClose }) {
   const savings = annual && monthly && monthly.price > 0 ? Math.round((1 - annual.price / (monthly.price * 12)) * 100) : 0;
 
   const benefits = [
+    { icon: 'apps-outline', text: t('premium.benefits.widgets') },
     { icon: 'medkit-outline', text: t('premium.benefits.meds') },
     { icon: 'notifications-outline', text: t('premium.benefits.taken') },
     { icon: 'calendar-outline', text: t('premium.benefits.week') },
