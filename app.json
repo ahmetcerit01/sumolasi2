@@ -120,8 +120,8 @@
         "iosInterstitial": "ca-app-pub-4782662453178131/9895951057"
       },
       "legal": {
-        "termsUrl": "",
-        "privacyUrl": ""
+        "termsUrl": "https://farukoz1.github.io/sumolasi-legal/terms.html",
+        "privacyUrl": "https://farukoz1.github.io/sumolasi-legal/privacy.html"
       }
     },
     "locales": {
