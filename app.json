@@ -94,7 +94,7 @@
       [
         "react-native-google-mobile-ads",
         {
-          "iosAppId": "ca-app-pub-3940256099942544~1458002511",
+          "iosAppId": "ca-app-pub-4782662453178131~4619573641",
           "androidAppId": "ca-app-pub-3940256099942544~3347511713",
           "delayAppMeasurementInit": true,
           "skAdNetworkItems": ["cstr6suwn9.skadnetwork"]
@@ -114,6 +114,10 @@
       "revenuecat": {
         "iosApiKey": "",
         "androidApiKey": ""
+      },
+      "ads": {
+        "iosBanner": "ca-app-pub-4782662453178131/3570040846",
+        "iosInterstitial": "ca-app-pub-4782662453178131/9895951057"
       },
       "legal": {
         "termsUrl": "",

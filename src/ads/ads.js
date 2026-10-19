@@ -3,19 +3,21 @@ import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getTrackingPermissionsAsync, requestTrackingPermissionsAsync } from 'expo-tracking-transparency';
 import MobileAds, { AdEventType, AdsConsent, InterstitialAd, TestIds } from 'react-native-google-mobile-ads';
+import { IS_TEST_BUILD } from '../utils/env';
 
 // Reklamlar (Google AdMob). Kurallar:
 // - Premium kullanıcılar hiç reklam görmez.
 // - İzinler (AB/İngiltere için Google rıza formu, ardından iOS izleme izni) ilk reklam anında
 //   istenir; açılışta ya da onboarding sırasında asla.
 // - Geçiş reklamı yalnızca doğal bir duraklamada ve en fazla INTERSTITIAL_GAP_MS'de bir.
-// Reklam birim kimlikleri app.json → extra.ads; boşsa Google'ın test kimlikleri kullanılır.
+// Reklam birim kimlikleri app.json → extra.ads. Geliştirme ve test derlemelerinde (IS_TEST_BUILD)
+// her zaman Google'ın test reklamları kullanılır: kendi gerçek reklamına dokunmak AdMob hesabını riske atar.
 
 const cfg = Constants.expoConfig?.extra?.ads || {};
 const pick = (ios, android, test) => (Platform.OS === 'ios' ? ios : android) || test;
 export const AD_UNITS = {
-  banner: __DEV__ ? TestIds.ADAPTIVE_BANNER : pick(cfg.iosBanner, cfg.androidBanner, TestIds.ADAPTIVE_BANNER),
-  interstitial: __DEV__ ? TestIds.INTERSTITIAL : pick(cfg.iosInterstitial, cfg.androidInterstitial, TestIds.INTERSTITIAL),
+  banner: IS_TEST_BUILD ? TestIds.ADAPTIVE_BANNER : pick(cfg.iosBanner, cfg.androidBanner, TestIds.ADAPTIVE_BANNER),
+  interstitial: IS_TEST_BUILD ? TestIds.INTERSTITIAL : pick(cfg.iosInterstitial, cfg.androidInterstitial, TestIds.INTERSTITIAL),
 };
 
 const INTERSTITIAL_GAP_MS = 3 * 60 * 60 * 1000; // 3 saat
