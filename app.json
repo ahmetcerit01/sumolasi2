@@ -15,7 +15,8 @@
         "UIBackgroundModes": [
           "remote-notification"
         ],
-        "CFBundleAllowMixedLocalizations": true
+        "CFBundleAllowMixedLocalizations": true,
+        "CFBundleDisplayName": "HydroMate"
       }
     },
     "android": {
@@ -74,8 +75,8 @@
           "widgets": [
             {
               "name": "WaterWidget",
-              "displayName": "Su Molası",
-              "description": "Günlük su hedefini takip et, tek dokunuşla su ekle.",
+              "displayName": "HydroMate",
+              "description": "Track your daily water goal and add water with one tap.",
               "ios": {
                 "supportedFamilies": [
                   "systemSmall",
@@ -97,7 +98,9 @@
           "iosAppId": "ca-app-pub-4782662453178131~4619573641",
           "androidAppId": "ca-app-pub-3940256099942544~3347511713",
           "delayAppMeasurementInit": true,
-          "skAdNetworkItems": ["cstr6suwn9.skadnetwork"]
+          "skAdNetworkItems": [
+            "cstr6suwn9.skadnetwork"
+          ]
         }
       ],
       [

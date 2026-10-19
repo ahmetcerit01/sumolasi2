@@ -8,7 +8,7 @@ import { getLocales } from 'expo-localization';
 // --------------------
 export const translations = {
   tr: {
-    app: { name: 'Su Molası', tagline: 'Sağlıklı bir mola zamanı.' },
+    app: { name: 'Su Dostu', tagline: 'Sağlıklı bir mola zamanı.' },
     common: { ok: 'Tamam', cancel: 'İptal', close: 'Kapat', next: 'DEVAM ET', done: 'TAMAMLA', continue: 'Devam edelim' },
     units: { ml: 'ml', kg: 'kg', cm: 'cm', liter: 'L' },
     days: {
@@ -174,8 +174,8 @@ export const translations = {
       dayLabel: '%{day} Günü',
     },
     premium: {
-      title: 'Su Molası Premium',
-      tag: 'Su Molası Premium',
+      title: 'Su Dostu Premium',
+      tag: 'Su Dostu Premium',
       heroTitle: 'Günün tamamı için küçük molalar.',
       subtitle: 'Suyun yanında günlük ihtiyaçlarını da unutma.',
       benefits: {
@@ -244,7 +244,7 @@ export const translations = {
       next: 'Sıradaki',
       done: 'Hedef tamam!',
       setting: 'Dynamic Island',
-      settingHint: 'Açıkken ilerlemen gün içinde Dynamic Island\'da görünür (iOS bunu kilit ekranında da kısa bir kart olarak gösterir). Kilit ekranında kalıcı gösterge için araç takımı ekle: kilit ekranına basılı tut → Özelleştir → Kilit Ekranı → Araç takımı ekle → Su Molası.',
+      settingHint: 'Açıkken ilerlemen gün içinde Dynamic Island\'da görünür (iOS bunu kilit ekranında da kısa bir kart olarak gösterir). Kilit ekranında kalıcı gösterge için araç takımı ekle: kilit ekranına basılı tut → Özelleştir → Kilit Ekranı → Araç takımı ekle → Su Dostu.',
     },
     widget: {
       locked: { title: 'Premium widget', body: 'Kilidi açmak için dokun' },
@@ -258,7 +258,7 @@ export const translations = {
     },
     notifications: {
       channelName: 'Su Hatırlatıcıları',
-      title: 'Su Molası',
+      title: 'Su molası',
       body: 'Bir bardak su içme zamanı!',
     },
     reminders: {
@@ -291,7 +291,7 @@ export const translations = {
       errorTitle: 'Hata',
       scheduleFailed: 'Planlama yapılamadı.',
       permissionTitle: 'Bildirim İzni Gerekli',
-      permissionMsg: 'Hatırlatıcıların çalışması için Ayarlar’dan Su Molası bildirimlerine izin ver.',
+      permissionMsg: 'Hatırlatıcıların çalışması için Ayarlar’dan Su Dostu bildirimlerine izin ver.',
       openSettings: 'Ayarları Aç',
       plannedTitle: 'Planlandı',
       testInOneMinuteMsg: '1 dk sonra bildirim gelecek.',
@@ -365,7 +365,7 @@ export const translations = {
     },
     onboard: {
       flow: {
-        brand: 'su molası',
+        brand: 'su dostu',
         skip: 'Atla',
         back: 'Geri',
         welcome: { tag: 'Küçük bir başlangıç', title: 'Her şey bir damlayla başlar.', body: 'Kendine ayırdığın küçük bir mola.\nGününe iyi gelen bir alışkanlık.', cta: 'Birlikte başlayalım' },
@@ -377,7 +377,7 @@ export const translations = {
         loading: { tag: 'Parçalar bir araya geliyor', title: 'Sana uygun bir başlangıç.', body: 'Günlük su hedefini ve mola ritmini hazırlıyoruz.' },
         goal: { tag: 'Tam sana göre', title: 'Her damla hedefine yakınlaştırır.', body: 'İlk hedefin hazır. Küçük molalarla gününe yayabilirsin.', perDay: 'ml / gün', cta: 'Molalarımı ayarlayalım' },
         remind: { tag: 'Senin mola ritmin', title: 'Ne sıklıkla su molası verelim?', dialTop: 'Bir su molası', dialSub: 'dakikada bir', summary: '%{from} – %{to} arasında · yaklaşık %{count} hatırlatma', cta: 'Molalarımı ayarla', none: 'Şimdilik hatırlatma istemiyorum', m30: '30 dk', h1: '1 sa', h15: '1,5 sa', h2: '2 sa' },
-        notify: { tag: 'Son bir dokunuş', title: 'Mola vakti geldiğinde haberin olsun.', body: 'Seçtiğin saatlerde nazik bir hatırlatma.', previewApp: 'Su Molası', previewNow: 'şimdi', previewTitle: 'Kendine küçük bir mola ver.', previewBody: 'Bir bardak su, güne iyi gelen küçük bir adım.', hint: 'Bildirim tercihini istediğin zaman değiştirebilirsin.', cta: 'Bildirimlere izin ver' },
+        notify: { tag: 'Son bir dokunuş', title: 'Mola vakti geldiğinde haberin olsun.', body: 'Seçtiğin saatlerde nazik bir hatırlatma.', previewApp: 'Su Dostu', previewNow: 'şimdi', previewTitle: 'Kendine küçük bir mola ver.', previewBody: 'Bir bardak su, güne iyi gelen küçük bir adım.', hint: 'Bildirim tercihini istediğin zaman değiştirebilirsin.', cta: 'Bildirimlere izin ver' },
         ready: { tag: 'İyi bir alışkanlığa merhaba', title: 'Bir damla.\nSonra bir yenisi.', body: 'Her şeyi hazırladık.\nŞimdi ilk su molanla başlayabilirsin.', goalLine: 'Günlük hedefin · %{amount}', remindLine: 'Her %{interval} bir hatırlatma', cta: 'Su molasına başla' },
         everyMin: '%{n} dakikada',
         everyHour: '%{n} saatte',
@@ -416,7 +416,7 @@ export const translations = {
     },
   },
   en: {
-    app: { name: 'Water Break', tagline: 'Time for a healthy break.' },
+    app: { name: 'HydroMate', tagline: 'Time for a healthy break.' },
     common: { ok: 'OK', cancel: 'Cancel', close: 'Close', next: 'NEXT', done: 'FINISH', continue: 'Continue' },
     units: { ml: 'ml', kg: 'kg', cm: 'cm', liter: 'L' },
     days: {
@@ -582,8 +582,8 @@ export const translations = {
       dayLabel: '%{day}',
     },
     premium: {
-      title: 'Water Break Premium',
-      tag: 'Water Break Premium',
+      title: 'HydroMate Premium',
+      tag: 'HydroMate Premium',
       heroTitle: 'Small breaks for your whole day.',
       subtitle: 'Remember your daily needs, not just water.',
       benefits: {
@@ -652,7 +652,7 @@ export const translations = {
       next: 'Next',
       done: 'Goal reached!',
       setting: 'Dynamic Island',
-      settingHint: 'When on, your progress appears in the Dynamic Island during the day (iOS also shows it as a small card on the Lock Screen). For a permanent glance, add a Lock Screen widget: touch and hold the Lock Screen → Customize → Lock Screen → Add Widgets → Water Break.',
+      settingHint: 'When on, your progress appears in the Dynamic Island during the day (iOS also shows it as a small card on the Lock Screen). For a permanent glance, add a Lock Screen widget: touch and hold the Lock Screen → Customize → Lock Screen → Add Widgets → HydroMate.',
     },
     widget: {
       locked: { title: 'Premium widget', body: 'Tap to unlock' },
@@ -666,7 +666,7 @@ export const translations = {
     },
     notifications: {
       channelName: 'Water Reminders',
-      title: 'Water Break',
+      title: 'Water break',
       body: 'Time for a glass of water!',
     },
     reminders: {
@@ -699,7 +699,7 @@ export const translations = {
       errorTitle: 'Error',
       scheduleFailed: 'Scheduling failed.',
       permissionTitle: 'Notifications Needed',
-      permissionMsg: 'Allow notifications for Water Break in Settings so reminders can work.',
+      permissionMsg: 'Allow notifications for HydroMate in Settings so reminders can work.',
       openSettings: 'Open Settings',
       plannedTitle: 'Planned',
       testInOneMinuteMsg: 'You will get a notification in 1 minute.',
@@ -773,7 +773,7 @@ export const translations = {
     },
     onboard: {
       flow: {
-        brand: 'water break',
+        brand: 'hydromate',
         skip: 'Skip',
         back: 'Back',
         welcome: { tag: 'A small beginning', title: 'It all starts with a drop.', body: 'A small break just for you.\nA habit that does your day good.', cta: "Let's begin together" },
@@ -785,7 +785,7 @@ export const translations = {
         loading: { tag: 'Pieces coming together', title: 'A start that fits you.', body: 'Preparing your daily water goal and break rhythm.' },
         goal: { tag: 'Made just for you', title: 'Every drop brings you closer.', body: 'Your first goal is ready. Spread it across your day with small breaks.', perDay: 'ml / day', cta: 'Set up my breaks' },
         remind: { tag: 'Your break rhythm', title: 'How often should we take a water break?', dialTop: 'One water break', dialSub: 'minutes apart', summary: 'Between %{from} – %{to} · about %{count} reminders', cta: 'Set my breaks', none: "I don't want reminders for now", m30: '30 min', h1: '1 h', h15: '1.5 h', h2: '2 h' },
-        notify: { tag: 'One last touch', title: "Know when it's time for a break.", body: 'A gentle reminder at the times you chose.', previewApp: 'Water Break', previewNow: 'now', previewTitle: 'Give yourself a small break.', previewBody: 'A glass of water, a small step that does your day good.', hint: 'You can change notification preferences any time.', cta: 'Allow notifications' },
+        notify: { tag: 'One last touch', title: "Know when it's time for a break.", body: 'A gentle reminder at the times you chose.', previewApp: 'HydroMate', previewNow: 'now', previewTitle: 'Give yourself a small break.', previewBody: 'A glass of water, a small step that does your day good.', hint: 'You can change notification preferences any time.', cta: 'Allow notifications' },
         ready: { tag: 'Hello to a good habit', title: 'One drop.\nThen another.', body: "We've set everything up.\nNow you can start your first water break.", goalLine: 'Daily goal · %{amount}', remindLine: 'A reminder every %{interval}', cta: 'Start my water breaks' },
         everyMin: '%{n} minutes',
         everyHour: '%{n} hours',

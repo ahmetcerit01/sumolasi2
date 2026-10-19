@@ -2,7 +2,7 @@ import AppIntents
 import Foundation
 import WidgetKit
 
-// Siri ve Kısayollar: "Su Molası ile su ekle", "Su Molası'nda bugün ne kadar içtim?"
+// Siri ve Kısayollar: "Su Dostu ile su ekle", "Su Dostu'nda bugün ne kadar içtim?"
 // Uygulamayı açmadan çalışır. Eklenen miktar, widget butonlarının kullandığı aynı
 // App Group kaydına "pending" olarak yazılır; uygulama açılınca widgetSync.js bunu alır.
 
@@ -118,7 +118,7 @@ struct AddWaterIntent: AppIntent {
   func perform() async throws -> some IntentResult & ProvidesDialog {
     let tr = WaterShared.isTurkish
     guard let result = WaterShared.add(amount.rawValue) else {
-      let msg = tr ? "Önce Su Molası'nı bir kez aç." : "Open Water Break once first."
+      let msg = tr ? "Önce Su Dostu'nu bir kez aç." : "Open HydroMate once first."
       return .result(dialog: IntentDialog(stringLiteral: msg))
     }
     let added = WaterShared.fmt(amount.rawValue)
@@ -143,7 +143,7 @@ struct WaterStatusIntent: AppIntent {
   func perform() async throws -> some IntentResult & ProvidesDialog {
     let tr = WaterShared.isTurkish
     guard let s = WaterShared.status() else {
-      let msg = tr ? "Önce Su Molası'nı bir kez aç." : "Open Water Break once first."
+      let msg = tr ? "Önce Su Dostu'nu bir kez aç." : "Open HydroMate once first."
       return .result(dialog: IntentDialog(stringLiteral: msg))
     }
     let pct = Int((Double(s.total) / Double(max(s.goal, 1)) * 100).rounded())

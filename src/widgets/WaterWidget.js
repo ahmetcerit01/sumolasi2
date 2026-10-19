@@ -100,7 +100,7 @@ const WaterWidget = (props, environment) => {
       return (
         <HStack spacing={4} modifiers={[accessoryBg]}>
           <Image systemName="lock.fill" />
-          <Text>{(labels.title || 'Su Molası') + ' · Premium'}</Text>
+          <Text>{(labels.title || 'Su Dostu') + ' · Premium'}</Text>
         </HStack>
       );
     }
@@ -117,7 +117,7 @@ const WaterWidget = (props, environment) => {
         <VStack alignment="leading" spacing={2} modifiers={[accessoryBg, widgetURL('sumolasi://premium')]}>
           <HStack spacing={4}>
             <Image systemName="drop.fill" size={11} />
-            <Text modifiers={[font({ weight: 'semibold', size: 11 }), kerning(1)]}>{(labels.title || 'Su Molası').toUpperCase()}</Text>
+            <Text modifiers={[font({ weight: 'semibold', size: 11 }), kerning(1)]}>{(labels.title || 'Su Dostu').toUpperCase()}</Text>
           </HStack>
           <HStack spacing={4}>
             <Image systemName="lock.fill" size={12} />
@@ -133,7 +133,7 @@ const WaterWidget = (props, environment) => {
     );
     return (
       <VStack alignment="leading" spacing={6} modifiers={[lockedBg, widgetURL('sumolasi://premium')]}>
-        <Text modifiers={[font({ weight: 'semibold', size: 10 }), kerning(1.6), foregroundStyle(C.accent)]}>{(labels.title || 'Su Molası').toUpperCase()}</Text>
+        <Text modifiers={[font({ weight: 'semibold', size: 10 }), kerning(1.6), foregroundStyle(C.accent)]}>{(labels.title || 'Su Dostu').toUpperCase()}</Text>
         <Spacer />
         <ZStack modifiers={[frame({ width: 40, height: 40 })]}>
           <Circle modifiers={[foregroundStyle(C.accent), opacity(0.16)]} />
@@ -173,7 +173,7 @@ const WaterWidget = (props, environment) => {
       <VStack alignment="leading" spacing={3} modifiers={[accessoryBg, widgetURL('sumolasi://')]}>
         <HStack spacing={4}>
           <Image systemName="drop.fill" size={11} />
-          <Text modifiers={[font({ weight: 'semibold', size: 11 }), kerning(1)]}>{(labels.title || 'Su Molası').toUpperCase()}</Text>
+          <Text modifiers={[font({ weight: 'semibold', size: 11 }), kerning(1)]}>{(labels.title || 'Su Dostu').toUpperCase()}</Text>
           <Spacer />
           <Text modifiers={[font({ weight: 'bold', size: 12 }), monospacedDigit()]}>{done ? '✓' : pctText}</Text>
         </HStack>
@@ -208,7 +208,7 @@ const WaterWidget = (props, environment) => {
   );
   const overline = (
     <Text modifiers={[font({ weight: 'semibold', size: 10 }), kerning(1.6), foregroundStyle(C.accent), minimumScaleFactor(0.8)]}>
-      {(labels.title || 'Su Molası').toUpperCase()}
+      {(labels.title || 'Su Dostu').toUpperCase()}
     </Text>
   );
   // Arka planda uygulamanın parçacık dilinden sabit, soluk ışık noktaları
@@ -289,5 +289,5 @@ export default createWidget('WaterWidget', WaterWidget, {
   sleepAt: '23:00',
   lastAddAt: '',
   premium: false,
-  labels: { title: 'Su Molası', pctPrefix: true, sep: '.', moods: {}, lockedTitle: 'Premium', lockedBody: '' },
+  labels: { title: 'Su Dostu', pctPrefix: true, sep: '.', moods: {}, lockedTitle: 'Premium', lockedBody: '' },
 });

@@ -34,7 +34,7 @@ const WaterActivity = (props, environment) => {
       <VStack alignment="leading" spacing={8} modifiers={[padding({ all: 16 }), activityBackgroundTint('#0A131D')]}>
         <HStack spacing={8}>
           {drop(18)}
-          <Text modifiers={[font({ weight: 'bold', size: 15, design: 'rounded' }), foregroundStyle('#FFFFFF')]}>{labels.title || 'Su Molası'}</Text>
+          <Text modifiers={[font({ weight: 'bold', size: 15, design: 'rounded' }), foregroundStyle('#FFFFFF')]}>{labels.title || 'Su Dostu'}</Text>
           <Spacer />
           <Text modifiers={[font({ weight: 'heavy', size: 15, design: 'rounded' }), foregroundStyle(accent), monospacedDigit()]}>{pctText}</Text>
         </HStack>
