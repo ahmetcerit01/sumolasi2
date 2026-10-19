@@ -89,6 +89,8 @@ const WaterWidget = (props, environment) => {
   };
 
   const family = environment.widgetFamily;
+  // iOS 17+ her widget görünümünde containerBackground ister; kilit ekranında sistem kendi zeminini çizer
+  const accessoryBg = containerBackground('#00000000', 'widget');
 
   // --- Premium değilse kilitli görünüm (dokununca uygulamada Premium ekranı açılır) ---
   if (!props.premium) {
@@ -96,7 +98,7 @@ const WaterWidget = (props, environment) => {
     const lockedBody = labels.lockedBody || '';
     if (family === 'accessoryInline') {
       return (
-        <HStack spacing={4}>
+        <HStack spacing={4} modifiers={[accessoryBg]}>
           <Image systemName="lock.fill" />
           <Text>{(labels.title || 'Su Molası') + ' · Premium'}</Text>
         </HStack>
@@ -104,7 +106,7 @@ const WaterWidget = (props, environment) => {
     }
     if (family === 'accessoryCircular') {
       return (
-        <ZStack modifiers={[widgetURL('sumolasi://premium')]}>
+        <ZStack modifiers={[accessoryBg, widgetURL('sumolasi://premium')]}>
           <Gauge value={0} modifiers={[gaugeStyle('circularCapacity')]} />
           <Image systemName="lock.fill" size={14} />
         </ZStack>
@@ -112,7 +114,7 @@ const WaterWidget = (props, environment) => {
     }
     if (family === 'accessoryRectangular') {
       return (
-        <VStack alignment="leading" spacing={2} modifiers={[widgetURL('sumolasi://premium')]}>
+        <VStack alignment="leading" spacing={2} modifiers={[accessoryBg, widgetURL('sumolasi://premium')]}>
           <HStack spacing={4}>
             <Image systemName="drop.fill" size={11} />
             <Text modifiers={[font({ weight: 'semibold', size: 11 }), kerning(1)]}>{(labels.title || 'Su Molası').toUpperCase()}</Text>
@@ -146,7 +148,7 @@ const WaterWidget = (props, environment) => {
   // --- Kilit ekranı araç takımları (sistem bunları tek renkli/saydam çizer) ---
   if (family === 'accessoryInline') {
     return (
-      <HStack spacing={4}>
+      <HStack spacing={4} modifiers={[accessoryBg]}>
         <Image systemName="drop.fill" />
         <Text>{pctText + ' · ' + num(total) + ' ml'}</Text>
       </HStack>
@@ -156,7 +158,7 @@ const WaterWidget = (props, environment) => {
   if (family === 'accessoryCircular') {
     // Halka + ortada yüzde (Gauge etiketleri widget'ta çizilmediği için üstüne bindirilir)
     return (
-      <ZStack modifiers={[widgetURL('sumolasi://')]}>
+      <ZStack modifiers={[accessoryBg, widgetURL('sumolasi://')]}>
         <Gauge value={ratio} modifiers={[gaugeStyle('circularCapacity')]} />
         <VStack spacing={0}>
           <Image systemName={done ? 'checkmark' : 'drop.fill'} size={10} />
@@ -168,7 +170,7 @@ const WaterWidget = (props, environment) => {
 
   if (family === 'accessoryRectangular') {
     return (
-      <VStack alignment="leading" spacing={3} modifiers={[widgetURL('sumolasi://')]}>
+      <VStack alignment="leading" spacing={3} modifiers={[accessoryBg, widgetURL('sumolasi://')]}>
         <HStack spacing={4}>
           <Image systemName="drop.fill" size={11} />
           <Text modifiers={[font({ weight: 'semibold', size: 11 }), kerning(1)]}>{(labels.title || 'Su Molası').toUpperCase()}</Text>
