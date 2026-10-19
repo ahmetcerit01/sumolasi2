@@ -370,8 +370,6 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
               <Ionicons name="chevron-back" size={24} color={c.ink2} />
             </TouchableOpacity>
           )}
-          <View style={[styles.logoRing, { borderColor: c.accent }]} />
-          <Text style={styles.brand}>{t('onboard.flow.brand')}</Text>
         </View>
         <View style={styles.topRight}>
           {step === 'welcome' && (
@@ -740,8 +738,6 @@ const makeStyles = (c, type) =>
     topBar: { height: 44, paddingHorizontal: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     topLeft: { flexDirection: 'row', alignItems: 'center' },
     backBtn: { marginRight: 14, marginLeft: -6 },
-    logoRing: { width: 9, height: 9, borderRadius: 5, borderWidth: 1.5, marginRight: 10, opacity: 0.8 },
-    brand: { ...type.bodyStrong, fontSize: 17, color: c.ink, letterSpacing: 0.2 },
     topRight: { flexDirection: 'row', alignItems: 'center', gap: 18 },
     lang: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     langText: { ...type.labelStrong, fontSize: 13, color: c.ink3 },

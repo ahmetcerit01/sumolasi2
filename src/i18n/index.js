@@ -377,7 +377,6 @@ export const translations = {
     },
     onboard: {
       flow: {
-        brand: 'su dostu',
         skip: 'Atla',
         back: 'Geri',
         welcome: { tag: 'Küçük bir başlangıç', title: 'Kendine bir su molası ver.', body: 'Günlük su alışkanlığını birlikte oluşturalım.', cta: 'Başlayalım' },
@@ -791,7 +790,6 @@ export const translations = {
     },
     onboard: {
       flow: {
-        brand: 'hydromate',
         skip: 'Skip',
         back: 'Back',
         welcome: { tag: 'A small beginning', title: 'Give yourself a water break.', body: "Let's build your daily water habit together.", cta: "Let's begin" },
