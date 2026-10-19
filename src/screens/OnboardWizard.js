@@ -10,6 +10,7 @@ import Animated, {
   FadeInRight,
   FadeOutLeft,
   FadeOutRight,
+  ZoomIn,
   SensorType,
   useAnimatedSensor,
   useAnimatedStyle,
@@ -21,7 +22,6 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Svg, { Circle, Path } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { scheduleOnRN } from 'react-native-worklets';
@@ -34,15 +34,33 @@ import ParticleMorph from '../animation/ParticleMorph';
 import { SCENE } from '../animation/particleScenes';
 import ValueScale from '../components/onboarding/ValueScale';
 import IntervalDial from '../components/onboarding/IntervalDial';
+import SkiaGlass from '../components/SkiaGlass';
+import { DrinkIcon } from '../components/QuickAdd';
+import WaterOrb from '../components/onboarding/WaterOrb';
+import WaterColumn from '../components/onboarding/WaterColumn';
+import SkyBackdrop from '../components/onboarding/SkyBackdrop';
 
-// Onboarding: 5 adım (karşılama, kilo+boy, gün ritmi, hedef, hatırlatma halkası). Tek bir parçacık
-// sürüsü bütün akış boyunca yaşar; "kahraman" adımlarda (karşılama, hedef) şekil alır, form adımlarında
-// soluk bir toz olarak arkada kalır. Kayıt: hedef, hedef adımına girilince hesaplanıp kaydedilir;
-// bildirim izni hatırlatma adımındaki ana butonla istenir; HAS_ONBOARDED en sonda yazılır.
+// Onboarding: 6 sahne.
+//  1 karşılama: yukarıdan bir damla düşer; dokununca dağılır.
+//  2 demo: +200/+300/+500 ile gerçek bardak dolar (kaydedilmez).
+//  3 kilo + boy: değer değiştikçe arkadaki su sütunu yükselir/alçalır.
+//  4 gün ritmi: seçilen saate göre arkadaki gökyüzü değişir (güneş, gün batımı, ay).
+//  5 hedef: parçacıklar bir araya gelir (hesaplama), ardından su küresi dolar ve hedef belirir;
+//    hedef buradan ayarlanabilir.
+//  6 hatırlatma halkası: bildirim iznini ister ve bitirir.
+// Tek bir parçacık sürüsü bütün akış boyunca yaşar. Hedef 5. sahneye girilince hesaplanıp kaydedilir;
+// HAS_ONBOARDED en sonda yazılır.
 // preview: geliştirici önizlemesi — hiçbir şey kaydedilmez, izin istenmez.
 
-const STEPS = ['welcome', 'body', 'rhythm', 'goal', 'remind'];
-const HERO = { welcome: SCENE.DROP, goal: SCENE.GLASS };
+const STEPS = ['welcome', 'demo', 'body', 'rhythm', 'goal', 'remind'];
+const HERO_STEPS = ['welcome', 'goal'];
+const DEMO_CAP = 1000; // demo bardağı bu kadar ml'de dolar
+const DEMO_AMOUNTS = [
+  { ml: 200, icon: 'cup' },
+  { ml: 300, icon: 'mug' },
+  { ml: 500, icon: 'bottle' },
+];
+const CALC_LINES = ['calc1', 'calc2', 'calc3'];
 const LB = 2.20462;
 const INTERVAL_CHIPS = [
   { min: 30, key: 'm30' },
@@ -80,9 +98,14 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
   const [intervalMin, setIntervalMin] = useState(120);
   const [busy, setBusy] = useState(false);
   const [dir, setDir] = useState(1); // 1 ileri, -1 geri: geçiş yönü
+  const [burst, setBurst] = useState(false); // karşılamada damla dağılıyor
+  const [demoMl, setDemoMl] = useState(0);
+  const [demoSignal, setDemoSignal] = useState(0);
+  const [phase, setPhase] = useState('calc'); // hedef sahnesi: 'calc' → 'final'
+  const [calcLine, setCalcLine] = useState(0);
 
   const index = STEPS.indexOf(step);
-  const hero = step in HERO;
+  const hero = HERO_STEPS.includes(step);
   const go = (s) => {
     setEditing(null);
     setDir(STEPS.indexOf(s) >= index ? 1 : -1);
@@ -117,14 +140,81 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
     }
   };
 
-  // Hedef adımına girilince hedefi hesapla + kaydet
+  // Hedef sahnesi: girilince hedefi hesapla + kaydet. İlk girişte kısa bir "hesaplama" bölümü oynar,
+  // sonra su küresi dolar. Kilo/boy değişmediyse (ör. hatırlatmadan geri dönüş) elle ayarlanan hedef korunur.
+  const lastInputs = useRef(null);
   useEffect(() => {
     if (step !== 'goal') return;
-    const goal = computeGoalMl(weightKg, heightCm);
-    setGoalMl(goal);
-    persistProfile(goal);
+    const key = `${Math.round(weightKg)}-${heightCm}`;
+    const changed = lastInputs.current !== key;
+    lastInputs.current = key;
+    if (changed) {
+      const goal = computeGoalMl(weightKg, heightCm);
+      setGoalMl(goal);
+      persistProfile(goal);
+    }
+    if (!changed || reduceMotion) {
+      setPhase('final');
+      return;
+    }
+    setPhase('calc');
+    setCalcLine(0);
+    const lines = setInterval(() => setCalcLine((n) => Math.min(n + 1, CALC_LINES.length - 1)), 1000);
+    const done = setTimeout(() => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+      setPhase('final');
+    }, 3100);
+    return () => {
+      clearInterval(lines);
+      clearTimeout(done);
+    };
   }, [step]);
-  const shownGoal = useCountUp(goalMl, step === 'goal', reduceMotion);
+  const finalShown = step === 'goal' && phase === 'final';
+  const shownGoal = useCountUp(goalMl, finalShown, reduceMotion);
+
+  const adjustGoal = (delta) => {
+    const next = Math.max(1000, Math.min(5000, goalMl + delta));
+    if (next === goalMl) return;
+    Haptics.selectionAsync().catch(() => {});
+    setGoalMl(next);
+    if (!preview) {
+      AsyncStorage.setItem('DAILY_GOAL_ML', String(next)).catch(() => {});
+      useHydrationStore.getState().setGoalMl(next).catch(() => {});
+    }
+  };
+
+  // Karşılama: damla yukarıdan düşer; dokununca dağılır ve demo açılır
+  const dropFall = useSharedValue(reduceMotion ? 0 : -height * 0.32);
+  useEffect(() => {
+    if (reduceMotion) return;
+    dropFall.value = withDelay(250, withTiming(0, { duration: 1100, easing: Easing.out(Easing.back(1.25)) }));
+  }, []);
+  const breakDrop = () => {
+    if (burst) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    setBurst(true);
+    setTimeout(() => {
+      go('demo');
+      setBurst(false);
+    }, reduceMotion ? 0 : 600);
+  };
+
+  // Demo: bardak gerçekten dolar; dolunca bir sonraki dokunuş baştan başlatır
+  const addDemo = (ml) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    setDemoMl((v) => (v >= DEMO_CAP ? ml : Math.min(DEMO_CAP, v + ml)));
+    setDemoSignal((n) => n + 1);
+  };
+
+  // Parçacık sahnesi: karşılamada damla (dokununca dağılır), hesaplamada bir araya gelen çekirdek,
+  // finalde küre öne çıktığı için soluk toz
+  const particleScene =
+    step === 'welcome' ? (burst ? SCENE.SCATTER : SCENE.DROP) : step === 'goal' && phase === 'calc' ? SCENE.RHYTHM : SCENE.SCATTER;
+  const particleDim = step === 'welcome' || (step === 'goal' && phase === 'calc') ? 0 : step === 'goal' ? 0.7 : 0.6;
+  // Su sütunu seviyesi: hedef 1,5 L → ekranın %8'i, 4 L → %55'i
+  const columnLevel = 0.08 + (0.47 * (computeGoalMl(weightKg, heightCm) - 1500)) / 2500;
+  const toMin = (d) => d.getHours() * 60 + d.getMinutes();
+  const skyMinutes = toMin(editing === 'sleep' ? sleepAt : wakeAt);
 
   // ---- Gezinme -------------------------------------------------------------------------
   const back = () => {
@@ -132,7 +222,7 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
   };
 
   const skip = () => {
-    if (step === 'welcome') return go('body');
+    if (step === 'welcome' || step === 'demo') return go('body');
     if (step === 'body' || step === 'rhythm') return go('goal');
     if (step === 'goal') return go('remind');
     if (step === 'remind') return noReminders();
@@ -180,10 +270,11 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
   };
 
   const CTA = {
-    welcome: { label: t('onboard.flow.welcome.cta'), onPress: () => go('body') },
+    welcome: { label: t('onboard.flow.welcome.cta'), onPress: breakDrop },
+    demo: { label: t('common.continue'), onPress: () => go('body') },
     body: { label: t('common.continue'), onPress: () => go('rhythm') },
     rhythm: { label: t('onboard.flow.rhythm.cta'), onPress: () => go('goal') },
-    goal: { label: t('onboard.flow.goal.cta'), onPress: () => go('remind') },
+    goal: phase === 'final' ? { label: t('onboard.flow.goal.cta'), onPress: () => go('remind'), icon: 'notifications' } : null,
     remind: { label: t('onboard.flow.remind.cta'), onPress: allowNotifications, icon: 'water' },
   }[step];
 
@@ -209,7 +300,7 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
   const sceneStyle = useAnimatedStyle(() => ({
     transform: [
       { translateX: tiltX.value * 18 },
-      { translateY: exitP.value * (glassY - stageCy) - tiltY.value * 14 },
+      { translateY: dropFall.value + exitP.value * (glassY - stageCy) - tiltY.value * 14 },
       { scale: 1 - exitP.value * 0.5 },
     ],
   }));
@@ -232,8 +323,8 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
           centerX={width / 2}
           centerY={stageCy}
           radius={stageR}
-          scene={HERO[step] ?? SCENE.SCATTER}
-          dim={hero ? 0 : 0.6}
+          scene={particleScene}
+          dim={particleDim}
           colors={c}
           dark={dark}
           reduceMotion={reduceMotion}
@@ -241,19 +332,44 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
           transitionMs={1000}
           entryMs={1600}
         />
+        {finalShown && (
+          <Animated.View
+            entering={reduceMotion ? FadeIn.duration(300) : ZoomIn.duration(800).easing(Easing.out(Easing.back(1.3)))}
+            exiting={FadeOut.duration(200)}
+            style={[styles.orb, { top: stageCy - stageR * 1.1, left: width / 2 - stageR * 1.1, width: stageR * 2.2, height: stageR * 2.2 }]}
+          >
+            <WaterOrb size={stageR * 2.2} progress={0.78} colors={c} duration={reduceMotion ? 0 : 1700} />
+            <View style={StyleSheet.absoluteFill} pointerEvents="none">
+              <View style={styles.orbLabel}>
+                <Text style={[type.display, styles.orbNum]}>{fmtNumber(shownGoal)}</Text>
+                <Text style={[type.bodyStrong, styles.orbUnit]}>{t('onboard.flow.goal.perDay')}</Text>
+              </View>
+            </View>
+          </Animated.View>
+        )}
       </Animated.View>
+
+      {/* sahneye özel arka planlar */}
+      {step === 'body' && (
+        <Animated.View entering={FadeIn.duration(700)} exiting={FadeOut.duration(300)} style={StyleSheet.absoluteFill} pointerEvents="none">
+          <WaterColumn width={width} height={height} level={columnLevel} colors={c} />
+        </Animated.View>
+      )}
+      {step === 'rhythm' && (
+        <Animated.View entering={FadeIn.duration(700)} exiting={FadeOut.duration(300)} style={[StyleSheet.absoluteFill, { top: height * 0.4 }]} pointerEvents="none">
+          <SkyBackdrop width={width} height={height * 0.6} minutes={skyMinutes} bg={c.bg} opacity={dark ? 0.9 : 0.75} />
+        </Animated.View>
+      )}
 
       <Animated.View style={[{ flex: 1 }, uiStyle]}>
       {/* üst çubuk */}
       <View style={[styles.topBar, { marginTop: insets.top + 6 }]}>
         <View style={styles.topLeft}>
-          {index > 0 && (
+          {index > 0 && !(step === 'goal' && phase === 'calc') && (
             <TouchableOpacity onPress={back} hitSlop={12} accessibilityRole="button" accessibilityLabel={t('onboard.flow.back')} style={styles.backBtn}>
               <Ionicons name="chevron-back" size={24} color={c.ink2} />
             </TouchableOpacity>
           )}
-          <View style={[styles.logoRing, { borderColor: c.accent }]} />
-          <Text style={styles.brand}>{t('onboard.flow.brand')}</Text>
         </View>
         <View style={styles.topRight}>
           {step === 'welcome' && (
@@ -268,7 +384,7 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
               ))}
             </View>
           )}
-          {(
+          {!(step === 'goal' && phase === 'calc') && (
             <TouchableOpacity onPress={skip} hitSlop={12} accessibilityRole="button">
               <Text style={styles.skip}>{t('onboard.flow.skip')}</Text>
             </TouchableOpacity>
@@ -276,15 +392,48 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
         </View>
       </View>
 
-      {/* adım içeriği */}
+      {/* adım içeriği (eğim paralaksı dış sarmalayıcıda: geçiş animasyonuyla çakışmasın) */}
+      <Animated.View style={[{ flex: 1 }, hero && textParallax]}>
       <Animated.View
         key={step}
         entering={reduceMotion ? FadeIn.duration(250) : (dir > 0 ? FadeInRight : FadeInLeft).duration(480).delay(90).easing(Easing.out(Easing.cubic))}
         exiting={reduceMotion ? FadeOut.duration(120) : (dir > 0 ? FadeOutLeft : FadeOutRight).duration(220).easing(Easing.in(Easing.quad))}
-        style={[styles.body, hero && styles.heroBody, hero && textParallax]}
+        style={[styles.body, hero && styles.heroBody]}
       >
         {step === 'welcome' && (
-          <HeroText styles={styles} tag={t('onboard.flow.welcome.tag')} title={t('onboard.flow.welcome.title')} body={t('onboard.flow.welcome.body')} />
+          <>
+            {/* damlaya dokununca dağılır */}
+            <Pressable style={{ flex: 1 }} onPress={breakDrop} accessibilityRole="button" accessibilityLabel={t('onboard.flow.welcome.cta')} />
+            <HeroText styles={styles} tag={t('onboard.flow.welcome.tag')} title={t('onboard.flow.welcome.title')} body={t('onboard.flow.welcome.body')} />
+          </>
+        )}
+
+        {step === 'demo' && (
+          <>
+            <Header styles={styles} tag={t('onboard.flow.demo.tag')} title={t('onboard.flow.demo.title')} body={t('onboard.flow.demo.body')} />
+            <View style={styles.demoArea}>
+              <Rise i={3} style={{ alignItems: 'center' }}>
+                <SkiaGlass width={168} height={210} progress={demoMl / DEMO_CAP} addSignal={demoSignal} colors={c} />
+                <Text style={[type.heading, styles.demoMl]}>{fmtNumber(demoMl)} ml</Text>
+              </Rise>
+              <Rise i={4} style={styles.demoRow}>
+                {DEMO_AMOUNTS.map((a) => (
+                  <TouchableOpacity
+                    key={a.ml}
+                    onPress={() => addDemo(a.ml)}
+                    activeOpacity={0.8}
+                    style={[styles.demoBtn, { backgroundColor: c.card, borderColor: c.divider }]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`+${a.ml} ml`}
+                  >
+                    <DrinkIcon name={a.icon} size={24} color={c.accent} />
+                    <Text style={[type.bodyStrong, { color: c.ink, fontSize: 16, marginTop: 6 }]}>+{a.ml} ml</Text>
+                  </TouchableOpacity>
+                ))}
+              </Rise>
+              <Text style={[styles.hint, { textAlign: 'center', minHeight: 22, opacity: demoMl >= DEMO_CAP ? 1 : 0 }]}>{t('onboard.flow.demo.full')}</Text>
+            </View>
+          </>
         )}
 
         {step === 'body' && (
@@ -340,24 +489,32 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
                     onDismiss={() => setEditing(null)}
                   />
                 </Animated.View>
-              ) : (
-                <Animated.View entering={FadeIn.duration(250)}>
-                  <DayArc c={c} width={width - 56} wakeAt={wakeAt} sleepAt={sleepAt} />
-                  <Text style={[styles.hint, { marginTop: 26 }]}>{t('onboard.flow.rhythm.note')}</Text>
-                </Animated.View>
-              )}
+              ) : null}
             </Rise>
           </>
         )}
 
-        {step === 'goal' && (
-          <>
-            <HeroText styles={styles} tag={t('onboard.flow.goal.tag')} title={t('onboard.flow.goal.title')} body={t('onboard.flow.goal.body')} />
-            <Rise i={3} style={styles.goalRow}>
-              <Text style={[type.display, styles.goalNum, { color: c.accent }]}>{fmtNumber(shownGoal)}</Text>
-              <Text style={[type.heading, { color: c.ink2, fontSize: 22, marginLeft: 8 }]}>{t('onboard.flow.goal.perDay')}</Text>
+        {step === 'goal' && phase === 'calc' && (
+          <View>
+            <Rise i={0}><Text style={styles.overline}>{upper(t('onboard.flow.goal.calcTag'))}</Text></Rise>
+            <Rise i={1}><Text style={styles.title}>{t('onboard.flow.goal.calcTitle')}</Text></Rise>
+            <View style={styles.calcLineWrap}>
+              <Animated.Text key={calcLine} entering={FadeInDown.duration(380)} exiting={FadeOut.duration(160)} style={styles.bodyText}>
+                {t(`onboard.flow.goal.${CALC_LINES[calcLine]}`)}
+              </Animated.Text>
+            </View>
+          </View>
+        )}
+        {finalShown && (
+          <Animated.View entering={FadeIn.duration(300)}>
+            <Rise i={2}><Text style={styles.overline}>{upper(t('onboard.flow.goal.tag'))}</Text></Rise>
+            <Rise i={3}><Text style={styles.title}>{t('onboard.flow.goal.title')}</Text></Rise>
+            <Rise i={5} style={[styles.adjustRow, { backgroundColor: c.card, borderColor: c.divider }]}>
+              <RoundBtn c={c} icon="remove" onPress={() => adjustGoal(-250)} label="-250 ml" />
+              <Text style={[type.bodyStrong, { color: c.ink2, fontSize: 15 }]}>{t('onboard.flow.goal.adjust')}</Text>
+              <RoundBtn c={c} icon="add" onPress={() => adjustGoal(250)} label="+250 ml" />
             </Rise>
-          </>
+          </Animated.View>
         )}
 
         {step === 'remind' && (
@@ -396,6 +553,7 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
         )}
 
       </Animated.View>
+      </Animated.View>
 
       {/* alt: ana buton + ilerleme */}
       <View style={[styles.bottom, { paddingBottom: insets.bottom + 10 }]}>
@@ -404,9 +562,9 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
         ) : (
           <View style={{ height: 60 }} />
         )}
-        {step === 'remind' ? (
+        {step === 'remind' || finalShown ? (
           <TouchableOpacity onPress={noReminders} hitSlop={8} style={styles.secondary} accessibilityRole="button">
-            <Text style={[type.label, { color: c.ink2, fontSize: 14, textDecorationLine: 'underline' }]}>{t('onboard.flow.remind.none')}</Text>
+            <Text style={[type.label, { color: c.ink2, fontSize: 14, textDecorationLine: 'underline' }]}>{t(step === 'goal' ? 'onboard.flow.goal.none' : 'onboard.flow.remind.none')}</Text>
           </TouchableOpacity>
         ) : (
           <View style={styles.secondary} />
@@ -448,10 +606,17 @@ const HeroText = ({ styles, tag, title, body }) => (
 );
 
 // Hedef sayısı sıfırdan yumuşakça sayarak gelir; bitince hafif bir titreşim
+// Sayım her görünüşte bir kez oynar; sonraki değişiklikler (hedefi ayarlama) doğrudan yansır.
 function useCountUp(target, active, reduceMotion) {
   const [shown, setShown] = useState(target);
+  const played = useRef(false);
   useEffect(() => {
-    if (!active || reduceMotion) return setShown(target);
+    if (!active) {
+      played.current = false;
+      return;
+    }
+    if (reduceMotion || played.current) return setShown(target);
+    played.current = true;
     let raf;
     let start;
     const DUR = 1100;
@@ -535,32 +700,17 @@ const TimeRow = ({ styles, c, title, sub, value, on, onPress }) => (
   </TouchableOpacity>
 );
 
-// Gün yayı: uyanıştan uykuya; güneş şu anki saatin gün içindeki yerinde durur.
-// Uyku saatlerindeyse yayın ortasında soluk bir ay görünür.
-function DayArc({ c, width, wakeAt, sleepAt }) {
-  const H = 64;
-  const y0 = 52;
-  const cy = -16;
-  const now = new Date();
-  const toMin = (d) => d.getHours() * 60 + d.getMinutes();
-  const start = toMin(wakeAt);
-  let end = toMin(sleepAt);
-  if (end <= start) end += 1440;
-  let cur = toMin(now);
-  if (cur < start) cur += 1440;
-  const night = cur > end;
-  const f = night ? 0.5 : Math.max(0.06, Math.min(0.94, (cur - start) / (end - start)));
-  const orb = night ? '#C9D8EA' : '#F5C77E';
-  const sx = (1 - f) * (1 - f) * 0 + 2 * f * (1 - f) * (width / 2) + f * f * width;
-  const sy = (1 - f) * (1 - f) * y0 + 2 * f * (1 - f) * cy + f * f * y0;
-  return (
-    <Svg width={width} height={H} style={{ marginTop: 26 }}>
-      <Path d={`M 0 ${y0} Q ${width / 2} ${cy} ${width} ${y0}`} stroke={c.ink3} strokeOpacity={0.6} strokeWidth={1.2} fill="none" />
-      <Circle cx={sx} cy={sy} r={18} fill={orb} fillOpacity={0.12} />
-      <Circle cx={sx} cy={sy} r={10} fill={orb} />
-    </Svg>
-  );
-}
+const RoundBtn = ({ c, icon, onPress, label }) => (
+  <TouchableOpacity
+    onPress={onPress}
+    hitSlop={8}
+    style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: c.chip }}
+    accessibilityRole="button"
+    accessibilityLabel={label}
+  >
+    <Ionicons name={icon} size={22} color={c.chipInk} />
+  </TouchableOpacity>
+);
 
 function PrimaryButton({ styles, c, label, icon, onPress, disabled }) {
   const pressed = useSharedValue(0);
@@ -588,8 +738,6 @@ const makeStyles = (c, type) =>
     topBar: { height: 44, paddingHorizontal: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     topLeft: { flexDirection: 'row', alignItems: 'center' },
     backBtn: { marginRight: 14, marginLeft: -6 },
-    logoRing: { width: 9, height: 9, borderRadius: 5, borderWidth: 1.5, marginRight: 10, opacity: 0.8 },
-    brand: { ...type.bodyStrong, fontSize: 17, color: c.ink, letterSpacing: 0.2 },
     topRight: { flexDirection: 'row', alignItems: 'center', gap: 18 },
     lang: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     langText: { ...type.labelStrong, fontSize: 13, color: c.ink3 },
@@ -617,10 +765,19 @@ const makeStyles = (c, type) =>
     timeSub: { ...type.body, fontSize: 14, color: c.ink2, marginTop: 4 },
     timePill: { flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12 },
     timeValue: { ...type.heading, fontSize: 24, letterSpacing: -0.5 },
-    pickerWrap: { alignItems: 'center', marginTop: 4 },
+    pickerWrap: { alignItems: 'center', marginTop: 4, borderRadius: 24, backgroundColor: c.card },
 
-    goalRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: 18 },
-    goalNum: { fontSize: 58, lineHeight: 66, letterSpacing: -2.5 },
+    orb: { position: 'absolute' },
+    orbLabel: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    orbNum: { fontSize: 48, lineHeight: 56, letterSpacing: -2, color: '#FFFFFF', textShadowColor: 'rgba(0,40,80,0.35)', textShadowRadius: 8 },
+    orbUnit: { fontSize: 15, color: 'rgba(255,255,255,0.9)', marginTop: -2 },
+    calcLineWrap: { height: 40, marginTop: 4 },
+    adjustRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: 999, borderWidth: 1, padding: 6, marginTop: 22 },
+
+    demoArea: { flex: 1, justifyContent: 'space-evenly' },
+    demoMl: { color: c.ink, fontSize: 22, textAlign: 'center', marginTop: 10 },
+    demoRow: { flexDirection: 'row', gap: 12 },
+    demoBtn: { flex: 1, alignItems: 'center', borderRadius: 20, borderWidth: 1, paddingVertical: 14 },
 
     remindWrap: { flex: 1, paddingTop: 14 },
     chips: { flexDirection: 'row', borderRadius: 999, borderWidth: 1, padding: 5, marginTop: 18 },

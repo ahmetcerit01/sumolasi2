@@ -377,14 +377,14 @@ export const translations = {
     },
     onboard: {
       flow: {
-        brand: 'su dostu',
         skip: 'Atla',
         back: 'Geri',
-        welcome: { tag: 'Küçük bir başlangıç', title: 'Her şey bir damlayla başlar.', body: 'Kendine ayırdığın küçük bir mola.\nGününe iyi gelen bir alışkanlık.', cta: 'Birlikte başlayalım' },
+        welcome: { tag: 'Küçük bir başlangıç', title: 'Kendine bir su molası ver.', body: 'Günlük su alışkanlığını birlikte oluşturalım.', cta: 'Başlayalım' },
+        demo: { tag: 'Nasıl çalışır', title: 'Her yudum önemlidir.', body: 'Bir miktara dokun, bardağın dolduğunu gör.', full: 'Harika! Uygulamada da tam böyle.' },
         goalStep: 'Senin hedefin · %{n} / 2',
         body: { title: 'Seni biraz tanıyalım.', body: 'Hedefini sonra dilediğin gibi değiştirebilirsin.', weight: 'Kilo', height: 'Boy' },
-        rhythm: { title: 'Gününün ritmi nasıl?', body: 'Su molaların, sen uyanıkken gelsin.', wake: 'Güne başlarken', wakeSub: 'Uyanma saatin', sleep: 'Günü bitirirken', sleepSub: 'Uyuma saatin', note: 'Gece sessiz. Gün içinde senin ritminde.', cta: 'Planımı oluştur' },
-        goal: { tag: 'Tam sana göre', title: 'Her damla hedefine yakınlaştırır.', body: 'İlk hedefin hazır. Küçük molalarla gününe yayabilirsin.', perDay: 'ml / gün', cta: 'Molalarımı ayarlayalım' },
+        rhythm: { title: 'Günün ne zaman başlıyor?', body: 'Su molaların, sen uyanıkken gelsin.', wake: 'Güne başlarken', wakeSub: 'Uyanma saatin', sleep: 'Günü bitirirken', sleepSub: 'Uyuma saatin', note: 'Gece sessiz. Gün içinde senin ritminde.', cta: 'Planımı oluştur' },
+        goal: { calcTag: 'Biraz sabır', calcTitle: 'Su hedefini oluşturuyoruz.', calc1: 'Günlük ritmin ayarlanıyor…', calc2: 'Hatırlatmalar planlanıyor…', calc3: 'Hedefin hesaplanıyor…', tag: 'Tam sana göre', title: 'İşte sana özel su hedefin!', perDay: 'ml / gün', adjust: 'Hedefi ayarla', cta: 'Hatırlatmaları aç', none: 'Hatırlatma olmadan başla' },
         remind: { tag: 'Senin mola ritmin', title: 'Ne sıklıkla su molası verelim?', dialTop: 'Bir su molası', dialSub: 'dakikada bir', summary: '%{from} – %{to} arasında · yaklaşık %{count} hatırlatma', cta: 'Hatırlatıcılarla başla', hint: 'Bildirim izni istenecek. Tercihini istediğin zaman değiştirebilirsin.', none: 'Hatırlatma olmadan başla', m30: '30 dk', h1: '1 sa', h15: '1,5 sa', h2: '2 sa' },
       },
       loading: {
@@ -790,14 +790,14 @@ export const translations = {
     },
     onboard: {
       flow: {
-        brand: 'hydromate',
         skip: 'Skip',
         back: 'Back',
-        welcome: { tag: 'A small beginning', title: 'It all starts with a drop.', body: 'A small break, just for you.\nA habit your day will thank you for.', cta: "Let's begin together" },
+        welcome: { tag: 'A small beginning', title: 'Give yourself a water break.', body: "Let's build your daily water habit together.", cta: "Let's begin" },
+        demo: { tag: 'How it works', title: 'Every sip counts.', body: 'Tap an amount and watch the glass fill.', full: "Nice! That's exactly how it works in the app." },
         goalStep: 'Your goal · %{n} / 2',
         body: { title: 'Tell us about you.', body: 'You can change your goal any time later.', weight: 'Weight', height: 'Height' },
-        rhythm: { title: "What's your daily rhythm?", body: 'Your water breaks should fit your waking hours.', wake: 'Starting the day', wakeSub: 'Wake-up time', sleep: 'Ending the day', sleepSub: 'Bedtime', note: 'Silent at night, in sync with your day.', cta: 'Create my plan' },
-        goal: { tag: 'Made just for you', title: 'Every drop brings you closer.', body: 'Your first goal is ready. Spread it across your day with small breaks.', perDay: 'ml / day', cta: 'Set up my breaks' },
+        rhythm: { title: 'When does your day start?', body: 'Your water breaks should fit your waking hours.', wake: 'Starting the day', wakeSub: 'Wake-up time', sleep: 'Ending the day', sleepSub: 'Bedtime', note: 'Silent at night, in sync with your day.', cta: 'Create my plan' },
+        goal: { calcTag: 'One moment', calcTitle: 'Building your water goal.', calc1: 'Setting your daily rhythm…', calc2: 'Planning your reminders…', calc3: 'Calculating your goal…', tag: 'Made just for you', title: "Here's your personal water goal!", perDay: 'ml / day', adjust: 'Adjust goal', cta: 'Turn on reminders', none: 'Start without reminders' },
         remind: { tag: 'Your break rhythm', title: 'How often should we take a water break?', dialTop: 'A water break every', dialSub: 'minutes', summary: '%{from} – %{to} · about %{count} reminders', cta: 'Start with reminders', hint: "We'll ask for notification permission. You can change this any time.", none: 'Start without reminders', m30: '30 min', h1: '1 h', h15: '1.5 h', h2: '2 h' },
       },
       loading: {
