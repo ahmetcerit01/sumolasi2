@@ -10,6 +10,7 @@ import { QuickAddRow } from '../components/QuickAdd';
 import { quickLabel, useQuickAdds } from '../storage/quickAdds';
 import MedsCard from '../components/MedsCard';
 import { useHydrationStore } from '../storage/useHydrationStore';
+import { DEFAULT_GOAL } from '../utils/goal';
 import { LanguageContext } from '../i18n';
 import { cardShadow, useTheme } from '../theme/theme';
 import { fmtLongDate, fmtNumber, fmtTime } from '../utils/format';
@@ -32,7 +33,7 @@ export default function HomeScreen() {
   const { c, type, radius } = useTheme();
 
   const totalMl = useHydrationStore((s) => s.totalMl) || 0;
-  const goalMl = useHydrationStore((s) => s.goalMl) || 2500;
+  const goalMl = useHydrationStore((s) => s.goalMl) || DEFAULT_GOAL;
   const streakDays = useHydrationStore((s) => s.streakDays) || 0;
   const entries = useHydrationStore((s) => s.entries) || [];
   const profile = useHydrationStore((s) => s.profile);

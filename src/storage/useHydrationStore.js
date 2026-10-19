@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { DEFAULT_GOAL, computeGoalMl } from '../utils/goal';
 import { BADGES } from '../constants/badges';
 
 const KEY = 'SUMOLASI_STATE_V7'; // Versiyonu V7 yaptık
@@ -25,19 +26,13 @@ const diffInDays = (fromStr, toStr) => {
   return Math.round((d2 - d1) / MS_PER_DAY);
 };
 
-export const calculateGoal = (weight, height) => {
-  if (!weight || !height) return 2500;
-  let base = weight * 35;
-  if (height > 170) base += (height - 170) * 10;
-  else if (height < 160) base -= (160 - height) * 10;
-  return Math.max(1200, Math.min(5000, Math.round(base)));
-};
+export const calculateGoal = computeGoalMl;
 
 const listeners = new Set();
 
 let store = {
   totalMl: 0,
-  goalMl: 2500,
+  goalMl: DEFAULT_GOAL,
   lastDate: dateKey(),
   startDate: dateKey(), // Kullanıcının uygulamayı kullanmaya başladığı gün (ortalamalar için)
   isHydrated: false,
@@ -50,7 +45,7 @@ let store = {
   profile: {
     weight: 70, height: 170, wakeAt: '08:00', sleepAt: '23:00', gender: 'male'
   },
-  recommendedGoal: 2500,
+  recommendedGoal: DEFAULT_GOAL,
   // --- AYARLAR (Varsayılan Açık) ---
   notificationsEnabled: true,
   soundEnabled: true,
@@ -247,8 +242,8 @@ const actions = {
     store = {
       rev: (store.rev || 0) + 1,
       totalMl: 0,
-      goalMl: 2500,
-      recommendedGoal: 2500,
+      goalMl: DEFAULT_GOAL,
+      recommendedGoal: DEFAULT_GOAL,
       lastDate: today,
       startDate: today,
       isHydrated: true,

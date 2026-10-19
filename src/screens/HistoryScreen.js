@@ -3,6 +3,7 @@ import { Animated, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, Vi
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useHydrationStore } from '../storage/useHydrationStore';
+import { DEFAULT_GOAL } from '../utils/goal';
 import { LanguageContext } from '../i18n';
 import { cardShadow, useTheme } from '../theme/theme';
 import { fmtLiters, fmtNumber } from '../utils/format';
@@ -17,7 +18,7 @@ export default function HistoryScreen() {
   const { c, type, radius } = useTheme();
   const [range, setRange] = useState('week');
 
-  const goal = useHydrationStore((s) => s.goalMl) || 2500;
+  const goal = useHydrationStore((s) => s.goalMl) || DEFAULT_GOAL;
   const days = useHydrationStore((s) => s.getDays(range === 'week' ? 7 : 30));
   const streakDays = useHydrationStore((s) => s.streakDays) || 0;
   const longest = useHydrationStore((s) => s.getLongestStreak());

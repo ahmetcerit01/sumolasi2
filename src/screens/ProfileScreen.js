@@ -23,6 +23,7 @@ import * as Haptics from 'expo-haptics';
 import * as Notifications from 'expo-notifications';
 
 import { useHydrationStore } from '../storage/useHydrationStore';
+import { DEFAULT_GOAL } from '../utils/goal';
 import { LanguageContext } from '../i18n';
 import { cardShadow, useTheme } from '../theme/theme';
 import { IS_TEST_BUILD } from '../utils/env';
@@ -65,8 +66,8 @@ export default function ProfileScreen() {
   const [siriTip, setSiriTip] = useState(false);
   const { c, type, radius } = useTheme();
 
-  const goalMl = useHydrationStore((s) => s.goalMl) || 2500;
-  const recommended = useHydrationStore((s) => s.recommendedGoal) || 2500;
+  const goalMl = useHydrationStore((s) => s.goalMl) || DEFAULT_GOAL;
+  const recommended = useHydrationStore((s) => s.recommendedGoal) || DEFAULT_GOAL;
   const profile = useHydrationStore((s) => s.profile) || {};
   const soundEnabled = useHydrationStore((s) => s.soundEnabled) !== false;
   const { setGoalMl, updateProfile, setSound, setNotifications } = useHydrationStore.getState();

@@ -19,6 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { scheduleOnRN } from 'react-native-worklets';
 import { useHydrationStore } from '../storage/useHydrationStore';
+import { DEFAULT_GOAL, computeGoalMl } from '../utils/goal';
 import { computeReminderTimes, disableReminders, scheduleReminders } from '../utils/reminders';
 import { fonts, useTheme } from '../theme/theme';
 import { fmtNumber, upper } from '../utils/format';
@@ -50,12 +51,6 @@ const atTime = (h, m) => {
 };
 const fmtFtIn = (inches) => `${Math.floor(inches / 12)}′${inches % 12}″`;
 
-export const computeGoalMl = (weightKg, heightCm) => {
-  let ml = weightKg * 35;
-  if (heightCm > 170) ml += (heightCm - 170) * 10;
-  if (heightCm < 160) ml -= (160 - heightCm) * 10;
-  return Math.max(1200, Math.min(5000, Math.round(ml)));
-};
 
 export default function OnboardWizard({ onDone, onLeaveStart, introActive = true, preview = false, t: tProp, locale = 'en', setLanguage = () => {} }) {
   const t = tProp || ((k) => k);
@@ -73,7 +68,7 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
   const [wakeAt, setWakeAt] = useState(atTime(8, 0));
   const [sleepAt, setSleepAt] = useState(atTime(23, 0));
   const [editing, setEditing] = useState(null); // 'wake' | 'sleep'
-  const [goalMl, setGoalMl] = useState(computeGoalMl(70, 170));
+  const [goalMl, setGoalMl] = useState(DEFAULT_GOAL);
   const [intervalMin, setIntervalMin] = useState(120);
   const [remindersOn, setRemindersOn] = useState(true);
   const [busy, setBusy] = useState(false);
