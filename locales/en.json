@@ -8,6 +8,7 @@
       "Add ${amount}": "Add ${amount}",
       "Adds water to today's total without opening the app.": "Adds water to today's total without opening the app.",
       "Tells how much water you drank today.": "Tells how much water you drank today."
-    }
+    },
+    "NSUserTrackingUsageDescription": "Used to show ads that match your interests. You can use the whole app even if you decline."
   }
 }

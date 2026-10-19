@@ -180,6 +180,7 @@ export const translations = {
       subtitle: 'Suyun yanında günlük ihtiyaçlarını da unutma.',
       benefits: {
         widgets: 'Ana ekran ve kilit ekranı widget’ları',
+        noAds: 'Reklamsız kullanım',
         meds: 'Vitamin ve ilaç hatırlatıcıları',
         taken: 'Bildirimden tek dokunuşla "Aldım"',
         week: 'Haftalık düzen takibi',
@@ -587,6 +588,7 @@ export const translations = {
       subtitle: 'Remember your daily needs, not just water.',
       benefits: {
         widgets: 'Home Screen and Lock Screen widgets',
+        noAds: 'No ads',
         meds: 'Vitamin and medication reminders',
         taken: 'Mark "Taken" right from the notification',
         week: 'Weekly consistency tracking',

@@ -44,6 +44,7 @@ function PaywallSheet({ visible, onClose }) {
 
   const benefits = [
     { icon: 'apps-outline', text: t('premium.benefits.widgets') },
+    { icon: 'eye-off-outline', text: t('premium.benefits.noAds') },
     { icon: 'medkit-outline', text: t('premium.benefits.meds') },
     { icon: 'notifications-outline', text: t('premium.benefits.taken') },
     { icon: 'calendar-outline', text: t('premium.benefits.week') },

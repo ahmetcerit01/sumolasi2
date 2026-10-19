@@ -8,6 +8,7 @@
       "Add ${amount}": "${amount} ekle",
       "Adds water to today's total without opening the app.": "Uygulamayı açmadan bugünkü toplama su ekler.",
       "Tells how much water you drank today.": "Bugün ne kadar su içtiğini söyler."
-    }
+    },
+    "NSUserTrackingUsageDescription": "Reklamları ilgi alanlarına göre gösterebilmek için. İzin vermesen de uygulamanın tamamını kullanabilirsin."
   }
 }

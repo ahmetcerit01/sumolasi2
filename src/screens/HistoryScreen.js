@@ -6,6 +6,8 @@ import { useHydrationStore } from '../storage/useHydrationStore';
 import { LanguageContext } from '../i18n';
 import { cardShadow, useTheme } from '../theme/theme';
 import { fmtLiters, fmtNumber } from '../utils/format';
+import AdBanner from '../ads/AdBanner';
+import { maybeShowInterstitial } from '../ads/ads';
 
 const CHART_H = 180;
 
@@ -28,6 +30,13 @@ export default function HistoryScreen() {
       grow.setValue(0);
       Animated.spring(grow, { toValue: 1, damping: 16, stiffness: 90, useNativeDriver: false }).start();
     }, [range])
+  );
+  // Geçmiş'ten çıkış doğal bir duraklama: geçiş reklamı yalnızca burada ve seyrek (sınır ads.js'te).
+  // Hafta/ay geçişi tetiklemesin diye ayrı ve bağımlılıksız.
+  useFocusEffect(
+    useCallback(() => () => {
+      maybeShowInterstitial();
+    }, [])
   );
 
   const tracked = days.filter((d) => d.isTracked);
@@ -141,6 +150,9 @@ export default function HistoryScreen() {
             );
           })}
         </View>
+
+        {/* Premium olmayanlara küçük banner */}
+        <AdBanner />
       </ScrollView>
     </View>
   );

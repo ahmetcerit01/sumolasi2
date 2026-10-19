@@ -27,6 +27,7 @@ import { ensureHydrated, useHydrationStore } from './src/storage/useHydrationSto
 import { i18n, LanguageContext, LANGUAGE_KEY, normalizeLang, getDeviceLang } from './src/i18n';
 import { rescheduleIfEnabled } from './src/utils/reminders';
 import { startWidgetSync, refreshWidgetLabels, setWidgetPremium } from './src/widgets/widgetSync';
+import { setAdsPremium } from './src/ads/ads';
 import { PremiumProvider, usePremium } from './src/premium/PremiumProvider';
 import { PaywallProvider, usePaywall } from './src/premium/Paywall';
 import { ensureMedCategory, ensureMedsHydrated, MED_ACTION_TAKEN, useMedsStore } from './src/storage/useMedsStore';
@@ -256,6 +257,7 @@ function PremiumEffects() {
   useEffect(() => {
     if (!ready) return;
     setWidgetPremium(isPremium);
+    setAdsPremium(isPremium);
     (async () => {
       await ensureMedsHydrated();
       const meds = useMedsStore.getState();
