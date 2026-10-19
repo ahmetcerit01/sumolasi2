@@ -416,7 +416,7 @@ export const translations = {
     },
   },
   en: {
-    app: { name: 'HydroMate', tagline: 'Time for a healthy break.' },
+    app: { name: 'Hydromate', tagline: 'Time for a healthy break.' },
     common: { ok: 'OK', cancel: 'Cancel', close: 'Close', next: 'NEXT', done: 'FINISH', continue: 'Continue' },
     units: { ml: 'ml', kg: 'kg', cm: 'cm', liter: 'L' },
     days: {
@@ -582,8 +582,8 @@ export const translations = {
       dayLabel: '%{day}',
     },
     premium: {
-      title: 'HydroMate Premium',
-      tag: 'HydroMate Premium',
+      title: 'Hydromate Premium',
+      tag: 'Hydromate Premium',
       heroTitle: 'Small breaks for your whole day.',
       subtitle: 'Stay on top of your daily needs, not just water.',
       benefits: {
@@ -652,7 +652,7 @@ export const translations = {
       next: 'Next',
       done: 'Goal reached!',
       setting: 'Dynamic Island',
-      settingHint: 'When on, your progress appears in the Dynamic Island during the day (iOS also shows it as a small card on the Lock Screen). For a permanent glance, add a Lock Screen widget: touch and hold the Lock Screen → Customize → Lock Screen → Add Widgets → HydroMate.',
+      settingHint: 'When on, your progress appears in the Dynamic Island during the day (iOS also shows it as a small card on the Lock Screen). For a permanent glance, add a Lock Screen widget: touch and hold the Lock Screen → Customize → Lock Screen → Add Widgets → Hydromate.',
     },
     widget: {
       locked: { title: 'Premium widget', body: 'Tap to unlock' },
@@ -699,7 +699,7 @@ export const translations = {
       errorTitle: 'Error',
       scheduleFailed: 'Scheduling failed.',
       permissionTitle: 'Notifications are off',
-      permissionMsg: 'Allow notifications for HydroMate in Settings so reminders can work.',
+      permissionMsg: 'Allow notifications for Hydromate in Settings so reminders can work.',
       openSettings: 'Open Settings',
       plannedTitle: 'Planned',
       testInOneMinuteMsg: 'You will get a notification in 1 minute.',
@@ -785,7 +785,7 @@ export const translations = {
         loading: { tag: 'Putting it all together', title: 'A start that fits you.', body: 'Preparing your daily water goal and break rhythm.' },
         goal: { tag: 'Made just for you', title: 'Every drop brings you closer.', body: 'Your first goal is ready. Spread it across your day with small breaks.', perDay: 'ml / day', cta: 'Set up my breaks' },
         remind: { tag: 'Your break rhythm', title: 'How often should we take a water break?', dialTop: 'A water break every', dialSub: 'minutes', summary: '%{from} – %{to} · about %{count} reminders', cta: 'Set my breaks', none: "I don't want reminders for now", m30: '30 min', h1: '1 h', h15: '1.5 h', h2: '2 h' },
-        notify: { tag: 'One last touch', title: "Know when it's time for a break.", body: 'A gentle reminder at the times you chose.', previewApp: 'HydroMate', previewNow: 'now', previewTitle: 'Give yourself a small break.', previewBody: 'A glass of water is a small step toward a better day.', hint: 'You can change notification preferences any time.', cta: 'Allow notifications' },
+        notify: { tag: 'One last touch', title: "Know when it's time for a break.", body: 'A gentle reminder at the times you chose.', previewApp: 'Hydromate', previewNow: 'now', previewTitle: 'Give yourself a small break.', previewBody: 'A glass of water is a small step toward a better day.', hint: 'You can change notification preferences any time.', cta: 'Allow notifications' },
         ready: { tag: 'Hello to a good habit', title: 'One drop.\nThen another.', body: "We've set everything up.\nNow you can start your first water break.", goalLine: 'Daily goal · %{amount}', remindLine: 'A reminder every %{interval}', cta: 'Start my water breaks' },
         everyMin: '%{n} minutes',
         everyHour: { one: 'hour', other: '%{n} hours' },

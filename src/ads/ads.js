@@ -30,11 +30,19 @@ let interstitial = null;
 let interstitialLoaded = false;
 const listeners = new Set();
 
+// Onboarding'in bittiği oturumda reklam yok: kullanıcı ilk açılışta Premium önerisiyle
+// rıza/izleme pencerelerini üst üste görmesin. Bir sonraki açılışta normale döner.
+let quietSession = false;
+export const quietAdsThisSession = () => {
+  quietSession = true;
+  listeners.forEach((l) => l());
+};
+
 export const setAdsPremium = (on) => {
   premium = !!on;
   listeners.forEach((l) => l());
 };
-export const adsAllowed = () => !premium;
+export const adsAllowed = () => !premium && !quietSession;
 export const subscribeAds = (fn) => {
   listeners.add(fn);
   return () => listeners.delete(fn);
@@ -42,7 +50,7 @@ export const subscribeAds = (fn) => {
 
 // Rıza + izleme izni + SDK başlatma (bir kez). Reklam istenemiyorsa false döner.
 export function ensureAds() {
-  if (premium) return Promise.resolve(false);
+  if (premium || quietSession) return Promise.resolve(false);
   if (!readyPromise) {
     readyPromise = (async () => {
       try {
@@ -83,7 +91,7 @@ function preloadInterstitial() {
 
 // Doğal bir duraklamada çağrılır (ör. Geçmiş ekranından çıkış). Sınır dolmadıysa gösterir.
 export async function maybeShowInterstitial() {
-  if (premium) return false;
+  if (premium || quietSession) return false;
   const ok = await ensureAds();
   if (!ok || !interstitialLoaded || premium) return false;
   const last = Number(await AsyncStorage.getItem(LAST_INTERSTITIAL_KEY).catch(() => 0)) || 0;

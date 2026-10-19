@@ -1,12 +1,12 @@
 {
   "expo": {
-    "name": "Sumolasi",
+    "name": "Hydromate",
     "slug": "sumolasi",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "scheme": "sumolasi",
+    "scheme": "hydromate",
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.farukoz.hydromate",
@@ -16,7 +16,7 @@
           "remote-notification"
         ],
         "CFBundleAllowMixedLocalizations": true,
-        "CFBundleDisplayName": "HydroMate"
+        "CFBundleDisplayName": "Hydromate"
       }
     },
     "android": {
@@ -75,7 +75,7 @@
           "widgets": [
             {
               "name": "WaterWidget",
-              "displayName": "HydroMate",
+              "displayName": "Hydromate",
               "description": "Track your daily water goal and add water with one tap.",
               "ios": {
                 "supportedFamilies": [
@@ -115,7 +115,7 @@
         "projectId": "2eb1305c-1314-4715-bd1f-8f7d73ed7a57"
       },
       "revenuecat": {
-        "iosApiKey": "",
+        "iosApiKey": "appl_gLEARAmWmCeNyNKdnhTBXEgXGLf",
         "androidApiKey": ""
       },
       "ads": {

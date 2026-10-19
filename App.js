@@ -27,7 +27,7 @@ import { ensureHydrated, useHydrationStore } from './src/storage/useHydrationSto
 import { i18n, LanguageContext, LANGUAGE_KEY, normalizeLang, getDeviceLang } from './src/i18n';
 import { rescheduleIfEnabled } from './src/utils/reminders';
 import { startWidgetSync, refreshWidgetLabels, setWidgetPremium } from './src/widgets/widgetSync';
-import { setAdsPremium } from './src/ads/ads';
+import { quietAdsThisSession, setAdsPremium } from './src/ads/ads';
 import { PremiumProvider, usePremium } from './src/premium/PremiumProvider';
 import { PaywallProvider, usePaywall } from './src/premium/Paywall';
 import { ensureMedCategory, ensureMedsHydrated, MED_ACTION_TAKEN, useMedsStore } from './src/storage/useMedsStore';
@@ -138,6 +138,7 @@ export default function App() {
   const [leavingOnboard, setLeavingOnboard] = useState(false);
   const [afterOnboard, setAfterOnboard] = useState(null); // { preview } → Premium önerisi
   const handleOnboardDone = () => {
+    quietAdsThisSession();
     setShowOnboard(false);
     setLeavingOnboard(false);
     setAfterOnboard({ preview: introPreview, at: Date.now() });
@@ -195,7 +196,10 @@ export default function App() {
               {({ t, locale, setLanguage }) => (
                 <OnboardWizard
                   onDone={handleOnboardDone}
-                  onLeaveStart={() => setLeavingOnboard(true)}
+                  onLeaveStart={() => {
+                    quietAdsThisSession();
+                    setLeavingOnboard(true);
+                  }}
                   introActive={splashFinished}
                   preview={introPreview}
                   t={t}

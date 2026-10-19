@@ -8,7 +8,7 @@
       "Add ${amount}": "${amount} ekle",
       "Adds water to today's total without opening the app.": "Uygulamayı açmadan bugünkü toplama su ekler.",
       "Tells how much water you drank today.": "Bugün ne kadar su içtiğini söyler.",
-      "HydroMate": "Su Dostu",
+      "Hydromate": "Su Dostu",
       "Track your daily water goal and add water with one tap.": "Günlük su hedefini takip et, tek dokunuşla su ekle."
     },
     "NSUserTrackingUsageDescription": "Reklamları ilgi alanlarına göre gösterebilmek için. İzin vermesen de uygulamanın tamamını kullanabilirsin."

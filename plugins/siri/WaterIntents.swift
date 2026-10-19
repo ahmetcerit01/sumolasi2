@@ -118,7 +118,7 @@ struct AddWaterIntent: AppIntent {
   func perform() async throws -> some IntentResult & ProvidesDialog {
     let tr = WaterShared.isTurkish
     guard let result = WaterShared.add(amount.rawValue) else {
-      let msg = tr ? "Önce Su Dostu'nu bir kez aç." : "Open HydroMate once first."
+      let msg = tr ? "Önce Su Dostu'nu bir kez aç." : "Open Hydromate once first."
       return .result(dialog: IntentDialog(stringLiteral: msg))
     }
     let added = WaterShared.fmt(amount.rawValue)
@@ -143,7 +143,7 @@ struct WaterStatusIntent: AppIntent {
   func perform() async throws -> some IntentResult & ProvidesDialog {
     let tr = WaterShared.isTurkish
     guard let s = WaterShared.status() else {
-      let msg = tr ? "Önce Su Dostu'nu bir kez aç." : "Open HydroMate once first."
+      let msg = tr ? "Önce Su Dostu'nu bir kez aç." : "Open Hydromate once first."
       return .result(dialog: IntentDialog(stringLiteral: msg))
     }
     let pct = Int((Double(s.total) / Double(max(s.goal, 1)) * 100).rounded())

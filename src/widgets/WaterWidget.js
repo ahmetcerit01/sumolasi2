@@ -106,7 +106,7 @@ const WaterWidget = (props, environment) => {
     }
     if (family === 'accessoryCircular') {
       return (
-        <ZStack modifiers={[accessoryBg, widgetURL('sumolasi://premium')]}>
+        <ZStack modifiers={[accessoryBg, widgetURL('hydromate://premium')]}>
           <Gauge value={0} modifiers={[gaugeStyle('circularCapacity')]} />
           <Image systemName="lock.fill" size={14} />
         </ZStack>
@@ -114,7 +114,7 @@ const WaterWidget = (props, environment) => {
     }
     if (family === 'accessoryRectangular') {
       return (
-        <VStack alignment="leading" spacing={2} modifiers={[accessoryBg, widgetURL('sumolasi://premium')]}>
+        <VStack alignment="leading" spacing={2} modifiers={[accessoryBg, widgetURL('hydromate://premium')]}>
           <HStack spacing={4}>
             <Image systemName="drop.fill" size={11} />
             <Text modifiers={[font({ weight: 'semibold', size: 11 }), kerning(1)]}>{(labels.title || 'Su Dostu').toUpperCase()}</Text>
@@ -132,7 +132,7 @@ const WaterWidget = (props, environment) => {
       'widget'
     );
     return (
-      <VStack alignment="leading" spacing={6} modifiers={[lockedBg, widgetURL('sumolasi://premium')]}>
+      <VStack alignment="leading" spacing={6} modifiers={[lockedBg, widgetURL('hydromate://premium')]}>
         <Text modifiers={[font({ weight: 'semibold', size: 10 }), kerning(1.6), foregroundStyle(C.accent)]}>{(labels.title || 'Su Dostu').toUpperCase()}</Text>
         <Spacer />
         <ZStack modifiers={[frame({ width: 40, height: 40 })]}>
@@ -158,7 +158,7 @@ const WaterWidget = (props, environment) => {
   if (family === 'accessoryCircular') {
     // Halka + ortada yüzde (Gauge etiketleri widget'ta çizilmediği için üstüne bindirilir)
     return (
-      <ZStack modifiers={[accessoryBg, widgetURL('sumolasi://')]}>
+      <ZStack modifiers={[accessoryBg, widgetURL('hydromate://')]}>
         <Gauge value={ratio} modifiers={[gaugeStyle('circularCapacity')]} />
         <VStack spacing={0}>
           <Image systemName={done ? 'checkmark' : 'drop.fill'} size={10} />
@@ -170,7 +170,7 @@ const WaterWidget = (props, environment) => {
 
   if (family === 'accessoryRectangular') {
     return (
-      <VStack alignment="leading" spacing={3} modifiers={[accessoryBg, widgetURL('sumolasi://')]}>
+      <VStack alignment="leading" spacing={3} modifiers={[accessoryBg, widgetURL('hydromate://')]}>
         <HStack spacing={4}>
           <Image systemName="drop.fill" size={11} />
           <Text modifiers={[font({ weight: 'semibold', size: 11 }), kerning(1)]}>{(labels.title || 'Su Dostu').toUpperCase()}</Text>
@@ -233,7 +233,7 @@ const WaterWidget = (props, environment) => {
 
   if (family === 'systemMedium') {
     return (
-      <ZStack alignment="topLeading" modifiers={[background, widgetURL('sumolasi://')]}>
+      <ZStack alignment="topLeading" modifiers={[background, widgetURL('hydromate://')]}>
         {dots(320, 140)}
         <HStack spacing={12}>
           <VStack alignment="leading" spacing={4}>
@@ -262,7 +262,7 @@ const WaterWidget = (props, environment) => {
 
   // systemSmall (varsayılan)
   return (
-    <ZStack alignment="topLeading" modifiers={[background, widgetURL('sumolasi://')]}>
+    <ZStack alignment="topLeading" modifiers={[background, widgetURL('hydromate://')]}>
       {dots(140, 140)}
       <VStack alignment="leading" spacing={4}>
         <HStack>

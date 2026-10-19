@@ -102,7 +102,7 @@ export async function syncLiveActivity() {
 
   if (instances.length === 0) {
     if (total >= goal) return; // tek eklemede hedefi aşınca yeni etkinlik açmaya gerek yok
-    WaterActivity.start(props, 'sumolasi://add', stale);
+    WaterActivity.start(props, 'hydromate://add', stale);
     return;
   }
 

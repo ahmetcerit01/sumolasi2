@@ -35,15 +35,15 @@ function FloatingTabBar({ state, navigation }) {
   const [sheet, setSheet] = useState(false);
   const { open: openPaywall } = usePaywall();
 
-  // Kilit ekranındaki canlı etkinliğe dokununca (sumolasi://add) su ekleme sayfası açılır
+  // Kilit ekranındaki canlı etkinliğe dokununca (hydromate://add) su ekleme sayfası açılır
   useEffect(() => {
     const handle = (url) => {
-      if (url && /^sumolasi:\/\/add/.test(url)) {
+      if (url && /^hydromate:\/\/add/.test(url)) {
         navigation.navigate('Home');
         setSheet(true);
       }
       // Kilitli (Premium olmayan) widget'a dokunulunca Premium ekranı
-      if (url && /^sumolasi:\/\/premium/.test(url)) openPaywall();
+      if (url && /^hydromate:\/\/premium/.test(url)) openPaywall();
     };
     Linking.getInitialURL().then(handle).catch(() => {});
     const sub = Linking.addEventListener('url', ({ url }) => handle(url));
