@@ -5,8 +5,14 @@ import Animated, {
   withDelay,
   FadeIn,
   FadeInDown,
-  FadeOut,
+  FadeInLeft,
+  FadeInRight,
+  FadeOutLeft,
+  FadeOutRight,
+  SensorType,
+  useAnimatedSensor,
   useAnimatedStyle,
+  useDerivedValue,
   useReducedMotion,
   useSharedValue,
   withTiming,
@@ -28,13 +34,14 @@ import { SCENE } from '../animation/particleScenes';
 import ValueScale from '../components/onboarding/ValueScale';
 import IntervalDial from '../components/onboarding/IntervalDial';
 
-// Onboarding: 10 adım. Tek bir parçacık sürüsü bütün akış boyunca yaşar; "kahraman" adımlarda
-// (karşılama, hazırlanıyor, hedef, hazırsın) şekil alır, form adımlarında soluk bir toz olarak arkada kalır.
-// Kayıt: hedef "hazırlanıyor" adımında hesaplanıp kaydedilir; HAS_ONBOARDED en sonda yazılır.
+// Onboarding: 5 adım (karşılama, kilo+boy, gün ritmi, hedef, hatırlatma halkası). Tek bir parçacık
+// sürüsü bütün akış boyunca yaşar; "kahraman" adımlarda (karşılama, hedef) şekil alır, form adımlarında
+// soluk bir toz olarak arkada kalır. Kayıt: hedef, hedef adımına girilince hesaplanıp kaydedilir;
+// bildirim izni hatırlatma adımındaki ana butonla istenir; HAS_ONBOARDED en sonda yazılır.
 // preview: geliştirici önizlemesi — hiçbir şey kaydedilmez, izin istenmez.
 
-const STEPS = ['welcome', 'units', 'weight', 'height', 'rhythm', 'loading', 'goal', 'remind', 'notify', 'ready'];
-const HERO = { welcome: SCENE.DROP, loading: SCENE.RHYTHM, goal: SCENE.GLASS, ready: SCENE.DROP };
+const STEPS = ['welcome', 'body', 'rhythm', 'goal', 'remind'];
+const HERO = { welcome: SCENE.DROP, goal: SCENE.GLASS };
 const LB = 2.20462;
 const INTERVAL_CHIPS = [
   { min: 30, key: 'm30' },
@@ -70,13 +77,14 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
   const [editing, setEditing] = useState(null); // 'wake' | 'sleep'
   const [goalMl, setGoalMl] = useState(DEFAULT_GOAL);
   const [intervalMin, setIntervalMin] = useState(120);
-  const [remindersOn, setRemindersOn] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [dir, setDir] = useState(1); // 1 ileri, -1 geri: geçiş yönü
 
   const index = STEPS.indexOf(step);
   const hero = step in HERO;
   const go = (s) => {
     setEditing(null);
+    setDir(STEPS.indexOf(s) >= index ? 1 : -1);
     setStep(s);
   };
 
@@ -108,61 +116,44 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
     }
   };
 
-  // Hazırlanıyor: hedefi hesapla + kaydet, ilerleme çubuğu dolunca hedef ekranına geç
-  const loadProg = useSharedValue(0);
+  // Hedef adımına girilince hedefi hesapla + kaydet
   useEffect(() => {
-    if (step !== 'loading') return;
+    if (step !== 'goal') return;
     const goal = computeGoalMl(weightKg, heightCm);
     setGoalMl(goal);
     persistProfile(goal);
-    loadProg.value = 0;
-    loadProg.value = withTiming(1, { duration: reduceMotion ? 900 : 2600, easing: Easing.inOut(Easing.cubic) });
-    const timer = setTimeout(() => go('goal'), reduceMotion ? 1100 : 2900);
-    return () => clearTimeout(timer);
   }, [step]);
-  const loadBar = useAnimatedStyle(() => ({ width: `${loadProg.value * 100}%` }));
+  const shownGoal = useCountUp(goalMl, step === 'goal', reduceMotion);
 
   // ---- Gezinme -------------------------------------------------------------------------
   const back = () => {
-    if (step === 'goal') return go('rhythm');
-    if (step === 'ready') return go(remindersOn ? 'notify' : 'remind');
     if (index > 0) go(STEPS[index - 1]);
   };
 
-  const skip = async () => {
-    if (step === 'welcome') return go('units');
-    if (['units', 'weight', 'height', 'rhythm'].includes(step)) return go('loading');
+  const skip = () => {
+    if (step === 'welcome') return go('body');
+    if (step === 'body' || step === 'rhythm') return go('goal');
     if (step === 'goal') return go('remind');
-    if (step === 'remind') return go('notify');
-    if (step === 'notify') {
-      setRemindersOn(false);
-      if (!preview) disableReminders().catch(() => {});
-      return go('ready');
-    }
+    if (step === 'remind') return noReminders();
   };
 
   const noReminders = () => {
-    setRemindersOn(false);
     if (!preview) disableReminders().catch(() => {});
-    go('ready');
+    finish();
   };
 
   const allowNotifications = async () => {
     if (busy) return;
     setBusy(true);
-    let on = true;
     if (!preview) {
       try {
-        const n = await scheduleReminders({ wakeAt: toHHMM(wakeAt), sleepAt: toHHMM(sleepAt), intervalHours: intervalMin / 60 });
-        on = n >= 0;
+        await scheduleReminders({ wakeAt: toHHMM(wakeAt), sleepAt: toHHMM(sleepAt), intervalHours: intervalMin / 60 });
       } catch (e) {
         console.warn('Reminder scheduling failed', e);
-        on = false;
       }
     }
-    setRemindersOn(on);
     setBusy(false);
-    go('ready');
+    finish();
   };
 
   // Çıkış geçişi: yazılar söner, damla küçülüp ana ekrandaki bardağın içine iner,
@@ -188,15 +179,11 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
   };
 
   const CTA = {
-    welcome: { label: t('onboard.flow.welcome.cta'), onPress: () => go('units') },
-    units: { label: t('common.continue'), onPress: () => go('weight') },
-    weight: { label: t('common.continue'), onPress: () => go('height') },
-    height: { label: t('common.continue'), onPress: () => go('rhythm') },
-    rhythm: { label: t('onboard.flow.rhythm.cta'), onPress: () => go('loading') },
+    welcome: { label: t('onboard.flow.welcome.cta'), onPress: () => go('body') },
+    body: { label: t('common.continue'), onPress: () => go('rhythm') },
+    rhythm: { label: t('onboard.flow.rhythm.cta'), onPress: () => go('goal') },
     goal: { label: t('onboard.flow.goal.cta'), onPress: () => go('remind') },
-    remind: { label: t('onboard.flow.remind.cta'), onPress: () => go('notify') },
-    notify: { label: t('onboard.flow.notify.cta'), onPress: allowNotifications },
-    ready: { label: t('onboard.flow.ready.cta'), onPress: finish, icon: 'water' },
+    remind: { label: t('onboard.flow.remind.cta'), onPress: allowNotifications, icon: 'water' },
   }[step];
 
   // ---- Parçacık sahnesi yerleşimi: üstteki boş alanın ortası ---------------------------
@@ -207,15 +194,29 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
   // ana ekrandaki bardağın yaklaşık merkezi (damla oraya iner)
   const glassY = insets.top + height * 0.3;
   const uiStyle = useAnimatedStyle(() => ({ opacity: uiFade.value }));
+  // Hareket efekti: telefon eğildikçe parçacıklar bir yöne, yazılar hafifçe öbür yöne kayar (derinlik hissi)
+  const gravity = useAnimatedSensor(SensorType.GRAVITY, { interval: 32 });
+  // -1…1 arası, yumuşatılmış eğim. Elde tutulan telefonda yerçekimi y ≈ -7 civarı: sapmayı al
+  const tiltX = useDerivedValue(() => {
+    const v = reduceMotion ? 0 : Math.max(-1, Math.min(1, gravity.sensor.value.x / 4));
+    return withTiming(v, { duration: 160 });
+  });
+  const tiltY = useDerivedValue(() => {
+    const v = reduceMotion ? 0 : Math.max(-1, Math.min(1, (gravity.sensor.value.y + 7) / 4));
+    return withTiming(v, { duration: 160 });
+  });
   const sceneStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: exitP.value * (glassY - stageCy) }, { scale: 1 - exitP.value * 0.5 }],
+    transform: [
+      { translateX: tiltX.value * 18 },
+      { translateY: exitP.value * (glassY - stageCy) - tiltY.value * 14 },
+      { scale: 1 - exitP.value * 0.5 },
+    ],
+  }));
+  const textParallax = useAnimatedStyle(() => ({
+    transform: [{ translateX: -tiltX.value * 5 }, { translateY: tiltY.value * 4 }],
   }));
   const rootStyle = useAnimatedStyle(() => ({ opacity: sceneFade.value }));
 
-  const intervalText =
-    intervalMin % 60 === 0
-      ? t('onboard.flow.everyHour', { n: intervalMin / 60, count: intervalMin / 60 })
-      : t('onboard.flow.everyMin', { n: intervalMin });
   const reminderCount = computeReminderTimes(toHHMM(wakeAt), toHHMM(sleepAt), intervalMin / 60).length;
 
   return (
@@ -245,7 +246,7 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
       {/* üst çubuk */}
       <View style={[styles.topBar, { marginTop: insets.top + 6 }]}>
         <View style={styles.topLeft}>
-          {index > 0 && step !== 'loading' && (
+          {index > 0 && (
             <TouchableOpacity onPress={back} hitSlop={12} accessibilityRole="button" accessibilityLabel={t('onboard.flow.back')} style={styles.backBtn}>
               <Ionicons name="chevron-back" size={24} color={c.ink2} />
             </TouchableOpacity>
@@ -266,7 +267,7 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
               ))}
             </View>
           )}
-          {step !== 'loading' && step !== 'ready' && (
+          {(
             <TouchableOpacity onPress={skip} hitSlop={12} accessibilityRole="button">
               <Text style={styles.skip}>{t('onboard.flow.skip')}</Text>
             </TouchableOpacity>
@@ -277,71 +278,48 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
       {/* adım içeriği */}
       <Animated.View
         key={step}
-        entering={FadeInDown.duration(420).delay(120)}
-        exiting={FadeOut.duration(140)}
-        style={[styles.body, hero && styles.heroBody]}
+        entering={reduceMotion ? FadeIn.duration(250) : (dir > 0 ? FadeInRight : FadeInLeft).duration(480).delay(90).easing(Easing.out(Easing.cubic))}
+        exiting={reduceMotion ? FadeOut.duration(120) : (dir > 0 ? FadeOutLeft : FadeOutRight).duration(220).easing(Easing.in(Easing.quad))}
+        style={[styles.body, hero && styles.heroBody, hero && textParallax]}
       >
         {step === 'welcome' && (
           <HeroText styles={styles} tag={t('onboard.flow.welcome.tag')} title={t('onboard.flow.welcome.title')} body={t('onboard.flow.welcome.body')} />
         )}
 
-        {step === 'units' && (
+        {step === 'body' && (
           <>
-            <Header styles={styles} tag={t('onboard.flow.units.tag')} title={t('onboard.flow.units.title')} body={t('onboard.flow.units.body')} />
-            <View style={styles.formArea}>
-              <Text style={styles.groupLabel}>{t('onboard.flow.units.weight')}</Text>
-              <View style={styles.optRow}>
-                <Option styles={styles} c={c} on={weightUnit === 'kg'} title={t('onboard.flow.units.kg')} sub="kg" onPress={() => setWeightUnit('kg')} />
-                <Option styles={styles} c={c} on={weightUnit === 'lb'} title={t('onboard.flow.units.lb')} sub="lb" onPress={() => setWeightUnit('lb')} />
-              </View>
-              <Text style={[styles.groupLabel, { marginTop: 28 }]}>{t('onboard.flow.units.height')}</Text>
-              <View style={styles.optRow}>
-                <Option styles={styles} c={c} on={heightUnit === 'cm'} title={t('onboard.flow.units.cm')} sub="cm" onPress={() => setHeightUnit('cm')} />
-                <Option styles={styles} c={c} on={heightUnit === 'ftin'} title={t('onboard.flow.units.ftin')} sub="ft / in" onPress={() => setHeightUnit('ftin')} />
-              </View>
-            </View>
-          </>
-        )}
-
-        {step === 'weight' && (
-          <>
-            <Header styles={styles} tag={t('onboard.flow.goalStep', { n: 1 })} title={t('onboard.flow.weight.title')} body={t('onboard.flow.weight.body')} />
-            <View style={styles.scaleArea}>
-              {weightUnit === 'kg' ? (
-                <ValueScale value={Math.round(weightKg)} min={35} max={150} onChange={setWeightKg} unit="kg" minLabel="35 kg" maxLabel="150 kg" />
-              ) : (
-                <ValueScale value={Math.round(weightKg * LB)} min={77} max={330} onChange={(lb) => setWeightKg(lb / LB)} unit="lb" minLabel="77 lb" maxLabel="330 lb" />
-              )}
-            </View>
-            <Text style={[styles.hint, { marginBottom: 20 }]}>{t('onboard.flow.weight.hint')}</Text>
-          </>
-        )}
-
-        {step === 'height' && (
-          <>
-            <Header styles={styles} tag={t('onboard.flow.goalStep', { n: 2 })} title={t('onboard.flow.height.title')} body={t('onboard.flow.height.body')} />
-            <View style={styles.scaleArea}>
-              {heightUnit === 'cm' ? (
-                <ValueScale value={heightCm} min={130} max={210} onChange={setHeightCm} unit="cm" minLabel="130 cm" maxLabel="210 cm" />
-              ) : (
-                <ValueScale
-                  value={Math.round(heightCm / 2.54)}
-                  min={51}
-                  max={83}
-                  onChange={(inch) => setHeightCm(Math.round(inch * 2.54))}
-                  format={fmtFtIn}
-                  minLabel={fmtFtIn(51)}
-                  maxLabel={fmtFtIn(83)}
-                />
-              )}
+            <Header styles={styles} tag={t('onboard.flow.goalStep', { n: 1 })} title={t('onboard.flow.body.title')} body={t('onboard.flow.body.body')} />
+            <View style={styles.bodyArea}>
+              <Rise i={3}>
+                <View style={styles.measureHead}>
+                  <Text style={styles.groupLabel}>{t('onboard.flow.body.weight')}</Text>
+                  <UnitToggle styles={styles} c={c} value={weightUnit} options={[['kg', 'kg'], ['lb', 'lb']]} onChange={setWeightUnit} />
+                </View>
+                {weightUnit === 'kg' ? (
+                  <ValueScale compact value={Math.round(weightKg)} min={35} max={150} onChange={setWeightKg} unit="kg" />
+                ) : (
+                  <ValueScale compact value={Math.round(weightKg * LB)} min={77} max={330} onChange={(lb) => setWeightKg(lb / LB)} unit="lb" />
+                )}
+              </Rise>
+              <Rise i={4}>
+                <View style={styles.measureHead}>
+                  <Text style={styles.groupLabel}>{t('onboard.flow.body.height')}</Text>
+                  <UnitToggle styles={styles} c={c} value={heightUnit} options={[['cm', 'cm'], ['ftin', 'ft/in']]} onChange={setHeightUnit} />
+                </View>
+                {heightUnit === 'cm' ? (
+                  <ValueScale compact value={heightCm} min={130} max={210} onChange={setHeightCm} unit="cm" />
+                ) : (
+                  <ValueScale compact value={Math.round(heightCm / 2.54)} min={51} max={83} onChange={(inch) => setHeightCm(Math.round(inch * 2.54))} format={fmtFtIn} />
+                )}
+              </Rise>
             </View>
           </>
         )}
 
         {step === 'rhythm' && (
           <>
-            <Header styles={styles} tag={t('onboard.flow.goalStep', { n: 3 })} title={t('onboard.flow.rhythm.title')} body={t('onboard.flow.rhythm.body')} />
-            <View style={styles.formArea}>
+            <Header styles={styles} tag={t('onboard.flow.goalStep', { n: 2 })} title={t('onboard.flow.rhythm.title')} body={t('onboard.flow.rhythm.body')} />
+            <Rise i={3} style={styles.formArea}>
               <TimeRow styles={styles} c={c} title={t('onboard.flow.rhythm.wake')} sub={t('onboard.flow.rhythm.wakeSub')} value={toHHMM(wakeAt)} on={editing === 'wake'} onPress={() => setEditing(editing === 'wake' ? null : 'wake')} />
               <TimeRow styles={styles} c={c} title={t('onboard.flow.rhythm.sleep')} sub={t('onboard.flow.rhythm.sleepSub')} value={toHHMM(sleepAt)} on={editing === 'sleep'} onPress={() => setEditing(editing === 'sleep' ? null : 'sleep')} />
               {editing ? (
@@ -367,27 +345,17 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
                   <Text style={[styles.hint, { marginTop: 26 }]}>{t('onboard.flow.rhythm.note')}</Text>
                 </Animated.View>
               )}
-            </View>
-          </>
-        )}
-
-        {step === 'loading' && (
-          <>
-            <HeroText styles={styles} tag={t('onboard.flow.loading.tag')} title={t('onboard.flow.loading.title')} body={t('onboard.flow.loading.body')} />
-            <View style={[styles.loadTrack, { backgroundColor: c.track }]}>
-              <Animated.View style={[styles.loadFill, { backgroundColor: c.accent }, loadBar]} />
-            </View>
-            <View style={{ height: 96 }} />
+            </Rise>
           </>
         )}
 
         {step === 'goal' && (
           <>
             <HeroText styles={styles} tag={t('onboard.flow.goal.tag')} title={t('onboard.flow.goal.title')} body={t('onboard.flow.goal.body')} />
-            <View style={styles.goalRow}>
-              <Text style={[type.display, styles.goalNum, { color: c.accent }]}>{fmtNumber(goalMl)}</Text>
+            <Rise i={3} style={styles.goalRow}>
+              <Text style={[type.display, styles.goalNum, { color: c.accent }]}>{fmtNumber(shownGoal)}</Text>
               <Text style={[type.heading, { color: c.ink2, fontSize: 22, marginLeft: 8 }]}>{t('onboard.flow.goal.perDay')}</Text>
-            </View>
+            </Rise>
           </>
         )}
 
@@ -395,9 +363,10 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
           <View style={styles.remindWrap}>
             <Text style={[styles.overline, { textAlign: 'center' }]}>{upper(t('onboard.flow.remind.tag'))}</Text>
             <Text style={[styles.title, { textAlign: 'center' }]}>{t('onboard.flow.remind.title')}</Text>
-            <View style={{ marginTop: 18 }}>
+            <Rise i={2} style={{ marginTop: 18 }}>
               <IntervalDial minutes={intervalMin} onChange={setIntervalMin} topLabel={t('onboard.flow.remind.dialTop')} subLabel={t('onboard.flow.remind.dialSub')} />
-            </View>
+            </Rise>
+            <Rise i={3}>
             <View style={[styles.chips, { borderColor: c.divider, backgroundColor: c.card }]}>
               {INTERVAL_CHIPS.map((ch) => {
                 const on = ch.min === intervalMin;
@@ -417,42 +386,14 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
                 );
               })}
             </View>
+            </Rise>
             <Text style={[type.bodyStrong, { color: c.ink, fontSize: 15, textAlign: 'center', marginTop: 18 }]}>
               {t('onboard.flow.remind.summary', { from: toHHMM(wakeAt), to: toHHMM(sleepAt), count: reminderCount })}
             </Text>
-            <Text style={[styles.hint, { textAlign: 'center', marginTop: 4 }]}>{t('onboard.flow.rhythm.note')}</Text>
+            <Text style={[styles.hint, { textAlign: 'center', marginTop: 4 }]}>{t('onboard.flow.remind.hint')}</Text>
           </View>
         )}
 
-        {step === 'notify' && (
-          <>
-            <Header styles={styles} tag={t('onboard.flow.notify.tag')} title={t('onboard.flow.notify.title')} body={t('onboard.flow.notify.body')} />
-            <View style={styles.formArea}>
-              <View style={[styles.notif, { backgroundColor: c.card, borderColor: c.divider }]}>
-                <View style={styles.notifHead}>
-                  <View style={[styles.notifIcon, { backgroundColor: c.accent }]}>
-                    <Ionicons name="water" size={13} color={c.onAccent} />
-                  </View>
-                  <Text style={[type.label, { color: c.ink2, flex: 1 }]}>{upper(t('onboard.flow.notify.previewApp'))}</Text>
-                  <Text style={[type.label, { color: c.ink3 }]}>{t('onboard.flow.notify.previewNow')}</Text>
-                </View>
-                <Text style={[type.bodyStrong, { color: c.ink, fontSize: 17, marginTop: 10 }]}>{t('onboard.flow.notify.previewTitle')}</Text>
-                <Text style={[type.body, { color: c.ink2, fontSize: 15, marginTop: 4, lineHeight: 21 }]}>{t('onboard.flow.notify.previewBody')}</Text>
-              </View>
-              <Text style={[styles.hint, { marginTop: 26 }]}>{t('onboard.flow.notify.hint')}</Text>
-            </View>
-          </>
-        )}
-
-        {step === 'ready' && (
-          <>
-            <HeroText styles={styles} tag={t('onboard.flow.ready.tag')} title={t('onboard.flow.ready.title')} body={t('onboard.flow.ready.body')} />
-            <View style={{ marginTop: 18, gap: 8 }}>
-              <CheckLine styles={styles} c={c} text={t('onboard.flow.ready.goalLine', { amount: `${fmtNumber(goalMl)} ml` })} />
-              {remindersOn && <CheckLine styles={styles} c={c} text={t('onboard.flow.ready.remindLine', { interval: intervalText })} />}
-            </View>
-          </>
-        )}
       </Animated.View>
 
       {/* alt: ana buton + ilerleme */}
@@ -471,14 +412,7 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
         )}
         <View style={styles.progress}>
           {STEPS.map((s, i) => (
-            <View
-              key={s}
-              style={[
-                styles.seg,
-                { backgroundColor: i <= index ? c.accent : c.track, opacity: i < index ? 0.45 : 1 },
-                i === index && { height: 4 },
-              ]}
-            />
+            <Seg key={s} styles={styles} c={c} state={i < index ? 'done' : i === index ? 'now' : 'todo'} />
           ))}
         </View>
       </View>
@@ -489,36 +423,96 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
 
 // ---- Parçalar ----------------------------------------------------------------------------
 
+// Sırayla süzülen satır: adım açılınca başlık, metin ve içerik art arda yerine oturur
+const Rise = ({ i = 0, style, children }) => (
+  <Animated.View entering={FadeInDown.duration(520).delay(160 + i * 90).easing(Easing.out(Easing.cubic))} style={style}>
+    {children}
+  </Animated.View>
+);
+
 const Header = ({ styles, tag, title, body }) => (
   <View style={styles.header}>
-    <Text style={styles.overline}>{upper(tag)}</Text>
-    <Text style={styles.title}>{title}</Text>
-    {body ? <Text style={styles.bodyText}>{body}</Text> : null}
+    <Rise i={0}><Text style={styles.overline}>{upper(tag)}</Text></Rise>
+    <Rise i={1}><Text style={styles.title}>{title}</Text></Rise>
+    {body ? <Rise i={2}><Text style={styles.bodyText}>{body}</Text></Rise> : null}
   </View>
 );
 
 const HeroText = ({ styles, tag, title, body }) => (
   <View>
-    <Text style={styles.overline}>{upper(tag)}</Text>
-    <Text style={styles.title}>{title}</Text>
-    <Text style={styles.bodyText}>{body}</Text>
+    <Rise i={0}><Text style={styles.overline}>{upper(tag)}</Text></Rise>
+    <Rise i={1}><Text style={styles.title}>{title}</Text></Rise>
+    <Rise i={2}><Text style={styles.bodyText}>{body}</Text></Rise>
   </View>
 );
 
-const Option = ({ styles, c, on, title, sub, onPress }) => (
-  <TouchableOpacity
-    onPress={() => {
-      Haptics.selectionAsync().catch(() => {});
-      onPress();
-    }}
-    activeOpacity={0.85}
-    style={[styles.option, { backgroundColor: on ? c.chip : c.card, borderColor: on ? c.accent : c.divider }]}
-    accessibilityRole="radio"
-    accessibilityState={{ selected: on }}
-  >
-    <Text style={[styles.optTitle, { color: on ? c.accentInk : c.ink }]}>{title}</Text>
-    <Text style={[styles.optSub, { color: c.ink2 }]}>{sub}</Text>
-  </TouchableOpacity>
+// Hedef sayısı sıfırdan yumuşakça sayarak gelir; bitince hafif bir titreşim
+function useCountUp(target, active, reduceMotion) {
+  const [shown, setShown] = useState(target);
+  useEffect(() => {
+    if (!active || reduceMotion) return setShown(target);
+    let raf;
+    let start;
+    const DUR = 1100;
+    const tick = () => {
+      const p = Math.min(1, (Date.now() - start) / DUR);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setShown(Math.round((target * eased) / 10) * 10);
+      if (p < 1) raf = requestAnimationFrame(tick);
+      else Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    };
+    setShown(0);
+    const delay = setTimeout(() => {
+      start = Date.now();
+      raf = requestAnimationFrame(tick);
+    }, 350);
+    return () => {
+      clearTimeout(delay);
+      cancelAnimationFrame(raf);
+    };
+  }, [target, active]);
+  return shown;
+}
+
+// İlerleme çubuğu parçası: etkin adım genişleyip dolar
+function Seg({ styles, c, state }) {
+  const grow = useSharedValue(state === 'now' ? 2.2 : 1);
+  useEffect(() => {
+    grow.value = withTiming(state === 'now' ? 2.2 : 1, { duration: 450, easing: Easing.out(Easing.cubic) });
+  }, [state]);
+  const anim = useAnimatedStyle(() => ({ flexGrow: grow.value }));
+  return (
+    <Animated.View
+      style={[
+        styles.seg,
+        { backgroundColor: state === 'todo' ? c.track : c.accent, opacity: state === 'done' ? 0.45 : 1 },
+        state === 'now' && { height: 4 },
+        anim,
+      ]}
+    />
+  );
+}
+
+const UnitToggle = ({ styles, c, value, options, onChange }) => (
+  <View style={[styles.unitToggle, { backgroundColor: c.card, borderColor: c.divider }]}>
+    {options.map(([key, label]) => {
+      const on = key === value;
+      return (
+        <TouchableOpacity
+          key={key}
+          onPress={() => {
+            Haptics.selectionAsync().catch(() => {});
+            onChange(key);
+          }}
+          style={[styles.unitOpt, on && { backgroundColor: c.chip }]}
+          accessibilityRole="radio"
+          accessibilityState={{ selected: on }}
+        >
+          <Text style={[styles.unitText, { color: on ? c.chipInk : c.ink2 }]}>{label}</Text>
+        </TouchableOpacity>
+      );
+    })}
+  </View>
 );
 
 const TimeRow = ({ styles, c, title, sub, value, on, onPress }) => (
@@ -567,13 +561,6 @@ function DayArc({ c, width, wakeAt, sleepAt }) {
   );
 }
 
-const CheckLine = ({ styles, c, text }) => (
-  <View style={styles.checkLine}>
-    <Ionicons name="checkmark" size={20} color={c.accent} />
-    <Text style={[styles.hint, { color: c.ink2, marginLeft: 10 }]}>{text}</Text>
-  </View>
-);
-
 function PrimaryButton({ styles, c, label, icon, onPress, disabled }) {
   const pressed = useSharedValue(0);
   const anim = useAnimatedStyle(() => ({ transform: [{ scale: 1 - pressed.value * 0.03 }] }));
@@ -618,12 +605,11 @@ const makeStyles = (c, type) =>
 
     formArea: { marginTop: 30 },
     groupLabel: { ...type.body, fontSize: 15, color: c.ink2, marginBottom: 14 },
-    optRow: { flexDirection: 'row', gap: 14 },
-    option: { flex: 1, borderRadius: 22, borderWidth: 1.5, paddingHorizontal: 20, paddingVertical: 20 },
-    optTitle: { ...type.bodyStrong, fontSize: 18 },
-    optSub: { ...type.body, fontSize: 15, marginTop: 8 },
-
-    scaleArea: { flex: 1, justifyContent: 'center' },
+    bodyArea: { flex: 1, justifyContent: 'space-evenly' },
+    measureHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    unitToggle: { flexDirection: 'row', borderRadius: 999, borderWidth: 1, padding: 3, marginBottom: 14 },
+    unitOpt: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 999 },
+    unitText: { ...type.labelStrong, fontSize: 14 },
 
     timeRow: { flexDirection: 'row', alignItems: 'center', borderRadius: 24, borderWidth: 1.5, padding: 18, paddingLeft: 20, marginBottom: 14 },
     timeTitle: { ...type.bodyStrong, fontSize: 17, color: c.ink },
@@ -632,21 +618,12 @@ const makeStyles = (c, type) =>
     timeValue: { ...type.heading, fontSize: 24, letterSpacing: -0.5 },
     pickerWrap: { alignItems: 'center', marginTop: 4 },
 
-    loadTrack: { height: 4, borderRadius: 2, overflow: 'hidden', marginTop: 28 },
-    loadFill: { height: '100%', borderRadius: 2 },
-
     goalRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: 18 },
     goalNum: { fontSize: 58, lineHeight: 66, letterSpacing: -2.5 },
 
     remindWrap: { flex: 1, paddingTop: 14 },
     chips: { flexDirection: 'row', borderRadius: 999, borderWidth: 1, padding: 5, marginTop: 18 },
     chip: { flex: 1, alignItems: 'center', paddingVertical: 11, borderRadius: 999 },
-
-    notif: { borderRadius: 24, borderWidth: 1, padding: 20 },
-    notifHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-    notifIcon: { width: 22, height: 22, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
-
-    checkLine: { flexDirection: 'row', alignItems: 'center' },
 
     bottom: { paddingHorizontal: 28 },
     cta: {
@@ -663,5 +640,5 @@ const makeStyles = (c, type) =>
     ctaText: { ...type.bodyStrong, fontSize: 18, color: c.onAccent, flex: 1, marginRight: 12 },
     secondary: { height: 34, alignItems: 'center', justifyContent: 'center' },
     progress: { flexDirection: 'row', gap: 6, marginTop: 2 },
-    seg: { flex: 1, height: 3, borderRadius: 2 },
+    seg: { flexBasis: 0, height: 3, borderRadius: 2 },
   });

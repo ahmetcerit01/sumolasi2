@@ -6,11 +6,12 @@ import { useTheme } from '../../theme/theme';
 // Büyük sayı + kaydırılabilen cetvel + kaydırıcı. Cetvel değerle birlikte akar (5'in katları uzun çizgi).
 // Cetvelde sağa-sola sürükleme ve kaydırıcı aynı değeri değiştirir.
 // props: value, min, max, onChange, unit, format (görünen metin), minLabel, maxLabel
+// compact: daha küçük sayı ve cetvel, kaydırıcı yok (iki ölçek aynı sayfaya sığsın diye)
 
 const TICK_GAP = 10;
 const TICKS = 15; // merkezden her yana
 
-export default function ValueScale({ value, min, max, onChange, unit, format = String, minLabel, maxLabel }) {
+export default function ValueScale({ value, min, max, onChange, unit, format = String, minLabel, maxLabel, compact = false }) {
   const { c, type } = useTheme();
   const [trackW, setTrackW] = useState(1);
   const live = useRef({ value, min, max, onChange, trackW });
@@ -61,11 +62,21 @@ export default function ValueScale({ value, min, max, onChange, unit, format = S
   return (
     <View style={styles.wrap}>
       <View style={styles.numberRow}>
-        <Text style={[type.display, styles.number, { color: c.ink }]}>{format(value)}</Text>
+        <Text style={[type.display, styles.number, compact && styles.numberCompact, { color: c.ink }]}>{format(value)}</Text>
         {unit ? <Text style={[type.heading, styles.unit, { color: c.ink2 }]}>{unit}</Text> : null}
       </View>
 
-      <View style={styles.ruler} {...ruler.panHandlers}>
+      <View
+        style={[styles.ruler, compact && styles.rulerCompact]}
+        {...ruler.panHandlers}
+        {...(compact && {
+          accessible: true,
+          accessibilityRole: 'adjustable',
+          accessibilityValue: { min, max, now: value },
+          accessibilityActions: [{ name: 'increment' }, { name: 'decrement' }],
+          onAccessibilityAction: (e) => set(value + (e.nativeEvent.actionName === 'increment' ? 1 : -1)),
+        })}
+      >
         {Array.from({ length: TICKS * 2 + 1 }, (_, k) => {
           const off = k - TICKS;
           const v = value + off;
@@ -81,7 +92,7 @@ export default function ValueScale({ value, min, max, onChange, unit, format = S
                 {
                   left: '50%',
                   marginLeft: off * TICK_GAP - 1,
-                  height: center ? 92 : major ? 70 : 46,
+                  height: (center ? 92 : major ? 70 : 46) * (compact ? 0.62 : 1),
                   width: center ? 2.5 : 1.5,
                   backgroundColor: center ? c.accent : c.ink3,
                   opacity: center ? 1 : fade * (major ? 0.9 : 0.55),
@@ -92,6 +103,8 @@ export default function ValueScale({ value, min, max, onChange, unit, format = S
         })}
       </View>
 
+      {!compact && (
+      <>
       <View
         style={styles.sliderHit}
         onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}
@@ -113,6 +126,8 @@ export default function ValueScale({ value, min, max, onChange, unit, format = S
         <Text style={[type.label, { color: c.ink2, fontSize: 14 }]}>{minLabel}</Text>
         <Text style={[type.label, { color: c.ink2, fontSize: 14 }]}>{maxLabel}</Text>
       </View>
+      </>
+      )}
     </View>
   );
 }
@@ -121,8 +136,10 @@ const styles = StyleSheet.create({
   wrap: { alignSelf: 'stretch' },
   numberRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center' },
   number: { fontSize: 88, lineHeight: 100, letterSpacing: -4 },
+  numberCompact: { fontSize: 58, lineHeight: 66, letterSpacing: -2.5 },
   unit: { marginLeft: 6, fontSize: 24 },
   ruler: { height: 100, marginTop: 14, justifyContent: 'center', overflow: 'hidden' },
+  rulerCompact: { height: 64, marginTop: 6 },
   tick: { position: 'absolute', borderRadius: 1 },
   sliderHit: { height: 44, marginTop: 22, justifyContent: 'center' },
   track: { height: 6, borderRadius: 3, overflow: 'hidden' },
