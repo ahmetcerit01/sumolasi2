@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
+import { IS_TEST_BUILD } from '../utils/env';
 
 // Premium (abonelik) katmanı.
 // - app.json → expo.extra.revenuecat.iosApiKey doluysa gerçek RevenueCat kullanılır.
@@ -14,7 +15,7 @@ const MOCK_KEY = 'PREMIUM_MOCK_ACTIVE';
 
 const rcConfig = Constants.expoConfig?.extra?.revenuecat || {};
 const API_KEY = Platform.OS === 'ios' ? rcConfig.iosApiKey : rcConfig.androidApiKey;
-export const PREMIUM_MODE = API_KEY ? 'revenuecat' : __DEV__ ? 'mock' : 'off';
+export const PREMIUM_MODE = API_KEY ? 'revenuecat' : IS_TEST_BUILD ? 'mock' : 'off';
 
 let Purchases = null;
 if (PREMIUM_MODE === 'revenuecat') {

@@ -25,6 +25,7 @@ import * as Notifications from 'expo-notifications';
 import { useHydrationStore } from '../storage/useHydrationStore';
 import { LanguageContext } from '../i18n';
 import { cardShadow, useTheme } from '../theme/theme';
+import { IS_TEST_BUILD } from '../utils/env';
 import { setThemePref, useThemePref } from '../theme/themePreference';
 import { fmtNumber, upper } from '../utils/format';
 import { getLiveActivityEnabled, isLiveActivitySupported, setLiveActivityEnabled } from '../widgets/liveActivity';
@@ -313,7 +314,7 @@ export default function ProfileScreen() {
         )}
 
         {/* geliştirici (yalnızca geliştirme sürümü) */}
-        {__DEV__ && (
+        {IS_TEST_BUILD && (
           <View style={[card, { paddingVertical: 12, gap: 8 }]}>
             <Text style={[type.overline, { color: c.ink3 }]}>{upper(t('reminders.testPanel'))}</Text>
             <View style={{ flexDirection: 'row', gap: 8 }}>
