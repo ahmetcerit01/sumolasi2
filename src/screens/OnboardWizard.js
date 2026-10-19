@@ -5,6 +5,7 @@ import Animated, {
   withDelay,
   FadeIn,
   FadeInDown,
+  FadeOut,
   FadeInLeft,
   FadeInRight,
   FadeOutLeft,
