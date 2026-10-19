@@ -16,9 +16,13 @@ import { fmtLongDate, fmtNumber, fmtTime } from '../utils/format';
 import { computeReminderTimes, getReminderSettings } from '../utils/reminders';
 import { useWaterAdd } from '../hooks/useWaterAdd';
 import AdBanner from '../ads/AdBanner';
+import DamlaTip from '../components/DamlaTip';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const GLASS_W = 236;
 const GLASS_H = 300;
+
+const SIRI_TIP_KEY = 'TIP_SIRI_SEEN';
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
@@ -31,6 +35,21 @@ export default function HomeScreen() {
   const entries = useHydrationStore((s) => s.entries) || [];
   const profile = useHydrationStore((s) => s.profile);
   const quickAdds = useQuickAdds();
+
+  // Siri ipucu: ilk açılışta onboarding/Premium önerisi, ikincide reklam izni var;
+  // çakışmasın diye üçüncü açılışta, bir kez
+  const [siriTip, setSiriTip] = useState(false);
+  useEffect(() => {
+    let timer;
+    AsyncStorage.multiGet(['APP_LAUNCHES', SIRI_TIP_KEY]).then(([[, launches], [, seen]]) => {
+      if (Number(launches) >= 3 && seen !== '1') timer = setTimeout(() => setSiriTip(true), 1500);
+    });
+    return () => clearTimeout(timer);
+  }, []);
+  const closeSiriTip = () => {
+    setSiriTip(false);
+    AsyncStorage.setItem(SIRI_TIP_KEY, '1').catch(() => {});
+  };
   const undoLast = useHydrationStore((s) => s.undoLast);
 
   const { addWater, addSignal } = useWaterAdd();
@@ -155,6 +174,9 @@ export default function HomeScreen() {
         {/* Premium olmayanlara küçük banner */}
         <AdBanner style={{ marginHorizontal: 22, marginTop: 16 }} />
       </ScrollView>
+
+      {/* Damla'nın Siri ipucu: 3. açılışta bir kez */}
+      <DamlaTip visible={siriTip} onClose={closeSiriTip} />
     </View>
   );
 }

@@ -31,6 +31,7 @@ export const translations = {
       notifications: 'Bildirimler',
       soundFx: 'Ses Efektleri',
       appearance: 'Görünüm',
+      siri: 'Siri komutları',
       themeSystem: 'Sistem',
       themeLight: 'Açık',
       themeDark: 'Koyu',
@@ -110,6 +111,16 @@ export const translations = {
         'Su içmek kas yorgunluğunu azaltır ve performansı artırır.',
         'Soğuk su içmek vücudun ısısını dengelemeye yardımcı olur.',
       ],
+    },
+    tips: {
+      siri: {
+        title: 'Siri ile su ekleyebilirsin!',
+        body: 'Uygulamayı açmana bile gerek yok. Şunu söylemen yeterli:',
+        phraseAdd: '“Siri, %{app} ile su ekle”',
+        phraseStatus: '“Siri, %{app} bugün ne kadar su içtim”',
+        shortcuts: 'Kısayollar',
+        ok: 'Anladım',
+      },
     },
     quickAdd: {
       cup: 'Bardak',
@@ -439,6 +450,7 @@ export const translations = {
       notifications: 'Notifications',
       soundFx: 'Sound Effects',
       appearance: 'Appearance',
+      siri: 'Siri commands',
       themeSystem: 'System',
       themeLight: 'Light',
       themeDark: 'Dark',
@@ -518,6 +530,16 @@ export const translations = {
         'Staying hydrated can reduce muscle fatigue and improve performance.',
         'Cool water can help regulate your body temperature.',
       ],
+    },
+    tips: {
+      siri: {
+        title: 'You can add water with Siri!',
+        body: 'No need to even open the app. Just say:',
+        phraseAdd: '“Hey Siri, add water in %{app}”',
+        phraseStatus: '“Hey Siri, how much water did I drink in %{app}”',
+        shortcuts: 'Shortcuts',
+        ok: 'Got it',
+      },
     },
     quickAdd: {
       cup: 'Glass',

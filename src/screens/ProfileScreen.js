@@ -29,6 +29,7 @@ import { IS_TEST_BUILD } from '../utils/env';
 import { quickLabel, useQuickAdds } from '../storage/quickAdds';
 import { DrinkIcon } from '../components/QuickAdd';
 import QuickAddEditor from '../components/QuickAddEditor';
+import DamlaTip from '../components/DamlaTip';
 import { setThemePref, useThemePref } from '../theme/themePreference';
 import { fmtNumber, upper } from '../utils/format';
 import { getLiveActivityEnabled, isLiveActivitySupported, setLiveActivityEnabled } from '../widgets/liveActivity';
@@ -61,6 +62,7 @@ export default function ProfileScreen() {
   const themePref = useThemePref();
   const quickAdds = useQuickAdds();
   const [quickEdit, setQuickEdit] = useState(null);
+  const [siriTip, setSiriTip] = useState(false);
   const { c, type, radius } = useTheme();
 
   const goalMl = useHydrationStore((s) => s.goalMl) || 2500;
@@ -328,6 +330,7 @@ export default function ProfileScreen() {
               })}
             </View>
           </Row>
+          <Row label={t('settings.siri')} value="" onPress={() => setSiriTip(true)} />
           <Row label={t('settings.soundFx')} last={!isLiveActivitySupported()}>
             <Switch value={soundEnabled} onValueChange={(v) => setSound(v)} trackColor={{ true: c.success, false: c.track }} />
           </Row>
@@ -378,6 +381,7 @@ export default function ProfileScreen() {
         )}
       </ScrollView>
 
+      <DamlaTip visible={siriTip} onClose={() => setSiriTip(false)} />
       <QuickAddEditor index={quickEdit} item={quickEdit != null ? quickAdds[quickEdit] : null} onClose={() => setQuickEdit(null)} />
 
       {/* profil düzenleme sayfası */}

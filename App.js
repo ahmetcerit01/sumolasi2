@@ -84,6 +84,10 @@ export default function App() {
         i18n.locale = initialLang;
         setLocale(initialLang);
 
+        // Açılış sayacı (ipuçlarının zamanlaması için)
+        const launches = Number(await AsyncStorage.getItem('APP_LAUNCHES')) || 0;
+        await AsyncStorage.setItem('APP_LAUNCHES', String(launches + 1));
+
         // 1. Store'u yükle (gün devri de burada yapılır)
         await ensureHydrated();
         // Widget'tan eklenenleri al ve widget'ı güncel duruma getir (iOS)
