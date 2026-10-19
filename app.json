@@ -9,7 +9,7 @@
     "scheme": "sumolasi",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.alfacode.sumolasi",
+      "bundleIdentifier": "com.farukoz.hydromate",
       "appleTeamId": "CHL73JZQ6Y",
       "infoPlist": {
         "UIBackgroundModes": [
@@ -20,7 +20,7 @@
       }
     },
     "android": {
-      "package": "com.alfacode.sumolasi",
+      "package": "com.farukoz.hydromate",
       "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
@@ -71,7 +71,7 @@
       [
         "expo-widgets",
         {
-          "groupIdentifier": "group.com.farukemreoz.sumolasi",
+          "groupIdentifier": "group.com.farukoz.hydromate",
           "widgets": [
             {
               "name": "WaterWidget",

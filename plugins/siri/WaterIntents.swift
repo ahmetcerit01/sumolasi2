@@ -9,7 +9,7 @@ import WidgetKit
 private enum WaterShared {
   static let widgetName = "WaterWidget"
   static var suite: String {
-    (Bundle.main.object(forInfoDictionaryKey: "ExpoWidgetsAppGroupIdentifier") as? String) ?? "group.com.farukemreoz.sumolasi"
+    (Bundle.main.object(forInfoDictionaryKey: "ExpoWidgetsAppGroupIdentifier") as? String) ?? "group.com.farukoz.hydromate"
   }
   static var timelineKey: String { "__expo_widgets_\(widgetName)_timeline" }
 
