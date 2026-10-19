@@ -2,6 +2,7 @@ import { AppState, Platform } from 'react-native';
 import { i18n } from '../i18n';
 import { subscribe, useHydrationStore } from '../storage/useHydrationStore';
 import { syncLiveActivity } from './liveActivity';
+import { getQuickAdds, loadQuickAdds, subscribeQuickAdds } from '../storage/quickAdds';
 
 // Uygulama <-> widget senkronu (yalnızca iOS).
 // - Widget'taki butonlar uygulama kapalıyken bile toplamı artırır ve eklenenleri `pending` listesine yazar.
@@ -9,7 +10,6 @@ import { syncLiveActivity } from './liveActivity';
 //   ardından güncel durumu widget'a geri yazar.
 // Her zaman önce çekip sonra yazıyoruz; böylece widget'tan eklenen miktar kaybolmaz.
 
-const QUICK_AMOUNTS = [200, 300, 500];
 
 let WaterWidget = null;
 let widgetsModule = null;
@@ -69,7 +69,7 @@ const pushState = () => {
     totalMl: s.totalMl || 0,
     goalMl: s.goalMl || 2500,
     pending: [],
-    amounts: QUICK_AMOUNTS,
+    amounts: getQuickAdds().map((q) => q.ml),
     sleepAt: s.profile?.sleepAt || '23:00',
     lastAddAt: s.lastAddAt || '', // native tarafa null gönderilemiyor
     labels: {
@@ -109,6 +109,9 @@ export function startWidgetSync() {
   globalThis.__waterWidgetSyncStarted = true;
 
   syncWidget();
+  // Hızlı ekleme miktarları değişince widget butonları da değişsin
+  loadQuickAdds().then(() => syncWidget());
+  subscribeQuickAdds(() => syncWidget());
 
   // Store değişince (ekleme, hedef, gün devri) widget'ı güncelle; ilgisiz değişikliklerde yazma
   subscribe((s) => {

@@ -7,6 +7,7 @@ import * as Haptics from 'expo-haptics';
 
 import SkiaGlass from '../components/SkiaGlass';
 import { QuickAddRow } from '../components/QuickAdd';
+import { quickLabel, useQuickAdds } from '../storage/quickAdds';
 import MedsCard from '../components/MedsCard';
 import { useHydrationStore } from '../storage/useHydrationStore';
 import { LanguageContext } from '../i18n';
@@ -28,6 +29,7 @@ export default function HomeScreen() {
   const streakDays = useHydrationStore((s) => s.streakDays) || 0;
   const entries = useHydrationStore((s) => s.entries) || [];
   const profile = useHydrationStore((s) => s.profile);
+  const quickAdds = useQuickAdds();
   const undoLast = useHydrationStore((s) => s.undoLast);
 
   const { addWater, addSignal } = useWaterAdd();
@@ -61,11 +63,8 @@ export default function HomeScreen() {
   }, [reminder, profile?.wakeAt, profile?.sleepAt]);
 
   const recent = entries.slice(-3).reverse();
-  const quick = [
-    { key: 'cup', ml: 200, label: t('quickAdd.cup'), icon: 'cup' },
-    { key: 'mug', ml: 300, label: t('quickAdd.espresso'), icon: 'mug' },
-    { key: 'bottle', ml: 500, label: t('quickAdd.bottle'), icon: 'bottle' },
-  ];
+  // Profil'den özelleştirilebilen hızlı ekleme butonları
+  const quick = quickAdds.map((q) => ({ key: q.id, ml: q.ml, label: quickLabel(q, t), icon: q.icon }));
 
   const onUndo = async () => {
     const ok = await undoLast();

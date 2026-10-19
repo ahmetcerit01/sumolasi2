@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { IS_TEST_BUILD } from '../utils/env';
+import { getLocales } from 'expo-localization';
 
 // Premium (abonelik) katmanı.
 // - app.json → expo.extra.revenuecat.iosApiKey doluysa gerçek RevenueCat kullanılır.
@@ -50,10 +51,29 @@ const toPlan = (pkg) => {
   };
 };
 
-const MOCK_PLANS = [
-  { id: '$rc_annual', kind: 'annual', priceString: '₺299,99', price: 299.99, currencyCode: 'TRY', trialDays: 7, raw: null },
-  { id: '$rc_monthly', kind: 'monthly', priceString: '₺49,99', price: 49.99, currencyCode: 'TRY', trialDays: 0, raw: null },
-];
+// Test modundaki fiyatlar. Gerçek fiyatlar App Store Connect'ten, kullanıcının App Store
+// ülkesine göre gelir (StoreKit priceString); uygulama dilinden bağımsızdır.
+// Planlanan fiyatlar: Türkiye 59,99 ₺ / 449,99 ₺, diğer ülkeler $2.99 / $19.99.
+const MOCK_PRICES = {
+  TRY: { monthly: 59.99, annual: 449.99 },
+  USD: { monthly: 2.99, annual: 19.99 },
+};
+const mockPlans = () => {
+  const loc = getLocales()[0] || {};
+  const currency = loc.regionCode === 'TR' ? 'TRY' : 'USD';
+  const fmt = (v) => {
+    try {
+      return new Intl.NumberFormat(loc.languageTag || 'en-US', { style: 'currency', currency }).format(v);
+    } catch {
+      return currency === 'TRY' ? `₺${String(v).replace('.', ',')}` : `$${v}`;
+    }
+  };
+  const p = MOCK_PRICES[currency];
+  return [
+    { id: '$rc_annual', kind: 'annual', priceString: fmt(p.annual), price: p.annual, currencyCode: currency, trialDays: 7, raw: null },
+    { id: '$rc_monthly', kind: 'monthly', priceString: fmt(p.monthly), price: p.monthly, currencyCode: currency, trialDays: 0, raw: null },
+  ];
+};
 
 const PremiumContext = createContext({
   mode: PREMIUM_MODE,
@@ -91,7 +111,7 @@ export function PremiumProvider({ children }) {
           const v = await AsyncStorage.getItem(MOCK_KEY);
           if (cancelled) return;
           setIsPremium(v === '1');
-          setPlans(MOCK_PLANS);
+          setPlans(mockPlans());
         }
       } catch (e) {
         console.warn('[premium] init failed', e);

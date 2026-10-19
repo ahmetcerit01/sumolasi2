@@ -7,6 +7,7 @@ import { LanguageContext } from '../i18n';
 import { useTheme } from '../theme/theme';
 import { fmtNumber } from '../utils/format';
 import { useWaterAdd } from '../hooks/useWaterAdd';
+import { useQuickAdds } from '../storage/quickAdds';
 
 const PRESETS = [100, 200, 250, 300, 500, 750];
 const STEP = 50;
@@ -20,6 +21,9 @@ export default function AddSheet({ visible, onClose }) {
   const { c, type } = useTheme();
   const { addWater } = useWaterAdd();
   const [amount, setAmount] = useState(250);
+  const quickAdds = useQuickAdds();
+  // sabit seçenekler + kullanıcının hızlı ekleme miktarları (ör. 450 ml suluk)
+  const presets = [...new Set([...PRESETS, ...quickAdds.map((q) => q.ml)])].sort((a, b) => a - b);
   const slide = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -73,7 +77,7 @@ export default function AddSheet({ visible, onClose }) {
         </View>
 
         <View style={styles.presets}>
-          {PRESETS.map((v) => {
+          {presets.map((v) => {
             const on = v === amount;
             return (
               <TouchableOpacity

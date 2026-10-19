@@ -26,6 +26,9 @@ import { useHydrationStore } from '../storage/useHydrationStore';
 import { LanguageContext } from '../i18n';
 import { cardShadow, useTheme } from '../theme/theme';
 import { IS_TEST_BUILD } from '../utils/env';
+import { quickLabel, useQuickAdds } from '../storage/quickAdds';
+import { DrinkIcon } from '../components/QuickAdd';
+import QuickAddEditor from '../components/QuickAddEditor';
 import { setThemePref, useThemePref } from '../theme/themePreference';
 import { fmtNumber, upper } from '../utils/format';
 import { getLiveActivityEnabled, isLiveActivitySupported, setLiveActivityEnabled } from '../widgets/liveActivity';
@@ -56,6 +59,8 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { t, locale, setLanguage } = useContext(LanguageContext);
   const themePref = useThemePref();
+  const quickAdds = useQuickAdds();
+  const [quickEdit, setQuickEdit] = useState(null);
   const { c, type, radius } = useTheme();
 
   const goalMl = useHydrationStore((s) => s.goalMl) || 2500;
@@ -256,6 +261,29 @@ export default function ProfileScreen() {
           </Text>
         </View>
 
+        {/* hızlı ekleme butonları */}
+        <Text style={[type.overline, { color: c.ink2, paddingHorizontal: 4, marginTop: 6 }]}>{upper(t('quickAdd.settingsTitle'))}</Text>
+        <View style={[card, { paddingVertical: 4 }]}>
+          {quickAdds.map((q, i) => (
+            <TouchableOpacity
+              key={q.id}
+              onPress={() => setQuickEdit(i)}
+              style={[styles.row, i < quickAdds.length - 1 && { borderBottomWidth: 1, borderBottomColor: c.divider }]}
+              accessibilityRole="button"
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <DrinkIcon name={q.icon} size={22} color={c.accent} />
+                <Text style={[type.body, { color: c.ink }]}>{quickLabel(q, t)}</Text>
+              </View>
+              <View style={styles.rowRight}>
+                <Text style={[type.bodyStrong, { color: c.ink2 }]}>{`${fmtNumber(q.ml)} ml`}</Text>
+                <Ionicons name="chevron-forward" size={16} color={c.ink3} />
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <Text style={[type.label, { color: c.ink3, paddingHorizontal: 4, marginTop: -6 }]}>{t('quickAdd.settingsHint')}</Text>
+
         {/* ayarlar */}
         <View style={card}>
           <Row label={t('settings.language')}>
@@ -349,6 +377,8 @@ export default function ProfileScreen() {
           </View>
         )}
       </ScrollView>
+
+      <QuickAddEditor index={quickEdit} item={quickEdit != null ? quickAdds[quickEdit] : null} onClose={() => setQuickEdit(null)} />
 
       {/* profil düzenleme sayfası */}
       <Modal visible={editing} transparent animationType="slide" onRequestClose={() => setEditing(false)}>

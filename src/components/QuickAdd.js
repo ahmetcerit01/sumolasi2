@@ -9,6 +9,8 @@ const ICONS = {
   cup: ['M6 3h12l-1.6 17a1.5 1.5 0 0 1-1.5 1.4H9.1a1.5 1.5 0 0 1-1.5-1.4z', 'M6.8 10h10.4'],
   mug: ['M4 6h12v9a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z', 'M16 9h2a2.5 2.5 0 0 1 0 5h-2'],
   bottle: ['M10 2h4v3l2 3v12a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2V8l2-3z', 'M8 12h8'],
+  // suluk: kapaklı, pipetli matara
+  flask: ['M8 7h8v13a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2z', 'M7 4.5h10V7H7z', 'M13.5 4.5L15 1.5', 'M8 13h8'],
 };
 
 export function DrinkIcon({ name, size = 26, color }) {
