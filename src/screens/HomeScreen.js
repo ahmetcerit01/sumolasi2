@@ -15,6 +15,7 @@ import { cardShadow, useTheme } from '../theme/theme';
 import { fmtLongDate, fmtNumber, fmtTime } from '../utils/format';
 import { computeReminderTimes, getReminderSettings } from '../utils/reminders';
 import { useWaterAdd } from '../hooks/useWaterAdd';
+import AdBanner from '../ads/AdBanner';
 
 const GLASS_W = 236;
 const GLASS_H = 300;
@@ -150,6 +151,9 @@ export default function HomeScreen() {
             ))
           )}
         </View>
+
+        {/* Premium olmayanlara küçük banner */}
+        <AdBanner style={{ marginHorizontal: 22, marginTop: 16 }} />
       </ScrollView>
     </View>
   );

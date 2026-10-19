@@ -10,6 +10,7 @@ import { useHydrationStore } from '../storage/useHydrationStore';
 import { LanguageContext } from '../i18n';
 import { cardShadow, useTheme } from '../theme/theme';
 import { fmtLongDate } from '../utils/format';
+import AdBanner from '../ads/AdBanner';
 
 export default function BadgesScreen() {
   const insets = useSafeAreaInsets();
@@ -65,6 +66,9 @@ export default function BadgesScreen() {
             );
           })}
         </View>
+
+        {/* Premium olmayanlara küçük banner */}
+        <AdBanner />
       </ScrollView>
 
       {/* rozet detayı */}
