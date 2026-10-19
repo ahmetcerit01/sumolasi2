@@ -71,7 +71,8 @@ export default function HomeScreen() {
   const overWater = progress > 0.5;
 
   const hour = new Date().getHours();
-  const greeting = hour < 12 ? t('home.goodMorning') : hour < 18 ? t('home.goodDay') : t('home.goodEvening');
+  // 05–12 sabah, 12–18 gündüz, 18–22 akşam, 22–05 gece
+  const greeting = hour >= 5 && hour < 12 ? t('home.goodMorning') : hour >= 12 && hour < 18 ? t('home.goodDay') : hour >= 18 && hour < 22 ? t('home.goodEvening') : t('home.goodNight');
 
   // Sıradaki hatırlatma: ayarlardan (aralık, açık/kapalı) ve profil saatlerinden hesaplanır
   const [reminder, setReminder] = useState({ enabled: true, intervalHours: 2 });
