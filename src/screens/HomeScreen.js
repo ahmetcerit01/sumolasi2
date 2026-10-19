@@ -17,6 +17,8 @@ import { computeReminderTimes, getReminderSettings } from '../utils/reminders';
 import { useWaterAdd } from '../hooks/useWaterAdd';
 import AdBanner from '../ads/AdBanner';
 import DamlaTip from '../components/DamlaTip';
+import Mascot from '../components/Mascot';
+import Animated, { Easing, SlideInRight, SlideOutRight } from 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const GLASS_W = 236;
@@ -39,12 +41,20 @@ export default function HomeScreen() {
   // Siri ipucu: ilk açılışta onboarding/Premium önerisi, ikincide reklam izni var;
   // çakışmasın diye üçüncü açılışta, bir kez
   const [siriTip, setSiriTip] = useState(false);
+  // kenardan göz atan Damla: dokununca aynı ipucunu açar (ilk açılış hariç her zaman)
+  const [peek, setPeek] = useState(false);
   useEffect(() => {
     let timer;
+    let peekTimer;
     AsyncStorage.multiGet(['APP_LAUNCHES', SIRI_TIP_KEY]).then(([[, launches], [, seen]]) => {
-      if (Number(launches) >= 3 && seen !== '1') timer = setTimeout(() => setSiriTip(true), 1500);
+      const n = Number(launches) || 0;
+      if (n >= 3 && seen !== '1') timer = setTimeout(() => setSiriTip(true), 1500);
+      if (n >= 2) peekTimer = setTimeout(() => setPeek(true), 2200);
     });
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(peekTimer);
+    };
   }, []);
   const closeSiriTip = () => {
     setSiriTip(false);
@@ -175,13 +185,36 @@ export default function HomeScreen() {
         <AdBanner style={{ marginHorizontal: 22, marginTop: 16 }} />
       </ScrollView>
 
-      {/* Damla'nın Siri ipucu: 3. açılışta bir kez */}
+      {/* sağ kenardan göz atan Damla: dokununca Siri ipucu */}
+      {peek && !siriTip && (
+        <Animated.View
+          entering={SlideInRight.duration(900).easing(Easing.out(Easing.cubic))}
+          exiting={SlideOutRight.duration(350)}
+          style={[styles.peek, { bottom: insets.bottom + 104 }]}
+        >
+          <TouchableOpacity
+            onPress={() => {
+              Haptics.selectionAsync().catch(() => {});
+              setSiriTip(true);
+            }}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={t('tips.siri.title')}
+          >
+            <Mascot mood="happy" size={64} />
+          </TouchableOpacity>
+        </Animated.View>
+      )}
+
+      {/* Damla'nın Siri ipucu: 3. açılışta bir kez, ya da kenardaki Damla'ya dokununca */}
       <DamlaTip visible={siriTip} onClose={closeSiriTip} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  // yarısı ekran dışında, hafif eğik: kenardan göz atıyor
+  peek: { position: 'absolute', right: -22, transform: [{ rotate: '-14deg' }] },
   root: { flex: 1 },
   header: { paddingHorizontal: 22, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
