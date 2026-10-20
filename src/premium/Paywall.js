@@ -44,7 +44,6 @@ function PaywallSheet({ visible, onClose }) {
     { icon: 'medkit-outline', text: t('premium.benefits.meds') },
     { icon: 'notifications-outline', text: t('premium.benefits.taken') },
     { icon: 'calendar-outline', text: t('premium.benefits.week') },
-    { icon: 'sparkles-outline', text: t('premium.benefits.future') },
   ];
 
   const onBuy = async () => {

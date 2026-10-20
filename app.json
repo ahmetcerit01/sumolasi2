@@ -12,9 +12,7 @@
       "bundleIdentifier": "com.farukoz.hydromate",
       "appleTeamId": "CHL73JZQ6Y",
       "infoPlist": {
-        "UIBackgroundModes": [
-          "remote-notification"
-        ],
+        "ITSAppUsesNonExemptEncryption": false,
         "CFBundleAllowMixedLocalizations": true,
         "CFBundleDisplayName": "Hydromate"
       }
@@ -40,7 +38,8 @@
         "expo-notifications",
         {
           "icon": "./assets/icon.png",
-          "color": "#5081E5"
+          "color": "#5081E5",
+          "enableRemoteNotifications": false
         }
       ],
       "expo-localization",
@@ -52,7 +51,12 @@
       ],
       "@react-native-community/datetimepicker",
       "expo-status-bar",
-      "expo-audio",
+      [
+        "expo-audio",
+        {
+          "enableBackgroundPlayback": false
+        }
+      ],
       "expo-asset",
       [
         "expo-splash-screen",
