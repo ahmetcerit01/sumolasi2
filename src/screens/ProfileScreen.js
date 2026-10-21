@@ -57,6 +57,29 @@ const fromHHMM = (s, fb) => {
   return d;
 };
 
+// Ayar satırı. Bileşenin dışında tanımlı: içeride tanımlanınca her render'da yeni bir bileşen türü olur,
+// React satırları (içindeki Switch'lerle) söküp yeniden kurar ve bir anahtar değişince diğerleri de oynar.
+function Row({ label, value, onPress, last, children }) {
+  const { c, type } = useTheme();
+  return (
+    <TouchableOpacity
+      disabled={!onPress}
+      onPress={onPress}
+      activeOpacity={0.6}
+      style={[styles.row, !last && { borderBottomWidth: 1, borderBottomColor: c.divider }]}
+      accessibilityRole={onPress ? 'button' : undefined}
+    >
+      <Text style={[type.body, { color: c.ink }]}>{label}</Text>
+      {children || (
+        <View style={styles.rowRight}>
+          <Text style={[type.bodyStrong, { color: c.ink2 }]}>{value}</Text>
+          {onPress && <Ionicons name="chevron-forward" size={16} color={c.ink3} />}
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+}
+
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { t, locale, setLanguage } = useContext(LanguageContext);
@@ -151,24 +174,6 @@ export default function ProfileScreen() {
     setEditing(false);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   };
-
-  const Row = ({ label, value, onPress, last, children }) => (
-    <TouchableOpacity
-      disabled={!onPress}
-      onPress={onPress}
-      activeOpacity={0.6}
-      style={[styles.row, !last && { borderBottomWidth: 1, borderBottomColor: c.divider }]}
-      accessibilityRole={onPress ? 'button' : undefined}
-    >
-      <Text style={[type.body, { color: c.ink }]}>{label}</Text>
-      {children || (
-        <View style={styles.rowRight}>
-          <Text style={[type.bodyStrong, { color: c.ink2 }]}>{value}</Text>
-          {onPress && <Ionicons name="chevron-forward" size={16} color={c.ink3} />}
-        </View>
-      )}
-    </TouchableOpacity>
-  );
 
   const card = [styles.card, { backgroundColor: c.card, borderRadius: radius.card }, cardShadow(c)];
 
