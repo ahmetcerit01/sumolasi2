@@ -9,7 +9,15 @@
       "Adds water to today's total without opening the app.": "Uygulamayı açmadan bugünkü toplama su ekler.",
       "Tells how much water you drank today.": "Bugün ne kadar su içtiğini söyler.",
       "Hydromate": "Su Dostu",
-      "Track your daily water goal and add water with one tap.": "Günlük su hedefini takip et, tek dokunuşla su ekle."
+      "Track your daily water goal and add water with one tap.": "Günlük su hedefini takip et, tek dokunuşla su ekle.",
+      "Hydromate Configuration": "Su Dostu",
+      "Choose how much water each button adds.": "Her butonun ne kadar su ekleyeceğini seç.",
+      "First button": "1. buton",
+      "Second button (medium)": "2. buton (orta boy)",
+      "Third button (medium)": "3. buton (orta boy)",
+      "Quick add 1": "Hızlı ekleme 1",
+      "Quick add 2": "Hızlı ekleme 2",
+      "Quick add 3": "Hızlı ekleme 3"
     },
     "NSUserTrackingUsageDescription": "Reklamları ilgi alanlarına göre gösterebilmek için. İzin vermesen de uygulamanın tamamını kullanabilirsin."
   }

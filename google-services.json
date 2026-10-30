@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "327923362975",
+    "project_id": "su-dostu",
+    "storage_bucket": "su-dostu.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:327923362975:android:1623191dc998dd538986aa",
+        "android_client_info": {
+          "package_name": "com.farukoz.hydromate"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB9d1JCbhRC4SEfFxAUfwK2hAwhnkHXiNM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

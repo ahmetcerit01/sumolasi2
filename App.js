@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { View, DeviceEventEmitter, StatusBar } from 'react-native';
+import { View, DeviceEventEmitter, StatusBar, AppState } from 'react-native';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
@@ -32,6 +32,8 @@ import { PremiumProvider, usePremium } from './src/premium/PremiumProvider';
 import { PaywallProvider, usePaywall } from './src/premium/Paywall';
 import { ensureMedCategory, ensureMedsHydrated, MED_ACTION_TAKEN, useMedsStore } from './src/storage/useMedsStore';
 import { navRef, navigateWhenReady } from './src/navigation/navRef';
+import { initializeFirebaseMessaging, subscribeToForegroundMessages } from './src/services/firebaseMessaging';
+import { checkForAppUpdate } from './src/services/appUpdateChecker';
 
 // Vitamin/ilaç bildirimine yanıt: "Aldım" → işaretle, bildirime dokunma → Vitamin ekranını aç
 const handleNotificationResponse = async (response) => {
@@ -50,6 +52,7 @@ const handleNotificationResponse = async (response) => {
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
+    shouldShowAlert: true,
     shouldShowBanner: true,
     shouldShowList: true,
     shouldPlaySound: true,
@@ -109,6 +112,28 @@ export default function App() {
 
     prepare();
   }, []);
+
+  // Remote push topic aboneliği ve Firebase üzerinden sürüm kontrolü.
+  // Bunlar yalnızca native build'lerde çalışır; Expo Go/web'de sessizce atlanır.
+  useEffect(() => {
+    if (!appIsReady) return undefined;
+    // Register the foreground listener immediately so a message is not lost
+    // while APNs/FCM finishes its first-time registration.
+    const unsubscribe = subscribeToForegroundMessages();
+    const connectMessaging = () => initializeFirebaseMessaging().catch(() => null);
+    connectMessaging();
+    checkForAppUpdate({ locale: i18n.locale }).catch(() => {});
+    // A device may be offline or locked during the first attempt. Retrying
+    // when the app becomes active lets the token/topic registration recover
+    // without requiring an uninstall or a manual settings reset.
+    const appStateSubscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') connectMessaging();
+    });
+    return () => {
+      unsubscribe();
+      appStateSubscription.remove();
+    };
+  }, [appIsReady]);
 
   // Bildirim yanıtları (uygulama kapalıyken gelen dahil)
   useEffect(() => {
@@ -218,8 +243,9 @@ export default function App() {
         <AfterOnboardOffer trigger={afterOnboard} />
         <PremiumEffects />
 
-        {/* Fontlar yüklenene kadar yalnızca zemin (yerel splash ile aynı renk) görünür */}
-        {!splashFinished && fontsLoaded && themeReady && (
+        {/* Splash, font/tema hazırlığına bağlı olmadan hemen çizilir. Böylece
+            yavaş bir yerel veri veya font yüklemesi açılışta boş ekran bırakmaz. */}
+        {!splashFinished && (
           <AnimatedSplash 
             onAnimationFinish={() => setSplashFinished(true)} 
           />

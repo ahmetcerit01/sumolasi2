@@ -2,7 +2,7 @@ import { AppState, Platform } from 'react-native';
 import { i18n } from '../i18n';
 import { subscribe, useHydrationStore } from '../storage/useHydrationStore';
 import { syncLiveActivity } from './liveActivity';
-import { getQuickAdds, loadQuickAdds, subscribeQuickAdds } from '../storage/quickAdds';
+import { getQuickAdds, loadQuickAdds, quickLabel, subscribeQuickAdds } from '../storage/quickAdds';
 
 // Uygulama <-> widget senkronu (yalnızca iOS).
 // - Widget'taki butonlar uygulama kapalıyken bile toplamı artırır ve eklenenleri `pending` listesine yazar.
@@ -70,6 +70,7 @@ const pushState = () => {
     goalMl: s.goalMl || 2500,
     pending: [],
     amounts: getQuickAdds().map((q) => q.ml),
+    quick: getQuickAdds().map((q) => ({ id: q.id, ml: q.ml })),
     sleepAt: s.profile?.sleepAt || '23:00',
     lastAddAt: s.lastAddAt || '', // native tarafa null gönderilemiyor
     labels: {
@@ -89,11 +90,36 @@ const pushState = () => {
   });
 };
 
+// "Widget'ı Düzenle" ekranındaki seçenekler: kullanıcının hızlı eklemeleri (adı ve güncel miktarıyla)
+// ve sabit miktarlar. Değerler widget'taki pick() ile çözülür (q1..q3 / ml<miktar>).
+const FIXED_AMOUNTS = [100, 150, 200, 250, 300, 330, 400, 500, 750, 1000];
+let lastOptionsSignature = '';
+const pushConfigurationOptions = () => {
+  if (typeof WaterWidget.setConfigurationParameterEnum !== 'function') return;
+  const t = (k) => i18n.t(k);
+  const ml = (n) => `${String(n).replace(/\B(?=(\d{3})+(?!\d))/g, i18n.locale === 'tr' ? '.' : ',')} ml`;
+  const options = [
+    ...getQuickAdds().map((q) => ({ name: `${quickLabel(q, t)} · ${ml(q.ml)}`, value: q.id, subtitle: t('quickAdd.widgetOption') })),
+    ...FIXED_AMOUNTS.map((n) => ({ name: ml(n), value: `ml${n}`, subtitle: t('quickAdd.widgetAmount') })),
+  ];
+  const signature = JSON.stringify(options);
+  if (signature === lastOptionsSignature) return;
+  lastOptionsSignature = signature;
+  for (const p of ['button1', 'button2', 'button3']) {
+    try {
+      WaterWidget.setConfigurationParameterEnum(p, options);
+    } catch (e) {
+      console.warn('[widget] options failed', e);
+    }
+  }
+};
+
 export const syncWidget = () => {
   if (!WaterWidget) return Promise.resolve();
   return enqueue(async () => {
     await pullPending();
     pushState();
+    pushConfigurationOptions();
     await syncLiveActivity();
   });
 };

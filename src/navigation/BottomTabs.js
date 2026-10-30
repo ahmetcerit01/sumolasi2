@@ -44,6 +44,10 @@ function FloatingTabBar({ state, navigation }) {
       }
       // Kilitli (Premium olmayan) widget'a dokunulunca Premium ekranı
       if (url && /^hydromate:\/\/premium/.test(url)) openPaywall();
+      if (url && /^hydromate:\/\/history/.test(url)) navigation.navigate('History');
+      if (url && /^hydromate:\/\/badges/.test(url)) navigation.navigate('Badges');
+      if (url && /^hydromate:\/\/profile/.test(url)) navigation.navigate('Profile');
+      if (url && /^hydromate:\/\/home/.test(url)) navigation.navigate('Home');
     };
     Linking.getInitialURL().then(handle).catch(() => {});
     const sub = Linking.addEventListener('url', ({ url }) => handle(url));

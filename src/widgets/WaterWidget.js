@@ -30,6 +30,8 @@ import { createWidget } from 'expo-widgets';
 //   goalMl     günlük hedef
 //   pending    [{ d, ml }]   widget'tan eklenip henüz uygulamaya aktarılmamış miktarlar
 //   amounts    [küçük, orta, büyük] hızlı ekleme miktarları
+//   quick      [{ id, ml }]  kullanıcının hızlı eklemeleri (widget ayarındaki "q1".."q3" seçenekleri için)
+// environment.configuration (iOS "Widget'ı Düzenle"): button1..button3 = 'q1'..'q3' | 'ml250' gibi sabit miktar
 //   sleepAt    'HH:MM'       uyku saati (uykulu mod için)
 //   lastAddAt  ISO tarih     son su ekleme (susuz mod için)
 //   labels     { title, pctPrefix, sep, moods: { thirsty, normal, happy, celebrate, sleepy } }
@@ -49,7 +51,21 @@ const WaterWidget = (props, environment) => {
   const done = total >= goal;
   // Türkçede yüzde işareti başta (%80), İngilizcede sonda (80%)
   const pctText = labels.pctPrefix ? '%' + pct : pct + '%';
-  const amounts = props.amounts && props.amounts.length === 3 ? props.amounts : [200, 300, 500];
+  const defaults = props.amounts && props.amounts.length === 3 ? props.amounts : [200, 300, 500];
+  // Her buton widget ayarından gelir; seçim yoksa (ya da seçilen hızlı ekleme bulunamazsa) varsayılan sıra
+  const config = (environment && environment.configuration) || {};
+  const quick = props.quick || [];
+  const pick = (choice, i) => {
+    if (typeof choice === 'string') {
+      if (choice.indexOf('ml') === 0) {
+        const ml = Number(choice.slice(2));
+        if (ml > 0) return ml;
+      }
+      for (let k = 0; k < quick.length; k++) if (quick[k] && quick[k].id === choice && quick[k].ml > 0) return quick[k].ml;
+    }
+    return defaults[i];
+  };
+  const amounts = [pick(config.button1, 0), pick(config.button2, 1), pick(config.button3, 2)];
   const sep = labels.sep || '.';
   const num = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, sep);
 
@@ -286,6 +302,7 @@ export default createWidget('WaterWidget', WaterWidget, {
   goalMl: 2500,
   pending: [],
   amounts: [200, 300, 500],
+  quick: [],
   sleepAt: '23:00',
   lastAddAt: '',
   premium: false,

@@ -16,7 +16,10 @@ const MOCK_KEY = 'PREMIUM_MOCK_ACTIVE';
 
 const rcConfig = Constants.expoConfig?.extra?.revenuecat || {};
 const API_KEY = Platform.OS === 'ios' ? rcConfig.iosApiKey : rcConfig.androidApiKey;
-export const PREMIUM_MODE = API_KEY ? 'revenuecat' : IS_TEST_BUILD ? 'mock' : 'off';
+// EXPO_PUBLIC_MOCK_PREMIUM=1: yalnızca test derlemelerinde, RevenueCat kurulmadan Premium özelliklerini
+// (widget'lar vb.) denemek için sahte Premium. Mağaza derlemesinde bu değişken verilmez.
+const FORCE_MOCK = IS_TEST_BUILD && process.env.EXPO_PUBLIC_MOCK_PREMIUM === '1';
+export const PREMIUM_MODE = FORCE_MOCK ? 'mock' : API_KEY ? 'revenuecat' : IS_TEST_BUILD ? 'mock' : 'off';
 
 let Purchases = null;
 if (PREMIUM_MODE === 'revenuecat') {

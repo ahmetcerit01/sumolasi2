@@ -2,24 +2,32 @@
   "expo": {
     "name": "Hydromate",
     "slug": "sumolasi",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "scheme": "hydromate",
     "ios": {
       "supportsTablet": false,
+      "buildNumber": "3",
       "bundleIdentifier": "com.farukoz.hydromate",
       "appleTeamId": "CHL73JZQ6Y",
+      "googleServicesFile": "./GoogleService-Info.plist",
+      "entitlements": {
+        "aps-environment": "production"
+      },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "CFBundleAllowMixedLocalizations": true,
-        "CFBundleDisplayName": "Hydromate"
+        "CFBundleDisplayName": "Hydromate",
+        "FirebaseMessagingInstallationIdEnabled": false,
+        "UIBackgroundModes": ["remote-notification"]
       }
     },
     "android": {
       "package": "com.farukoz.hydromate",
-      "versionCode": 1,
+      "versionCode": 2,
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -34,12 +42,23 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "@react-native-firebase/app",
+      "@react-native-firebase/messaging",
+      "@react-native-firebase/analytics",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "dynamic"
+          }
+        }
+      ],
       [
         "expo-notifications",
         {
           "icon": "./assets/icon.png",
           "color": "#5081E5",
-          "enableRemoteNotifications": false
+          "enableRemoteNotifications": true
         }
       ],
       "expo-localization",
@@ -72,6 +91,7 @@
       ],
       "expo-font",
       "./plugins/withWidgetMascot",
+      "./plugins/withWidgetConfigDefaults",
       [
         "expo-widgets",
         {
@@ -89,7 +109,193 @@
                   "accessoryRectangular",
                   "accessoryInline"
                 ],
-                "initialLayout": "./src/widgets/WaterWidget.js"
+                "initialLayout": "./src/widgets/WaterWidget.js",
+                "configuration": {
+                  "title": "Hydromate",
+                  "description": "Choose how much water each button adds.",
+                  "parameters": {
+                    "button1": {
+                      "title": "First button",
+                      "type": "enum",
+                      "dynamic": true,
+                      "values": [
+                        {
+                          "name": "Quick add 1",
+                          "value": "q1"
+                        },
+                        {
+                          "name": "Quick add 2",
+                          "value": "q2"
+                        },
+                        {
+                          "name": "Quick add 3",
+                          "value": "q3"
+                        },
+                        {
+                          "name": "100 ml",
+                          "value": "ml100"
+                        },
+                        {
+                          "name": "150 ml",
+                          "value": "ml150"
+                        },
+                        {
+                          "name": "200 ml",
+                          "value": "ml200"
+                        },
+                        {
+                          "name": "250 ml",
+                          "value": "ml250"
+                        },
+                        {
+                          "name": "300 ml",
+                          "value": "ml300"
+                        },
+                        {
+                          "name": "330 ml",
+                          "value": "ml330"
+                        },
+                        {
+                          "name": "400 ml",
+                          "value": "ml400"
+                        },
+                        {
+                          "name": "500 ml",
+                          "value": "ml500"
+                        },
+                        {
+                          "name": "750 ml",
+                          "value": "ml750"
+                        },
+                        {
+                          "name": "1000 ml",
+                          "value": "ml1000"
+                        }
+                      ],
+                      "default": "q1"
+                    },
+                    "button2": {
+                      "title": "Second button (medium)",
+                      "type": "enum",
+                      "dynamic": true,
+                      "values": [
+                        {
+                          "name": "Quick add 1",
+                          "value": "q1"
+                        },
+                        {
+                          "name": "Quick add 2",
+                          "value": "q2"
+                        },
+                        {
+                          "name": "Quick add 3",
+                          "value": "q3"
+                        },
+                        {
+                          "name": "100 ml",
+                          "value": "ml100"
+                        },
+                        {
+                          "name": "150 ml",
+                          "value": "ml150"
+                        },
+                        {
+                          "name": "200 ml",
+                          "value": "ml200"
+                        },
+                        {
+                          "name": "250 ml",
+                          "value": "ml250"
+                        },
+                        {
+                          "name": "300 ml",
+                          "value": "ml300"
+                        },
+                        {
+                          "name": "330 ml",
+                          "value": "ml330"
+                        },
+                        {
+                          "name": "400 ml",
+                          "value": "ml400"
+                        },
+                        {
+                          "name": "500 ml",
+                          "value": "ml500"
+                        },
+                        {
+                          "name": "750 ml",
+                          "value": "ml750"
+                        },
+                        {
+                          "name": "1000 ml",
+                          "value": "ml1000"
+                        }
+                      ],
+                      "default": "q2"
+                    },
+                    "button3": {
+                      "title": "Third button (medium)",
+                      "type": "enum",
+                      "dynamic": true,
+                      "values": [
+                        {
+                          "name": "Quick add 1",
+                          "value": "q1"
+                        },
+                        {
+                          "name": "Quick add 2",
+                          "value": "q2"
+                        },
+                        {
+                          "name": "Quick add 3",
+                          "value": "q3"
+                        },
+                        {
+                          "name": "100 ml",
+                          "value": "ml100"
+                        },
+                        {
+                          "name": "150 ml",
+                          "value": "ml150"
+                        },
+                        {
+                          "name": "200 ml",
+                          "value": "ml200"
+                        },
+                        {
+                          "name": "250 ml",
+                          "value": "ml250"
+                        },
+                        {
+                          "name": "300 ml",
+                          "value": "ml300"
+                        },
+                        {
+                          "name": "330 ml",
+                          "value": "ml330"
+                        },
+                        {
+                          "name": "400 ml",
+                          "value": "ml400"
+                        },
+                        {
+                          "name": "500 ml",
+                          "value": "ml500"
+                        },
+                        {
+                          "name": "750 ml",
+                          "value": "ml750"
+                        },
+                        {
+                          "name": "1000 ml",
+                          "value": "ml1000"
+                        }
+                      ],
+                      "default": "q3"
+                    }
+                  }
+                }
               }
             }
           ]
