@@ -3,6 +3,7 @@ import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DEFAULT_GOAL, computeGoalMl } from '../utils/goal';
 import { BADGES } from '../constants/badges';
+import { DEFAULT_SHIFT_SCHEDULE, getEffectiveShiftStart, getShiftForDate, getShiftSchedule, normalizeShiftSchedule } from '../utils/shiftSchedule';
 
 const KEY = 'SUMOLASI_STATE_V7'; // Versiyonu V7 yaptık
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -17,6 +18,13 @@ const pad2 = (n) => (n < 10 ? `0${n}` : `${n}`);
 export const dateKey = (date = new Date()) =>
   `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 
+export const waterDateKey = (date = new Date(), wakeAt = '08:00') => {
+  const [wakeHour = 8, wakeMinute = 0] = String(wakeAt || '08:00').split(':').map(Number);
+  const cutoff = new Date(date);
+  if (date.getHours() * 60 + date.getMinutes() < wakeHour * 60 + wakeMinute) cutoff.setDate(cutoff.getDate() - 1);
+  return dateKey(cutoff);
+};
+
 // 'YYYY-MM-DD' stringleri UTC gece yarısı olarak parse edilir; ikisi de UTC olduğu için fark doğru çıkar.
 const diffInDays = (fromStr, toStr) => {
   if (!fromStr || !toStr) return 0;
@@ -29,12 +37,18 @@ const diffInDays = (fromStr, toStr) => {
 export const calculateGoal = computeGoalMl;
 
 const listeners = new Set();
+let hydrationQueue = Promise.resolve();
+const enqueueHydration = (work) => {
+  const next = hydrationQueue.then(work, work);
+  hydrationQueue = next.catch(() => {});
+  return next;
+};
 
 let store = {
   totalMl: 0,
   goalMl: DEFAULT_GOAL,
-  lastDate: dateKey(),
-  startDate: dateKey(), // Kullanıcının uygulamayı kullanmaya başladığı gün (ortalamalar için)
+  lastDate: waterDateKey(),
+  startDate: waterDateKey(), // Kullanıcının uygulamayı kullanmaya başladığı su günü
   isHydrated: false,
   todayGlasses: 0,
   lastAddAt: null,
@@ -45,10 +59,19 @@ let store = {
   profile: {
     weight: 70, height: 170, wakeAt: '08:00', sleepAt: '23:00', gender: 'male'
   },
+  shiftSchedule: DEFAULT_SHIFT_SCHEDULE,
   recommendedGoal: DEFAULT_GOAL,
   // --- AYARLAR (Varsayılan Açık) ---
   notificationsEnabled: true,
   soundEnabled: true,
+};
+
+export const getCurrentWaterDateKey = (date = new Date(), snapshot = store) => {
+  if (!snapshot.shiftSchedule?.enabled) return waterDateKey(date, snapshot.profile?.wakeAt || '08:00');
+  const effectiveStart = getEffectiveShiftStart(snapshot.shiftSchedule, date);
+  const waterDay = new Date(date);
+  if (date < effectiveStart) waterDay.setDate(waterDay.getDate() - 1);
+  return dateKey(waterDay);
 };
 
 const emit = () => listeners.forEach((l) => l(store));
@@ -60,21 +83,15 @@ export const subscribe = (fn) => {
 };
 
 const persist = async () => {
-  try {
-    await AsyncStorage.multiSet([
-      ['DAILY_GOAL_ML', String(store.goalMl)],
-      [KEY, JSON.stringify(store)],
-    ]);
-  } catch {}
+  await AsyncStorage.setItem(KEY, JSON.stringify(store));
+  await AsyncStorage.setItem('DAILY_GOAL_ML', String(store.goalMl));
 };
-
-// UI önce güncellenir, disk yazımı arkadan gelir (await persist() önce gelince ekleme 2-3 sn gecikiyordu)
-// Her kayıtta artan sürüm numarası. Başka bir JS örneği (geliştirmede yeniden yükleme, arka planda
-// başlatılan uygulama vb.) daha yeni bir durum yazdıysa, eski bellek kopyası onu ezmesin diye kullanılır.
-const commit = (next) => {
-  store = { ...next, rev: (store.rev || 0) + 1 };
+const commit = async (next) => {
+  const saved = { ...next, rev: (store.rev || 0) + 1 };
+  await AsyncStorage.setItem(KEY, JSON.stringify(saved));
+  store = saved;
   emit();
-  return persist();
+  await AsyncStorage.setItem('DAILY_GOAL_ML', String(store.goalMl)).catch(() => {});
 };
 
 // Diskteki kopya bizimkinden yeniyse onu al (yazmadan önce ve uygulama öne gelince çağrılır)
@@ -93,13 +110,27 @@ export const refreshIfStale = async () => {
   return false;
 };
 
+const completedStreak = (history, currentDay, fallbackGoal) => {
+  const cursor = new Date(`${currentDay}T12:00:00`);
+  let count = 0;
+  cursor.setDate(cursor.getDate() - 1);
+  while (true) {
+    const item = history[dateKey(cursor)];
+    if (!item || !item.ml || item.ml < (item.goal || fallbackGoal)) return count;
+    count += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+};
+
 // Gün devri: dünü geçmişe yazar, seriyi günceller, bugünü sıfırlar.
 // Tek kaynak burası; hydrate, dakikalık zamanlayıcı ve uygulama öne gelince çağrılır.
-export const rolloverIfNeeded = async () => {
+const rolloverInternal = async () => {
   if (!store.isHydrated) return false;
   await refreshIfStale();
-  const today = dateKey();
-  if (store.lastDate === today) return false;
+  const today = getCurrentWaterDateKey(new Date(), store);
+  // Saat düzeni değişince su günü geriye kayabilir. Veriyi geriye sarmak yerine
+  // mevcut su dönemini koru; yeni dönem, tarih ileri geçtiğinde başlar.
+  if (today <= store.lastDate) return false;
 
   const prevDate = store.lastDate;
   const gap = diffInDays(prevDate, today);
@@ -111,12 +142,17 @@ export const rolloverIfNeeded = async () => {
     ...store,
     dailyHistory: {
       ...store.dailyHistory,
-      [prevDate]: { ml: store.totalMl, goal: store.goalMl, count: store.todayGlasses || 0 },
+      [prevDate]: {
+        ml: store.totalMl, goal: store.goalMl, count: store.todayGlasses || 0,
+        entries: store.entries || [],
+        shiftMode: store.dayShiftMode ?? null,
+      },
     },
     totalMl: 0,
     todayGlasses: 0,
     entries: [],
     lastDate: today,
+    dayShiftMode: store.shiftSchedule?.enabled ? getShiftForDate(store.shiftSchedule, new Date(`${today}T12:00:00`)).mode : null,
     streakDays,
   });
   return true;
@@ -126,15 +162,20 @@ export const rolloverIfNeeded = async () => {
 // Not: Bazı yerlerde Zustand gibi `useHydrationStore.getState().xxx` çağrısı var.
 // Bu yüzden action'ları hook dışına taşıyıp tek bir API üretelim.
 
-const actions = {
-  add: async (ml) => {
-    await rolloverIfNeeded();
+export const rolloverIfNeeded = () => enqueueHydration(rolloverInternal);
 
-    const nowIso = new Date().toISOString();
+const actionImpl = {
+  add: async (ml, metadata = {}) => {
+    ml = Number(ml);
+    if (!Number.isFinite(ml) || ml <= 0 || ml > 5000) throw new Error('invalid_water_amount');
+    await rolloverInternal();
+
+    const nowIso = metadata.at || new Date().toISOString();
     const newTotal = (store.totalMl || 0) + ml;
     const newGlasses = (store.todayGlasses || 0) + 1;
 
     const candidateState = {
+      activeDays: Object.values(store.dailyHistory || {}).filter((day) => day.ml > 0).length + 1,
       totalMl: newTotal,
       goalMl: store.goalMl,
       todayGlasses: newGlasses,
@@ -151,7 +192,7 @@ const actions = {
       });
     }
 
-    const entry = { id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`, ml, at: nowIso };
+    const entry = { id: metadata.id || `${Date.now()}-${Math.round(Math.random() * 1e6)}`, ml, at: nowIso };
     await commit({
       ...store,
       totalMl: newTotal,
@@ -159,11 +200,13 @@ const actions = {
       lastAddAt: nowIso,
       entries: [...(store.entries || []), entry],
       badges: newBadges,
+      appliedExternalIds: metadata.externalId ? [...(store.appliedExternalIds || []), metadata.externalId].slice(-2000) : store.appliedExternalIds,
     });
   },
 
   // Son eklemeyi geri al (yanlış dokunuşlar için). Kazanılan rozetler geri alınmaz.
   undoLast: async () => {
+    await rolloverInternal();
     await refreshIfStale();
     const entries = store.entries || [];
     if (entries.length === 0) return false;
@@ -179,57 +222,92 @@ const actions = {
     return true;
   },
 
+  removeEntry: async (day, id) => {
+    await rolloverInternal();
+    const current = day === store.lastDate;
+    const record = current ? { ml: store.totalMl, count: store.todayGlasses, entries: store.entries } : store.dailyHistory[day];
+    const entry = record?.entries?.find((item) => item.id === id);
+    if (!entry) return false;
+    const entries = record.entries.filter((item) => item.id !== id);
+    const ml = Math.max(0, (record.ml || 0) - entry.ml);
+    if (current) {
+      await commit({ ...store, totalMl: ml, todayGlasses: Math.max(0, (record.count || 0) - 1), entries,
+        lastAddAt: entries.length ? entries[entries.length - 1].at : null });
+    } else {
+      const dailyHistory = { ...store.dailyHistory, [day]: { ...record, ml, count: Math.max(0, (record.count || 0) - 1), entries } };
+      const streakDays = completedStreak(dailyHistory, store.lastDate, store.goalMl);
+      await commit({ ...store, dailyHistory, streakDays });
+    }
+    return true;
+  },
+
   // Widget'tan eklenen miktar. Bugüne aitse normal ekleme (rozetler dahil);
   // uygulama açılmadan gün döndüyse o günün geçmiş kaydına yazılır.
   // id: widget/Siri tarafında üretilen benzersiz kimlik. Aynı kayıt iki kez gelirse (iki senkron
   // aynı anda çalışırsa) ikinci kez eklenmez.
-  addFromWidget: async (ml, day, id) => {
-    await rolloverIfNeeded();
-    const amount = Number(ml) || 0;
-    if (amount <= 0) return;
-    if (id) {
-      const seen = store.appliedExternalIds || [];
-      if (seen.includes(id)) return;
-      // Son 200 kimliği tut (yeterli: pending listesi her senkronda boşaltılıyor)
-      store = { ...store, appliedExternalIds: [...seen, id].slice(-200) };
-    }
+  addFromWidget: async (ml, day, id, at) => {
+    await rolloverInternal();
+    const amount = Number(ml);
+    if (!Number.isFinite(amount) || amount <= 0 || amount > 5000) throw new Error('invalid_widget_amount');
+    if (id && (store.appliedExternalIds || []).includes(id)) return;
     if (!day || day === store.lastDate) {
-      await actions.add(amount);
+      await actionImpl.add(amount, { id, at, externalId: id });
       return;
     }
-    if (day > store.lastDate) return; // saat/tarih tutarsızlığı: yok say
-    const prev = store.dailyHistory[day] || { ml: 0, goal: store.goalMl };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day > store.lastDate) throw new Error('widget_day_unresolved');
+    const prev = store.dailyHistory[day] || { ml: 0, goal: store.goalMl, count: 0 };
+    const entry = at ? [{ id, at, ml: amount }] : [];
+    const dailyHistory = { ...store.dailyHistory, [day]: { ...prev, ml: (prev.ml || 0) + amount,
+      count: (prev.count || 0) + 1, entries: [...(prev.entries || []), ...entry] } };
     await commit({
-      ...store,
-      dailyHistory: { ...store.dailyHistory, [day]: { ...prev, ml: (prev.ml || 0) + amount } },
+      ...store, dailyHistory,
+      streakDays: completedStreak(dailyHistory, store.lastDate, store.goalMl),
+      appliedExternalIds: id ? [...(store.appliedExternalIds || []), id].slice(-2000) : store.appliedExternalIds,
     });
   },
 
   setGoalMl: async (ml) => {
     await refreshIfStale();
     const val = parseInt(ml);
-    if (!isNaN(val) && val > 0) {
+    await rolloverInternal();
+    if (!isNaN(val) && val >= 800 && val <= 6000) {
       await commit({ ...store, goalMl: val });
     }
   },
 
+  adjustGoalMl: async (delta) => {
+    await rolloverInternal();
+    const amount = Number(delta);
+    if (!Number.isFinite(amount)) return;
+    await commit({ ...store, goalMl: Math.max(800, Math.min(6000, store.goalMl + amount)) });
+  },
+
   updateProfile: async (newProfile) => {
     await refreshIfStale();
+    await rolloverInternal();
     const updatedProfile = { ...store.profile, ...newProfile };
     const newRecGoal = calculateGoal(updatedProfile.weight, updatedProfile.height);
     await commit({ ...store, profile: updatedProfile, recommendedGoal: newRecGoal });
+    await rolloverInternal();
+  },
+
+  setShiftSchedule: async (shiftSchedule) => {
+    await refreshIfStale();
+    await rolloverInternal();
+    await commit({ ...store, shiftSchedule: normalizeShiftSchedule(shiftSchedule) });
+    await rolloverInternal();
   },
 
   setNotifications: async (val) => {
+    await AsyncStorage.setItem(STORAGE_KEYS.notifications, val ? '1' : '0');
     store = { ...store, notificationsEnabled: val };
     emit();
-    await AsyncStorage.setItem(STORAGE_KEYS.notifications, val ? '1' : '0');
   },
 
   setSound: async (val) => {
+    await AsyncStorage.setItem(STORAGE_KEYS.sound, val ? '1' : '0');
     store = { ...store, soundEnabled: val };
     emit();
-    await AsyncStorage.setItem(STORAGE_KEYS.sound, val ? '1' : '0');
   },
 
   resetToday: async () => {
@@ -238,7 +316,7 @@ const actions = {
   },
 
   resetAll: async () => {
-    const today = dateKey();
+    const today = waterDateKey(new Date(), '08:00');
     store = {
       rev: (store.rev || 0) + 1,
       totalMl: 0,
@@ -254,6 +332,7 @@ const actions = {
       badges: {},
       dailyHistory: {},
       profile: { weight: 70, height: 170, wakeAt: '08:00', sleepAt: '23:00', gender: 'male' },
+      shiftSchedule: DEFAULT_SHIFT_SCHEDULE,
       notificationsEnabled: true,
       soundEnabled: true,
     };
@@ -263,6 +342,7 @@ const actions = {
       'ONBOARD_PROFILE',
       STORAGE_KEYS.notifications,
       STORAGE_KEYS.sound,
+      'SUMOLASI_SHIFT_SCHEDULE_V1',
     ]);
     await persist();
   },
@@ -271,16 +351,20 @@ const actions = {
   // isTracked: kullanıcı o gün uygulamayı kullanıyor muydu (başlangıç tarihinden önceki günler ortalamaya girmez)
   getDays: (count = 7) => {
     const days = [];
-    const today = new Date();
+    const currentKey = getCurrentWaterDateKey(new Date(), store);
+    const todayKey = currentKey > store.lastDate ? currentKey : store.lastDate;
+    const [year, month, day] = todayKey.split('-').map(Number);
+    const today = new Date(year, month - 1, day, 12, 0, 0, 0);
     for (let i = count - 1; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(today.getDate() - i);
       const k = dateKey(d);
       const isTracked = !store.startDate || k >= store.startDate;
       const item = k === store.lastDate
-        ? { ml: store.totalMl, goal: store.goalMl, count: store.todayGlasses || 0 }
+        ? { ml: store.totalMl, goal: store.goalMl, count: store.todayGlasses || 0, entries: store.entries || [],
+            shiftMode: store.dayShiftMode ?? null }
         : { ml: 0, goal: store.goalMl, count: 0, ...(store.dailyHistory[k] || {}) };
-      days.push({ dayIndex: d.getDay(), date: d.getDate(), fullDate: k, isToday: i === 0, isTracked, ...item });
+      days.push({ dayIndex: d.getDay(), date: d.getDate(), fullDate: k, isToday: k === store.lastDate, isTracked, ...item });
     }
     return days;
   },
@@ -312,6 +396,14 @@ const actions = {
   },
 };
 
+const readActions = new Set(['getDays', 'getWeeklyData', 'getLongestStreak']);
+const actions = Object.fromEntries(Object.entries(actionImpl).map(([name, action]) => [name,
+  readActions.has(name) ? action : (...args) => enqueueHydration(async () => {
+    await ensureHydrated();
+    return action(...args);
+  }),
+]));
+
 const getApi = (snapshot) => ({
   ...(snapshot || store),
   ...actions,
@@ -329,7 +421,6 @@ async function hydrate() {
       AsyncStorage.getItem(STORAGE_KEYS.sound),
     ]);
 
-    const today = dateKey();
     const parsedStore = raw ? JSON.parse(raw) : {};
     const parsedProfile = legacyProfile ? JSON.parse(legacyProfile) : null;
 
@@ -341,6 +432,8 @@ async function hydrate() {
       sleepAt: parsedStore.profile?.sleepAt || parsedProfile?.sleepAt || '23:00',
       gender: parsedStore.profile?.gender || parsedProfile?.gender || 'male',
     };
+    const shiftSchedule = normalizeShiftSchedule(parsedStore.shiftSchedule || await getShiftSchedule());
+    const today = getCurrentWaterDateKey(new Date(), { shiftSchedule, profile: activeProfile });
 
     const recGoal = calculateGoal(activeProfile.weight, activeProfile.height);
 
@@ -366,6 +459,7 @@ async function hydrate() {
       goalMl: finalGoal,
       recommendedGoal: recGoal,
       profile: activeProfile,
+      shiftSchedule,
       lastDate: parsedStore.lastDate || today,
       startDate,
       isHydrated: true,
@@ -377,14 +471,15 @@ async function hydrate() {
     };
     emit();
 
-    await rolloverIfNeeded();
+    await rolloverInternal();
   } catch (e) {
-    console.warn("Hydrate error:", e);
+    store = { ...store, isHydrated: false };
+    throw e;
   }
 }
 
 export const ensureHydrated = () => {
-  if (!hydratePromise) hydratePromise = hydrate();
+  if (!hydratePromise) hydratePromise = hydrate().catch((error) => { hydratePromise = null; throw error; });
   return hydratePromise;
 };
 
@@ -392,9 +487,9 @@ export const ensureHydrated = () => {
 let rolloverTimer = null;
 const startRolloverWatch = () => {
   if (rolloverTimer) return;
-  rolloverTimer = setInterval(rolloverIfNeeded, 60000);
+  rolloverTimer = setInterval(() => rolloverIfNeeded().catch(() => {}), 60000);
   AppState.addEventListener('change', (st) => {
-    if (st === 'active') rolloverIfNeeded(); // içinde refreshIfStale de çalışır
+    if (st === 'active') rolloverIfNeeded().catch(() => {}); // içinde refreshIfStale de çalışır
   });
 };
 
@@ -406,7 +501,7 @@ export function useHydrationStore(selector) {
     listeners.add(sub);
     // Abone olmadan önce gelen güncellemeyi kaçırmamak için
     if (snapshot !== store) setSnapshot(store);
-    ensureHydrated();
+    ensureHydrated().catch(() => {});
     startRolloverWatch();
     return () => listeners.delete(sub);
   }, []);
@@ -422,11 +517,10 @@ export function useHydrationStore(selector) {
 // ------------------------------------------------------------
 useHydrationStore.getState = () => getApi(store);
 
-useHydrationStore.setState = async (partial, shouldPersist = true) => {
+useHydrationStore.setState = (partial, shouldPersist = true) => enqueueHydration(async () => {
+  await ensureHydrated();
   const next = typeof partial === 'function' ? partial(store) : partial;
   if (!next || typeof next !== 'object') return;
-
-  store = { ...store, ...next, rev: (store.rev || 0) + 1 };
-  emit();
-  if (shouldPersist) await persist();
-};
+  if (shouldPersist) await commit({ ...store, ...next });
+  else { store = { ...store, ...next }; emit(); }
+});

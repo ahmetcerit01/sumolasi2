@@ -4,7 +4,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { i18n } from '../i18n';
 import { dateKey } from './useHydrationStore';
-import { ensureNotificationPermission } from '../utils/reminders';
+import { ensureNotificationPermission, parseHHMM } from '../utils/reminders';
+import { ensureReminderChannel, replaceNotificationGroup } from '../notifications/scheduler';
 
 // Vitamin & ilaç takibi.
 // meds: [{ id, name, kind: 'vitamin' | 'pill', times: ['08:00', ...], notificationIds: [] }]
@@ -20,21 +21,20 @@ let store = { meds: [], log: {}, isHydrated: false };
 const listeners = new Set();
 const emit = () => listeners.forEach((l) => l(store));
 // Premium değilken (suspendAll sonrası) dil değişimi vb. hatırlatmaları yeniden kurmasın
-let active = true;
+let active = false;
+let mutations = Promise.resolve();
 
-const persist = async () => {
-  try {
-    await AsyncStorage.setItem(KEY, JSON.stringify({ meds: store.meds, log: store.log }));
-  } catch {}
-};
-const commit = (next) => {
+const commit = async (next) => {
+  await AsyncStorage.setItem(KEY, JSON.stringify({ meds: next.meds, log: next.log }));
   store = next;
   emit();
-  return persist();
 };
 
 const slot = (medId, time) => `${medId}@${time}`;
-const sortTimes = (times) => [...new Set(times)].sort();
+const sortTimes = (times) => {
+  if (!Array.isArray(times) || !times.length || times.length > 4 || times.some((time) => !parseHHMM(time, null))) throw new Error('invalid_med_time');
+  return [...new Set(times)].sort();
+};
 
 // Eski günleri at
 const prunedLog = (log) => {
@@ -57,46 +57,34 @@ export async function ensureMedCategory() {
 }
 
 async function cancelMedNotifications(med) {
-  await Promise.all((med.notificationIds || []).map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => {})));
+  await replaceNotificationGroup(`med.${med.id}`, [], med.notificationIds || []);
 }
 
-async function scheduleMed(med) {
+async function withSchedule(med, allowPrompt = false) {
+  if (!med.name?.trim()) throw new Error('invalid_med_name');
   await ensureMedCategory();
-  const ids = [];
-  for (const time of med.times) {
+  const granted = allowPrompt ? await ensureNotificationPermission() : (await Notifications.getPermissionsAsync()).status === 'granted';
+  if (active && granted) await ensureReminderChannel();
+  const requests = active && granted ? med.times.map((time) => {
     const [hour, minute] = time.split(':').map(Number);
-    const id = await Notifications.scheduleNotificationAsync({
+    return {
       content: {
-        title: i18n.t('meds.notifTitle', { name: med.name }),
-        body: i18n.t('meds.notifBody'),
-        sound: 'default',
-        categoryIdentifier: MED_CATEGORY,
+        title: i18n.t('meds.notifTitle', { name: med.name }), body: i18n.t('meds.notifBody'),
+        sound: 'default', categoryIdentifier: MED_CATEGORY,
         data: { type: 'MED', medId: med.id, time },
       },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DAILY,
-        hour,
-        minute,
-        ...(Platform.OS === 'android' ? { channelId: 'hydration-daily' } : {}),
-      },
-    });
-    ids.push(id);
-  }
-  return ids;
-}
-
-// İzin varsa bildirimleri kur; izin yoksa ilacı yine kaydet ama bildirimsiz
-async function withSchedule(med) {
-  await cancelMedNotifications(med);
-  const granted = await ensureNotificationPermission().catch(() => false);
-  const notificationIds = granted ? await scheduleMed(med) : [];
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour, minute,
+        ...(Platform.OS === 'android' ? { channelId: 'hydration-daily' } : {}) },
+    };
+  }) : [];
+  const notificationIds = await replaceNotificationGroup(`med.${med.id}`, requests, med.notificationIds || []);
   return { ...med, notificationIds };
 }
 
 const actions = {
   addMed: async ({ name, kind = 'pill', times }) => {
-    const med = { id: `m${Date.now()}${Math.round(Math.random() * 1e4)}`, name: name.trim(), kind, times: sortTimes(times), notificationIds: [] };
-    const scheduled = await withSchedule(med);
+    const med = { id: `m${Date.now()}${Math.round(Math.random() * 1e4)}`, name: name.trim(), kind, times: sortTimes(times), createdAtDay: dateKey(), notificationIds: [] };
+    const scheduled = await withSchedule(med, true);
     await commit({ ...store, meds: [...store.meds, scheduled] });
     return scheduled;
   },
@@ -105,8 +93,9 @@ const actions = {
     const old = store.meds.find((m) => m.id === id);
     if (!old) return;
     const next = { ...old, ...patch, name: (patch.name ?? old.name).trim(), times: sortTimes(patch.times ?? old.times) };
-    const scheduled = await withSchedule(next);
+    const scheduled = await withSchedule(next, true);
     await commit({ ...store, meds: store.meds.map((m) => (m.id === id ? scheduled : m)) });
+    return scheduled;
   },
 
   removeMed: async (id) => {
@@ -117,6 +106,7 @@ const actions = {
 
   // Alındı işaretini aç/kapat (bugün için)
   toggleTaken: async (medId, time, day = dateKey()) => {
+    if (!store.meds.some((med) => med.id === medId && med.times.includes(time)) || day > dateKey()) return;
     const dayLog = { ...(store.log[day] || {}) };
     const k = slot(medId, time);
     if (dayLog[k]) delete dayLog[k];
@@ -126,6 +116,7 @@ const actions = {
 
   // Bildirimdeki "Aldım" butonu: yalnızca işaretler, geri almaz
   markTaken: async (medId, time, day = dateKey()) => {
+    if (!store.meds.some((med) => med.id === medId && med.times.includes(time)) || day > dateKey()) return;
     const dayLog = { ...(store.log[day] || {}) };
     const k = slot(medId, time);
     if (dayLog[k]) return;
@@ -136,7 +127,6 @@ const actions = {
   // Premium bitince hatırlatmalar durur (kayıtlar silinmez; yeniden Premium olunca rescheduleAll kurar)
   suspendAll: async () => {
     active = false;
-    if (!store.meds.some((m) => (m.notificationIds || []).length)) return;
     for (const m of store.meds) await cancelMedNotifications(m);
     await commit({ ...store, meds: store.meds.map((m) => ({ ...m, notificationIds: [] })) });
   },
@@ -147,19 +137,29 @@ const actions = {
     if (activate) active = true;
     if (!active) return;
     categoryLocale = null;
-    const perm = await Notifications.getPermissionsAsync().catch(() => null);
-    if (perm?.status !== 'granted') return;
-    const meds = [];
-    for (const m of store.meds) meds.push(await withSchedule(m));
-    await commit({ ...store, meds });
+    for (const m of [...store.meds]) {
+      const scheduled = await withSchedule(m);
+      await commit({ ...store, meds: store.meds.map((item) => item.id === m.id ? scheduled : item) });
+    }
   },
 };
+
+// Serialize state changes as well as notification operations.
+for (const key of Object.keys(actions)) {
+  const action = actions[key];
+  actions[key] = (...args) => {
+    const next = mutations.then(async () => { await ensureMedsHydrated(); return action(...args); });
+    mutations = next.catch(() => {});
+    return next;
+  };
+}
 
 export const isTaken = (log, medId, time, day = dateKey()) => !!log?.[day]?.[slot(medId, time)];
 
 // Bugünkü dozlar, saat sırasıyla: [{ med, time, taken }]
 export const todayDoses = (meds, log, day = dateKey()) =>
   meds
+    .filter((med) => !med.createdAtDay || med.createdAtDay <= day)
     .flatMap((med) => med.times.map((time) => ({ med, time, taken: isTaken(log, med.id, time, day) })))
     .sort((a, b) => a.time.localeCompare(b.time));
 
@@ -181,15 +181,11 @@ let hydratePromise = null;
 export const ensureMedsHydrated = () => {
   if (!hydratePromise) {
     hydratePromise = (async () => {
-      try {
-        const raw = await AsyncStorage.getItem(KEY);
-        const parsed = raw ? JSON.parse(raw) : {};
-        store = { meds: Array.isArray(parsed.meds) ? parsed.meds : [], log: parsed.log || {}, isHydrated: true };
-      } catch {
-        store = { ...store, isHydrated: true };
-      }
+      const raw = await AsyncStorage.getItem(KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      store = { meds: Array.isArray(parsed.meds) ? parsed.meds : [], log: parsed.log || {}, isHydrated: true };
       emit();
-    })();
+    })().catch((error) => { hydratePromise = null; throw error; });
   }
   return hydratePromise;
 };
@@ -199,7 +195,7 @@ export function useMedsStore(selector) {
   useEffect(() => {
     listeners.add(setSnapshot);
     if (snapshot !== store) setSnapshot(store);
-    ensureMedsHydrated();
+    ensureMedsHydrated().catch(() => {});
     return () => listeners.delete(setSnapshot);
   }, []);
   const api = { ...snapshot, ...actions };

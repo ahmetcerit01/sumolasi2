@@ -21,7 +21,11 @@
         "CFBundleAllowMixedLocalizations": true,
         "CFBundleDisplayName": "Hydromate",
         "FirebaseMessagingInstallationIdEnabled": false,
-        "UIBackgroundModes": ["remote-notification"]
+        "UIBackgroundModes": [
+          "remote-notification"
+        ],
+        "FirebaseMessagingAutoInitEnabled": false,
+        "FIREBASE_ANALYTICS_COLLECTION_ENABLED": false
       }
     },
     "android": {

@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { IS_TEST_BUILD } from '../utils/env';
@@ -32,11 +32,11 @@ if (PREMIUM_MODE === 'revenuecat') {
 
 // Ekranların kullandığı sade paket biçimi (RevenueCat paketinden ya da sahte veriden üretilir)
 // { id, kind: 'annual' | 'monthly', priceString, price, currencyCode, trialDays, raw }
-const toPlan = (pkg) => {
+const toPlan = (pkg, eligible = false) => {
   const p = pkg.product || {};
   const intro = p.introPrice;
   const trialDays =
-    intro && intro.price === 0
+    eligible && intro && intro.price === 0 && ['DAY', 'WEEK'].includes(intro.periodUnit)
       ? intro.periodUnit === 'WEEK'
         ? intro.periodNumberOfUnits * 7
         : intro.periodUnit === 'MONTH'
@@ -92,40 +92,55 @@ export function PremiumProvider({ children }) {
   const [ready, setReady] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
   const [plans, setPlans] = useState([]);
+  const [loading, setLoading] = useState(false);
 
   const applyInfo = useCallback((info) => {
     setIsPremium(!!info?.entitlements?.active?.[ENTITLEMENT_ID]);
+    setReady(true);
   }, []);
+
+  const loadPlans = useCallback(async () => {
+    const offerings = await Purchases.getOfferings();
+    const pkgs = [offerings?.current?.annual, offerings?.current?.monthly].filter(Boolean);
+    const eligibility = await Purchases.checkTrialOrIntroductoryPriceEligibility(pkgs.map((pkg) => pkg.product.identifier)).catch(() => ({}));
+    setPlans(pkgs.map((pkg) => toPlan(pkg,
+      eligibility[pkg.product.identifier]?.status === Purchases.INTRO_ELIGIBILITY_STATUS.INTRO_ELIGIBILITY_STATUS_ELIGIBLE)));
+  }, []);
+  const refresh = useCallback(async () => {
+    if (PREMIUM_MODE !== 'revenuecat' || !Purchases) return;
+    setLoading(true);
+    // An offering error must never revoke a successfully resolved subscription.
+    await Promise.allSettled([Purchases.getCustomerInfo().then(applyInfo), loadPlans()]);
+    setLoading(false);
+  }, [applyInfo, loadPlans]);
 
   useEffect(() => {
     let cancelled = false;
+    let listener;
+    let foreground;
     (async () => {
-      try {
-        if (PREMIUM_MODE === 'revenuecat' && Purchases) {
-          Purchases.configure({ apiKey: API_KEY });
-          Purchases.addCustomerInfoUpdateListener(applyInfo);
-          const [info, offerings] = await Promise.all([Purchases.getCustomerInfo(), Purchases.getOfferings()]);
-          if (cancelled) return;
-          applyInfo(info);
-          const current = offerings?.current;
-          const pkgs = [current?.annual, current?.monthly].filter(Boolean);
-          setPlans(pkgs.map(toPlan));
-        } else if (PREMIUM_MODE === 'mock') {
-          const v = await AsyncStorage.getItem(MOCK_KEY);
-          if (cancelled) return;
-          setIsPremium(v === '1');
-          setPlans(mockPlans());
-        }
-      } catch (e) {
-        console.warn('[premium] init failed', e);
-      } finally {
-        if (!cancelled) setReady(true);
+      if (PREMIUM_MODE === 'revenuecat' && Purchases) {
+        Purchases.configure({ apiKey: API_KEY });
+        listener = (info) => { if (!cancelled) applyInfo(info); };
+        Purchases.addCustomerInfoUpdateListener(listener);
+        foreground = AppState.addEventListener('change', (state) => { if (state === 'active') refresh(); });
+        await refresh();
+      } else if (PREMIUM_MODE === 'mock') {
+        const value = await AsyncStorage.getItem(MOCK_KEY);
+        if (cancelled) return;
+        setIsPremium(value === '1');
+        setPlans(mockPlans());
+        setReady(true);
+      } else {
+        setReady(true);
       }
-    })();
+    })().catch(() => { if (!cancelled) setLoading(false); });
     return () => {
       cancelled = true;
+      foreground?.remove();
+      if (listener) Purchases.removeCustomerInfoUpdateListener(listener);
     };
-  }, [applyInfo]);
+  }, [applyInfo, refresh]);
 
   // Dönen değer: { ok, cancelled?, error? }
   const purchase = useCallback(
@@ -171,8 +186,8 @@ export function PremiumProvider({ children }) {
   }, []);
 
   const value = useMemo(
-    () => ({ mode: PREMIUM_MODE, ready, isPremium, plans, purchase, restore, setMockPremium }),
-    [ready, isPremium, plans, purchase, restore, setMockPremium]
+    () => ({ mode: PREMIUM_MODE, ready, isPremium, plans, purchase, restore, setMockPremium, refresh, loading }),
+    [ready, isPremium, plans, purchase, restore, setMockPremium, refresh, loading]
   );
   return <PremiumContext.Provider value={value}>{children}</PremiumContext.Provider>;
 }

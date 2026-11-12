@@ -40,11 +40,15 @@ const WaterWidget = (props, environment) => {
 
   const pad = (n) => (n < 10 ? '0' + n : '' + n);
   const now = new Date();
-  const today = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+  const waterDate = new Date(now);
+  const boundary = props.dayStartMinutes ? props.dayStartMinutes[now.getDay()] : 480;
+  if (now.getHours() * 60 + now.getMinutes() < boundary) waterDate.setDate(waterDate.getDate() - 1);
+  const computedDay = waterDate.getFullYear() + '-' + pad(waterDate.getMonth() + 1) + '-' + pad(waterDate.getDate());
+  const today = props.date && props.date > computedDay ? props.date : computedDay;
 
   const labels = props.labels || {};
   const goal = props.goalMl > 0 ? props.goalMl : 2500;
-  // Gece yarısı geçtiyse uygulama açılana kadar bugünü sıfırdan göster
+  // Ana uygulamayla aynı su günü sınırını kullan.
   const total = props.date === today ? props.totalMl || 0 : 0;
   const ratio = Math.min(total / goal, 1);
   const pct = Math.round(ratio * 100);
@@ -100,7 +104,7 @@ const WaterWidget = (props, environment) => {
   // Butona basınca dönen değer widget'ın yeni props'u olur (uygulama kapalıyken bile).
   const addWater = (ml) => {
     const id = 'w' + now.getTime() + '-' + Math.floor(Math.random() * 1e9);
-    const pending = (props.pending || []).concat([{ d: today, ml: ml, id: id }]);
+    const pending = (props.pending || []).concat([{ d: today, ml: ml, id: id, at: now.toISOString(), waterDayVersion: 1 }]);
     return { date: today, totalMl: total + ml, pending: pending, lastAddAt: new Date().toISOString() };
   };
 

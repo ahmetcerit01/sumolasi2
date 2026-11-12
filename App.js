@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { View, DeviceEventEmitter, StatusBar, AppState } from 'react-native';
+import { View, Text, TouchableOpacity, ActivityIndicator, DeviceEventEmitter, StatusBar, AppState } from 'react-native';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
+import * as Font from 'expo-font';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   useFonts,
@@ -23,7 +24,7 @@ import OnboardWizard from './src/screens/OnboardWizard';
 import AnimatedSplash from './src/components/AnimatedSplash';
 
 // Yardımcılar
-import { ensureHydrated, useHydrationStore } from './src/storage/useHydrationStore';
+import { dateKey, ensureHydrated, useHydrationStore } from './src/storage/useHydrationStore';
 import { i18n, LanguageContext, LANGUAGE_KEY, normalizeLang, getDeviceLang } from './src/i18n';
 import { rescheduleIfEnabled } from './src/utils/reminders';
 import { startWidgetSync, refreshWidgetLabels, setWidgetPremium } from './src/widgets/widgetSync';
@@ -31,23 +32,35 @@ import { quietAdsThisSession, setAdsPremium } from './src/ads/ads';
 import { PremiumProvider, usePremium } from './src/premium/PremiumProvider';
 import { PaywallProvider, usePaywall } from './src/premium/Paywall';
 import { ensureMedCategory, ensureMedsHydrated, MED_ACTION_TAKEN, useMedsStore } from './src/storage/useMedsStore';
+import { ensureHabitsHydrated, useHabitsStore } from './src/storage/useHabitsStore';
+import { ensureDailyRoutineHydrated } from './src/storage/useDailyRoutineStore';
+import { recoverNotificationPlans, removeOrphanedNotificationGroups } from './src/notifications/scheduler';
 import { navRef, navigateWhenReady } from './src/navigation/navRef';
 import { initializeFirebaseMessaging, subscribeToForegroundMessages } from './src/services/firebaseMessaging';
-import { checkForAppUpdate } from './src/services/appUpdateChecker';
+import { checkForAppUpdate, openStorePage } from './src/services/appUpdateChecker';
 
 // Vitamin/ilaç bildirimine yanıt: "Aldım" → işaretle, bildirime dokunma → Vitamin ekranını aç
-const handleNotificationResponse = async (response) => {
-  const data = response?.notification?.request?.content?.data;
-  if (data?.type !== 'MED') return;
-  // Aynı yanıt her açılışta tekrar gelebilir (getLastNotificationResponseAsync): bir kez işle
-  const key = `${response.notification.request.identifier}|${response.notification.date}|${response.actionIdentifier}`;
-  if ((await AsyncStorage.getItem('LAST_HANDLED_NOTIF_RESPONSE')) === key) return;
-  await AsyncStorage.setItem('LAST_HANDLED_NOTIF_RESPONSE', key);
-  await ensureMedsHydrated();
-  if (response.actionIdentifier === MED_ACTION_TAKEN) {
-    await useMedsStore.getState().markTaken(data.medId, data.time);
-  }
-  navigateWhenReady('Meds');
+let responseQueue = Promise.resolve();
+const handleNotificationResponse = (response) => {
+  const work = async () => {
+    const data = response?.notification?.request?.content?.data;
+    // Firebase'den gönderilen güncelleme duyurusu: data { type: 'APP_UPDATE', url?: '...' }
+    if (data?.type === 'APP_UPDATE') { openStorePage(data.url); return; }
+    if (data?.type === 'CUSTOM_HABIT') { navigateWhenReady('Habits'); return; }
+    if (data?.type !== 'MED') return;
+    const key = `${response.notification.request.identifier}|${response.notification.date}|${response.actionIdentifier}`;
+    if ((await AsyncStorage.getItem('LAST_HANDLED_NOTIF_RESPONSE')) === key) return;
+    await ensureMedsHydrated();
+    if (response.actionIdentifier === MED_ACTION_TAKEN) {
+      const delivered = new Date(response.notification.date);
+      if (Number.isNaN(delivered.getTime())) { navigateWhenReady('Meds'); return; }
+      await useMedsStore.getState().markTaken(data.medId, data.time, dateKey(delivered));
+    }
+    await AsyncStorage.setItem('LAST_HANDLED_NOTIF_RESPONSE', key);
+    navigateWhenReady('Meds');
+  };
+  responseQueue = responseQueue.then(work, work).catch(() => {});
+  return responseQueue;
 };
 
 Notifications.setNotificationHandler({
@@ -61,6 +74,9 @@ Notifications.setNotificationHandler({
 });
 
 export default function App() {
+  const [fontsRecovered, setFontsRecovered] = useState(false);
+  const [startupError, setStartupError] = useState(false);
+  const [startupAttempt, setStartupAttempt] = useState(0);
   const [appIsReady, setAppIsReady] = useState(false); // Veriler hazır mı?
   const [splashFinished, setSplashFinished] = useState(false); // Animasyon bitti mi?
   const [showOnboard, setShowOnboard] = useState(false); // Onboard gösterilecek mi?
@@ -71,7 +87,7 @@ export default function App() {
     const base = dark ? DarkTheme : DefaultTheme;
     return { ...base, colors: { ...base.colors, background: c.bg, card: c.card, text: c.ink, primary: c.accent } };
   }, [dark, c]);
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
     Inter_600SemiBold,
@@ -79,7 +95,9 @@ export default function App() {
   });
 
   useEffect(() => {
+    let alive = true;
     async function prepare() {
+      setStartupError(false);
       try {
         // 0. Dil seçimi: kayıtlı seçim varsa o, yoksa cihaz dili
         const savedLang = await AsyncStorage.getItem(LANGUAGE_KEY);
@@ -93,25 +111,24 @@ export default function App() {
 
         // 1. Store'u yükle (gün devri de burada yapılır)
         await ensureHydrated();
+        await recoverNotificationPlans().catch(() => {});
         // Widget'tan eklenenleri al ve widget'ı güncel duruma getir (iOS)
         startWidgetSync();
-        ensureMedsHydrated();
-        ensureMedCategory();
+        await Promise.all([ensureMedsHydrated(), ensureHabitsHydrated(), ensureDailyRoutineHydrated()]);
+        ensureMedCategory().catch(() => {});
 
         // 2. Onboard Durumu Kontrolü
         // Bildirim izni artık açılışta değil, onboarding sonunda isteniyor.
         const hasOnboarded = await AsyncStorage.getItem('HAS_ONBOARDED');
-        setShowOnboard(!hasOnboarded);
+        if (alive) { setShowOnboard(!hasOnboarded); setAppIsReady(true); }
       } catch (e) {
-        console.warn(e);
-      } finally {
-        // Hazırlık bitti
-        setAppIsReady(true);
+        if (alive) setStartupError(true);
       }
     }
 
     prepare();
-  }, []);
+    return () => { alive = false; };
+  }, [startupAttempt]);
 
   // Remote push topic aboneliği ve Firebase üzerinden sürüm kontrolü.
   // Bunlar yalnızca native build'lerde çalışır; Expo Go/web'de sessizce atlanır.
@@ -127,7 +144,11 @@ export default function App() {
     // when the app becomes active lets the token/topic registration recover
     // without requiring an uninstall or a manual settings reset.
     const appStateSubscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') connectMessaging();
+      if (state === 'active') {
+        connectMessaging();
+        // Zorunlu güncelleme uygulamaya geri dönülünce tekrar gösterilir.
+        checkForAppUpdate({ locale: i18n.locale }).catch(() => {});
+      }
     });
     return () => {
       unsubscribe();
@@ -198,6 +219,7 @@ export default function App() {
             rescheduleIfEnabled({ wakeAt: profile.wakeAt, sleepAt: profile.sleepAt }).catch(() => {});
             refreshWidgetLabels();
             useMedsStore.getState().rescheduleAll().catch(() => {});
+            useHabitsStore.getState().rescheduleAll().catch(() => {});
           },
         }), [locale])}
       >
@@ -212,14 +234,14 @@ export default function App() {
            3. Animasyon bitince (onAnimationFinish) splashFinished true olur ve Splash DOM'dan kalkar.
         */}
 
-        {appIsReady && fontsLoaded && (
+        {appIsReady && (fontsLoaded || fontsRecovered) && (
           <NavigationContainer theme={navTheme} ref={navRef}>
             {(!showOnboard || leavingOnboard) && <BottomTabs />}
           </NavigationContainer>
         )}
 
         {/* Onboarding ana sayfanın üstünde bir katman: çıkışta arkadaki ana sayfaya karışır */}
-        {appIsReady && fontsLoaded && showOnboard && (
+        {appIsReady && (fontsLoaded || fontsRecovered) && showOnboard && (
           <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
             <LanguageContext.Consumer>
               {({ t, locale, setLanguage }) => (
@@ -240,6 +262,19 @@ export default function App() {
           </View>
         )}
 
+        {splashFinished && (!appIsReady || !(fontsLoaded || fontsRecovered)) && (
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 28, gap: 18 }}>
+            {startupError || fontError ? <>
+              <Text style={{ color: c.ink, fontSize: 17, textAlign: 'center' }}>{i18n.t('release.startupError')}</Text>
+              <TouchableOpacity accessibilityRole="button" onPress={() => {
+                setStartupAttempt((value) => value + 1);
+                if (fontError && !fontsRecovered) Font.loadAsync({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold }).then(() => setFontsRecovered(true)).catch(() => {});
+              }} style={{ padding: 16 }}>
+                <Text style={{ color: c.accentInk, fontSize: 17 }}>{i18n.t('release.retry')}</Text>
+              </TouchableOpacity>
+            </> : <ActivityIndicator color={c.accentInk} size="large" />}
+          </View>
+        )}
         <AfterOnboardOffer trigger={afterOnboard} />
         <PremiumEffects />
 
@@ -293,10 +328,15 @@ function PremiumEffects() {
     setWidgetPremium(isPremium);
     setAdsPremium(isPremium);
     (async () => {
-      await ensureMedsHydrated();
+      await Promise.all([ensureMedsHydrated(), ensureHabitsHydrated(), ensureDailyRoutineHydrated()]);
+      const habits = useHabitsStore.getState();
       const meds = useMedsStore.getState();
-      if (isPremium) await meds.rescheduleAll({ activate: true });
-      else await meds.suspendAll();
+      await removeOrphanedNotificationGroups([
+        ...habits.habits.map((habit) => `habit.${habit.id}`), ...meds.meds.map((med) => `med.${med.id}`),
+      ]);
+      await Promise.allSettled(isPremium
+        ? [meds.rescheduleAll({ activate: true }), habits.rescheduleAll({ activate: true })]
+        : [meds.suspendAll(), habits.suspendAll()]);
     })().catch(() => {});
   }, [ready, isPremium]);
   return null;

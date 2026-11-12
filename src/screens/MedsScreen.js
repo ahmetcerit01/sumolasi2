@@ -64,10 +64,12 @@ function MedEditSheet({ visible, med, onClose }) {
     }
     setSaving(true);
     try {
-      if (med) await updateMed(med.id, { name, kind, times });
-      else await addMed({ name, kind, times });
+      const saved = med ? await updateMed(med.id, { name, kind, times }) : await addMed({ name, kind, times });
+      if (saved && !saved.notificationIds.length) Alert.alert(t('alert.error'), t('release.noReminder'));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       onClose();
+    } catch (error) {
+      Alert.alert(t('alert.error'), t(error?.code === 'notification_capacity' ? 'release.reminderCapacity' : 'release.reminderFailed'));
     } finally {
       setSaving(false);
     }
@@ -80,8 +82,8 @@ function MedEditSheet({ visible, med, onClose }) {
         text: t('meds.delete'),
         style: 'destructive',
         onPress: async () => {
-          await removeMed(med.id);
-          onClose();
+          try { await removeMed(med.id); onClose(); }
+          catch { Alert.alert(t('alert.error'), t('profile.saveError')); }
         },
       },
     ]);

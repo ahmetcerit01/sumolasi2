@@ -11,6 +11,7 @@ import HistoryScreen from '../screens/HistoryScreen';
 import BadgesScreen from '../screens/BadgesScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import MedsScreen from '../screens/MedsScreen';
+import HabitsScreen from '../screens/HabitsScreen';
 import AddSheet from '../components/AddSheet';
 import BadgeCelebration from '../components/BadgeCelebration';
 import { useLanguage } from '../i18n';
@@ -24,7 +25,7 @@ const Stack = createNativeStackNavigator();
 const TABS = [
   { name: 'Home', label: 'tabs.home', icon: 'home', iconOff: 'home-outline' },
   { name: 'History', label: 'tabs.history', icon: 'stats-chart', iconOff: 'stats-chart-outline' },
-  { name: 'Badges', label: 'tabs.badges', icon: 'ribbon', iconOff: 'ribbon-outline' },
+  { name: 'Badges', label: 'tabs.badges', icon: 'flag', iconOff: 'flag-outline' },
   { name: 'Profile', label: 'tabs.profile', icon: 'person', iconOff: 'person-outline' },
 ];
 
@@ -166,6 +167,7 @@ export default function BottomTabs() {
     <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg } }}>
       <Stack.Screen name="Main" component={Tabs} />
       <Stack.Screen name="Meds" component={MedsScreen} />
+      <Stack.Screen name="Habits" component={HabitsScreen} />
     </Stack.Navigator>
   );
 }

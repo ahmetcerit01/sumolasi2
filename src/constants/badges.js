@@ -35,7 +35,7 @@ export const BADGES = [
     titleKey: 'badges.items.overflow_glass.title',
     descriptionKey: 'badges.items.overflow_glass.description',
     howToEarnKey: 'badges.items.overflow_glass.howToEarn',
-    check: ({ totalMl, goalMl }) => totalMl >= goalMl * 1.5,
+    check: ({ totalMl, goalMl }) => totalMl >= goalMl,
   },
 
   {
@@ -55,7 +55,7 @@ export const BADGES = [
     titleKey: 'badges.items.sparkling.title',
     descriptionKey: 'badges.items.sparkling.description',
     howToEarnKey: 'badges.items.sparkling.howToEarn',
-    check: ({ todayGlasses }) => todayGlasses >= 10,
+    check: ({ activeDays }) => activeDays >= 3,
   },
 
   {

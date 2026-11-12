@@ -8,19 +8,21 @@ import * as Haptics from 'expo-haptics';
 import SkiaGlass from '../components/SkiaGlass';
 import { QuickAddRow } from '../components/QuickAdd';
 import { quickLabel, useQuickAdds } from '../storage/quickAdds';
-import MedsCard from '../components/MedsCard';
+import DailyBreaksCard from '../components/DailyBreaksCard';
+import HydrationPaceCard from '../components/HydrationPaceCard';
 import { useHydrationStore } from '../storage/useHydrationStore';
 import { DEFAULT_GOAL } from '../utils/goal';
 import { LanguageContext } from '../i18n';
 import { cardShadow, useTheme } from '../theme/theme';
 import { fmtLongDate, fmtNumber, fmtTime } from '../utils/format';
-import { computeReminderTimes, getReminderSettings } from '../utils/reminders';
+import { computeReminderTimes, computeScheduledReminderTimes, getReminderSettings } from '../utils/reminders';
 import { useWaterAdd } from '../hooks/useWaterAdd';
 import AdBanner from '../ads/AdBanner';
 import DamlaTip from '../components/DamlaTip';
 import Mascot from '../components/Mascot';
 import Animated, { Easing, SlideInRight, SlideOutRight } from 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getShiftForDate } from '../utils/shiftSchedule';
 
 const GLASS_W = 236;
 const GLASS_H = 300;
@@ -37,6 +39,14 @@ export default function HomeScreen() {
   const streakDays = useHydrationStore((s) => s.streakDays) || 0;
   const entries = useHydrationStore((s) => s.entries) || [];
   const profile = useHydrationStore((s) => s.profile);
+  const lastDate = useHydrationStore((s) => s.lastDate);
+  const shiftSchedule = useHydrationStore((s) => s.shiftSchedule);
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(timer);
+  }, []);
+  const waterDayDate = lastDate ? new Date(`${lastDate}T12:00:00`) : new Date();
   const quickAdds = useQuickAdds();
 
   // Siri ipucu: ilk açılışta onboarding/Premium önerisi, ikincide reklam izni var;
@@ -71,7 +81,7 @@ export default function HomeScreen() {
   // Su seviyesi yazının hizasına çıkınca yazı beyaza döner (mavi üstünde okunaklı kalsın)
   const overWater = progress > 0.5;
 
-  const hour = new Date().getHours();
+  const hour = now.getHours();
   // 05–12 sabah, 12–18 gündüz, 18–22 akşam, 22–05 gece
   const greeting = hour >= 5 && hour < 12 ? t('home.goodMorning') : hour >= 12 && hour < 18 ? t('home.goodDay') : hour >= 18 && hour < 22 ? t('home.goodEvening') : t('home.goodNight');
 
@@ -84,15 +94,24 @@ export default function HomeScreen() {
   );
   const nextReminder = useMemo(() => {
     if (!reminder.enabled) return null;
-    const times = computeReminderTimes(profile?.wakeAt, profile?.sleepAt, reminder.intervalHours);
-    if (!times.length) return null;
-    const now = new Date();
-    const nowMin = now.getHours() * 60 + now.getMinutes();
-    const next = times.find((x) => x.hour * 60 + x.minute > nowMin) || times[0];
-    const d = new Date();
-    d.setHours(next.hour, next.minute, 0, 0);
-    return fmtTime(d);
-  }, [reminder, profile?.wakeAt, profile?.sleepAt]);
+    const candidates = [];
+    for (let offset = 0; offset <= 7; offset += 1) {
+      const startDate = new Date(waterDayDate);
+      startDate.setDate(startDate.getDate() + offset);
+      const window = shiftSchedule?.enabled ? getShiftForDate(shiftSchedule, startDate) : profile;
+      const times = shiftSchedule?.enabled
+        ? computeScheduledReminderTimes(window?.wakeAt, window?.sleepAt, reminder.intervalHours, startDate.getDay())
+        : computeReminderTimes(window?.wakeAt, window?.sleepAt, reminder.intervalHours);
+      for (const time of times) {
+        const candidate = new Date(startDate);
+        candidate.setDate(candidate.getDate() + (time.dayOffset || 0));
+        candidate.setHours(time.hour, time.minute, 0, 0);
+        if (candidate > now) candidates.push(candidate);
+      }
+    }
+    candidates.sort((a, b) => a - b);
+    return candidates.length ? fmtTime(candidates[0]) : null;
+  }, [reminder, profile?.wakeAt, profile?.sleepAt, shiftSchedule, lastDate, now]);
 
   const recent = entries.slice(-3).reverse();
   // Profil'den özelleştirilebilen hızlı ekleme butonları
@@ -113,7 +132,7 @@ export default function HomeScreen() {
         {/* üst bölüm */}
         <View style={styles.header}>
           <View style={{ gap: 2, flexShrink: 1 }}>
-            <Text style={[type.label, { color: c.ink2, fontSize: 14 }]}>{fmtLongDate()}</Text>
+            <Text style={[type.label, { color: c.ink2, fontSize: 14 }]}>{fmtLongDate(waterDayDate)}</Text>
             <Text style={[type.title, { color: c.ink }]}>{greeting}</Text>
           </View>
           {streakDays > 0 && (
@@ -156,8 +175,9 @@ export default function HomeScreen() {
         {/* hızlı ekle */}
         <QuickAddRow items={quick} onAdd={addWater} style={{ marginTop: 22, marginHorizontal: 22 }} />
 
-        {/* vitamin & ilaç */}
-        <MedsCard style={{ marginTop: 18, marginHorizontal: 22 }} />
+        <HydrationPaceCard now={now} waterDayKey={lastDate} shiftSchedule={shiftSchedule} profile={profile} goalMl={goalMl} totalMl={totalMl} style={{ marginTop: 18, marginHorizontal: 22 }} />
+
+        <DailyBreaksCard style={{ marginTop: 18, marginHorizontal: 22 }} />
 
         {/* bugün */}
         <View style={[styles.todayCard, { backgroundColor: c.card, borderRadius: radius.card }, cardShadow(c)]}>

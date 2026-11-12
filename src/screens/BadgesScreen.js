@@ -1,5 +1,5 @@
 import React, { useContext, useState } from 'react';
-import { Modal, Pressable, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -10,6 +10,7 @@ import { useHydrationStore } from '../storage/useHydrationStore';
 import { LanguageContext } from '../i18n';
 import { cardShadow, useTheme } from '../theme/theme';
 import { fmtLongDate } from '../utils/format';
+import { challengeProgress, useDailyRoutineStore } from '../storage/useDailyRoutineStore';
 import AdBanner from '../ads/AdBanner';
 
 export default function BadgesScreen() {
@@ -17,18 +18,22 @@ export default function BadgesScreen() {
   const { t } = useContext(LanguageContext);
   const { c, type, radius, dark } = useTheme();
   const earned = useHydrationStore((s) => s.badges) || {};
+  const hydration = useHydrationStore();
+  const routine = useDailyRoutineStore();
+  const water = { ...Object.fromEntries(Object.entries(hydration.dailyHistory).map(([day, value]) => [day, value.ml])), [hydration.lastDate]: hydration.totalMl };
   const [selected, setSelected] = useState(null);
 
   const earnedCount = BADGES.filter((b) => earned[b.id]).length;
   const level = Math.floor(earnedCount / 3) + 1;
   const next = BADGES.find((b) => !earned[b.id]);
   const allDone = !next;
+  const challenges = ['water', 'breaks'];
 
   return (
     <View style={[styles.root, { backgroundColor: c.bg }]}>
       <StatusBar barStyle={c.statusBar} />
       <ScrollView contentContainerStyle={{ paddingTop: insets.top + 14, paddingBottom: insets.bottom + 120, paddingHorizontal: 22, gap: 16 }} showsVerticalScrollIndicator={false}>
-        <Text style={[type.title, { color: c.ink }]}>{t('badges.title')}</Text>
+        <Text style={[type.title, { color: c.ink }]}>{t('tabs.badges')}</Text>
 
         <View style={[styles.levelCard, { backgroundColor: c.card, borderRadius: radius.cardLg }, cardShadow(c)]}>
           <Mascot mood={allDone ? 'celebrate' : 'happy'} size={72} />
@@ -42,6 +47,32 @@ export default function BadgesScreen() {
             </Text>
           </View>
         </View>
+
+        <View style={{ gap: 5 }}>
+          <Text style={[type.section, { color: c.ink }]}>{t('challenges.title')}</Text>
+          <Text style={[type.label, { color: c.ink2 }]}>{t('challenges.subtitle')}</Text>
+        </View>
+        <Text style={[type.label, { color: c.ink2 }]}>{t('dailyBreaks.challengeBody')}</Text>
+        {challenges.map((kind) => {
+          const run = routine.challenges[kind];
+          const status = challengeProgress(kind, run, water, routine.breaks, hydration.lastDate);
+          return (
+            <View key={kind} style={[{ padding: 16, gap: 10, backgroundColor: c.card, borderRadius: radius.card }, cardShadow(c)]}>
+              <Text style={[type.bodyStrong, { color: c.ink }]}>{t(kind === 'water' ? 'dailyBreaks.challengeWater' : 'dailyBreaks.challengeBreaks')}</Text>
+              <Text style={[type.label, { color: c.ink2 }]}>{t(kind === 'water' ? 'dailyBreaks.waterRule' : 'dailyBreaks.breakRule')}</Text>
+              {run && <>
+                <Text style={[type.caption, { color: c.ink2 }]}>{t('dailyBreaks.dates', { start: run.start, end: status.end })}</Text>
+                <View style={[styles.track, { backgroundColor: c.track }]}><View style={[styles.fill, { width: `${status.count / 4 * 100}%`, backgroundColor: c.accent }]} /></View>
+                <Text style={[type.labelStrong, { color: c.ink }]}>{t('dailyBreaks.progress', { count: status.count })}{status.complete ? ` · ${t('dailyBreaks.complete')}` : status.ended ? ` · ${t('dailyBreaks.ended')}` : ''}</Text>
+              </>}
+              {(!run || status.ended) && <TouchableOpacity accessibilityRole="button" onPress={() => routine.startChallenge(kind).catch(() => Alert.alert(t('alert.error'), t('profile.saveError')))} style={{ paddingVertical: 14 }}>
+                <Text style={[type.bodyStrong, { color: c.accentInk }]}>{t(run ? 'dailyBreaks.restart' : 'dailyBreaks.start')}</Text>
+              </TouchableOpacity>}
+            </View>
+          );
+        })}
+
+        <Text style={[type.section, { color: c.ink }]}>{t('badges.title')}</Text>
 
         <View style={styles.grid}>
           {BADGES.map((b) => {
@@ -119,4 +150,7 @@ const styles = StyleSheet.create({
   statusChip: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
   howTo: { flexDirection: 'row', gap: 8, alignItems: 'flex-start', borderRadius: 14, padding: 12, alignSelf: 'stretch' },
   close: { alignSelf: 'stretch', borderRadius: 999, paddingVertical: 14, alignItems: 'center', marginTop: 4 },
+  challengeCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 },
+  challengeIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
+  challengeHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
 });

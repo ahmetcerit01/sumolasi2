@@ -1,142 +1,82 @@
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
-import {
-  AuthorizationStatus,
-  getMessaging,
-} from '@react-native-firebase/messaging';
+import { getMessaging } from '@react-native-firebase/messaging';
 import { getAnalytics } from '@react-native-firebase/analytics';
+import { ensureNotificationPermission } from '../utils/reminders';
+import { openStorePage } from './appUpdateChecker';
 
 export const PUSH_TOPIC = 'hydromate_all';
+const OPT_IN = 'HYDROMATE_ANNOUNCEMENTS_OPT_IN_V1';
+const CLEANUP = 'HYDROMATE_PUSH_CLEANUP_V1';
+let queue = Promise.resolve();
+const enqueue = (job) => { const next = queue.then(job, job); queue = next.catch(() => {}); return next; };
+const native = () => Platform.OS === 'ios' || Platform.OS === 'android';
+export const getAnnouncementPreference = async () => (await AsyncStorage.getItem(OPT_IN)) === '1';
 
-let initialized = false;
-let initializationPromise = null;
-let cachedToken = null;
-
-function wait(milliseconds) {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
-}
-
-function canUseNativeMessaging() {
-  return Platform.OS === 'ios' || Platform.OS === 'android';
-}
-
-async function getFcmTokenWithRetry() {
-  // Keep the classic FCM token flow enabled explicitly. It works with both
-  // development and App Store APNs environments and is what Firebase Console
-  // topic delivery uses for this app.
-  const messagingInstance = getMessaging();
-  for (let attempt = 0; attempt < 6; attempt += 1) {
-    const token = await messagingInstance.getToken().catch(() => null);
-    if (token) return token;
-    await wait(1000);
-  }
-  return null;
-}
-
-export async function initializeFirebaseMessaging() {
-  if (!canUseNativeMessaging()) return null;
-  if (initialized) return cachedToken;
-  if (initializationPromise) return initializationPromise;
-
-  initializationPromise = (async () => {
-    try {
-      // Expo Notifications and Firebase Messaging share the iOS permission,
-      // but explicitly asking here makes the first-run flow reliable.
-      await Notifications.requestPermissionsAsync().catch(() => null);
-
-      // Remote Config uses the Analytics native dependency, but this app does not
-      // collect analytics events. Keep collection disabled explicitly.
-      await getAnalytics().setAnalyticsCollectionEnabled(false).catch(() => {});
-      const messagingInstance = getMessaging();
-
-      const permission = await messagingInstance.requestPermission({
-        alert: true,
-        badge: true,
-        sound: true,
-        provisional: false,
-      });
-      const authorized =
-        permission === AuthorizationStatus.AUTHORIZED ||
-        permission === AuthorizationStatus.PROVISIONAL;
-      if (!authorized) {
-        console.warn('[FirebaseMessaging] notification permission not authorized', permission);
-        return null;
+export function initializeFirebaseMessaging() {
+  return enqueue(async () => {
+    if (!native()) return null;
+    const messaging = getMessaging();
+    // Analytics configuration must not prevent opt-out token cleanup.
+    await getAnalytics().setAnalyticsCollectionEnabled(false).catch(() => {});
+    if (!(await getAnnouncementPreference())) {
+      await messaging.setAutoInitEnabled(false);
+      if ((await AsyncStorage.getItem(CLEANUP)) !== '1') {
+        await messaging.unsubscribeFromTopic(PUSH_TOPIC);
+        await messaging.unsubscribeFromTopic('su_dostu_all');
+        await messaging.deleteToken();
+        await AsyncStorage.setItem(CLEANUP, '1');
       }
-
-      await messagingInstance.setAutoInitEnabled(true).catch(() => {});
-      await messagingInstance.registerDeviceForRemoteMessages().catch(() => {});
-
-      // iOS can expose the APNs token a moment after registration. FCM topic
-      // subscription is unreliable if we race that registration on first launch.
-      for (let attempt = 0; attempt < 20; attempt += 1) {
-        const apnsToken = await messagingInstance.getAPNSToken().catch(() => null);
-        if (apnsToken) {
-          console.log('[FirebaseMessaging] APNs token ready');
-          break;
-        }
-        await wait(500);
-      }
-
-      const token = await getFcmTokenWithRetry();
-      if (!token) throw new Error('FCM token unavailable');
-      let subscribed = false;
-      for (let attempt = 0; attempt < 4 && !subscribed; attempt += 1) {
-        subscribed = await messagingInstance.subscribeToTopic(PUSH_TOPIC).then(() => true).catch(() => false);
-        if (!subscribed) await wait(1000);
-      }
-      if (!subscribed) throw new Error(`Topic subscription failed: ${PUSH_TOPIC}`);
-      console.log(`[FirebaseMessaging] subscribed to ${PUSH_TOPIC}`);
-      cachedToken = token;
-      initialized = true;
-      return cachedToken;
-    } catch (error) {
-      console.warn('[FirebaseMessaging] initialization failed', error);
       return null;
-    } finally {
-      initializationPromise = null;
     }
-  })();
+    if ((await Notifications.getPermissionsAsync()).status !== 'granted') return null;
+    await AsyncStorage.removeItem(CLEANUP);
+    await messaging.setAutoInitEnabled(true);
+    if (Platform.OS === 'ios') {
+      await messaging.registerDeviceForRemoteMessages();
+      // APNs registration can complete after registerDeviceForRemoteMessages resolves.
+      // Retry briefly; foreground initialization will retry again if still unavailable.
+      let apnsToken = await messaging.getAPNSToken();
+      for (let attempt = 0; !apnsToken && attempt < 5; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        apnsToken = await messaging.getAPNSToken();
+      }
+      if (!apnsToken) throw new Error('apns_token_unavailable');
+    }
+    const token = await messaging.getToken();
+    await messaging.subscribeToTopic(PUSH_TOPIC);
+    return token;
+  });
+}
 
-  return initializationPromise;
+export async function setAnnouncementPreference(enabled) {
+  if (enabled && !(await ensureNotificationPermission())) return false;
+  await AsyncStorage.setItem(OPT_IN, enabled ? '1' : '0');
+  await AsyncStorage.removeItem(CLEANUP);
+  await initializeFirebaseMessaging();
+  return enabled;
 }
 
 export function subscribeToForegroundMessages() {
-  if (!canUseNativeMessaging()) return () => {};
-
-  const messagingInstance = getMessaging();
-  if (typeof messagingInstance.onMessage !== 'function') {
-    console.warn('[FirebaseMessaging] foreground message listener unavailable');
-    return () => {};
-  }
-  const unsubscribeMessage = messagingInstance.onMessage(async (remoteMessage) => {
-    const title = remoteMessage?.notification?.title || remoteMessage?.data?.title;
-    const body = remoteMessage?.notification?.body || remoteMessage?.data?.body;
+  if (!native()) return () => {};
+  const messaging = getMessaging();
+  const unsubscribeMessage = messaging.onMessage(async (message) => {
+    if (!(await getAnnouncementPreference())) return;
+    const title = message.notification?.title || message.data?.title;
+    const body = message.notification?.body || message.data?.body;
     if (!title && !body) return;
-
     await Notifications.scheduleNotificationAsync({
-      content: {
-        title: title || 'Su Dostu',
-        body: body || '',
-        data: remoteMessage?.data || {},
-        sound: 'default',
-      },
+      content: { title: title || 'Hydromate', body: body || '', sound: 'default', data: message.data || {} },
       trigger: null,
     }).catch(() => {});
   });
-
-  // APNs/FCM tokens can rotate. Re-subscribe automatically so the topic does
-  // not silently lose a device after reinstall, restore, or token refresh.
-  // Re-subscribe when the FCM token rotates.
-  let unsubscribeToken = () => {};
-  try {
-    const resubscribe = () => messagingInstance.subscribeToTopic(PUSH_TOPIC).catch(() => {});
-    unsubscribeToken = messagingInstance.onTokenRefresh(resubscribe);
-  } catch (error) {
-    console.warn('[FirebaseMessaging] token refresh listener unavailable', error);
-  }
-
-  return () => {
-    unsubscribeMessage();
-    unsubscribeToken();
+  const unsubscribeToken = messaging.onTokenRefresh(() => { initializeFirebaseMessaging().catch(() => {}); });
+  // Uygulama arka plandayken / kapalıyken gelen push'a dokunma.
+  const handleOpened = (message) => {
+    if (message?.data?.type === 'APP_UPDATE') openStorePage(message.data.url);
   };
+  const unsubscribeOpened = messaging.onNotificationOpenedApp(handleOpened);
+  messaging.getInitialNotification().then(handleOpened).catch(() => {});
+  return () => { unsubscribeMessage(); unsubscribeToken(); unsubscribeOpened(); };
 }

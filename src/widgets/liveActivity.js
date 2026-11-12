@@ -35,7 +35,9 @@ export async function getLiveActivityEnabled() {
 
 const pad = (n) => (n < 10 ? `0${n}` : `${n}`);
 
-async function nextReminderText(profile) {
+async function nextReminderText(profile, shiftSchedule) {
+  // A weekly plan cannot be represented by the simple daily calculation below.
+  if (shiftSchedule?.enabled) return '';
   const { enabled, intervalHours } = await getReminderSettings();
   if (!enabled) return '';
   const times = computeReminderTimes(profile?.wakeAt, profile?.sleepAt, intervalHours);
@@ -49,7 +51,7 @@ async function buildProps(s) {
   return {
     totalMl: s.totalMl || 0,
     goalMl: s.goalMl || 2500,
-    next: await nextReminderText(s.profile),
+    next: await nextReminderText(s.profile, s.shiftSchedule),
     labels: {
       title: i18n.t('app.name'),
       pctPrefix: i18n.locale === 'tr',

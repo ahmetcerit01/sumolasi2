@@ -1,7 +1,8 @@
 import { AppState, Platform } from 'react-native';
 import { i18n } from '../i18n';
-import { subscribe, useHydrationStore } from '../storage/useHydrationStore';
+import { getCurrentWaterDateKey, subscribe, useHydrationStore } from '../storage/useHydrationStore';
 import { syncLiveActivity } from './liveActivity';
+import { getEffectiveShiftStart } from '../utils/shiftSchedule';
 import { getQuickAdds, loadQuickAdds, quickLabel, subscribeQuickAdds } from '../storage/quickAdds';
 
 // Uygulama <-> widget senkronu (yalnızca iOS).
@@ -42,15 +43,18 @@ const currentEntryProps = async () => {
 const pullPending = async () => {
   const props = await currentEntryProps();
   const pending = Array.isArray(props?.pending) ? props.pending : [];
-  if (pending.length === 0) return 0;
-  // Önce widget'taki listeyi boşalt (başka bir senkron aynı listeyi tekrar okumasın),
-  // sonra uygula. Kimlikli kayıtlar store'da tekrar eklenmeye karşı da korunuyor.
-  pushState();
+  const accepted = new Set();
   const { addFromWidget } = useHydrationStore.getState();
   for (const item of pending) {
-    await addFromWidget(item?.ml, item?.d, item?.id);
+    const legacyEpoch = /^w(\d+)-/.exec(item?.id || '')?.[1];
+    const at = item.at || (legacyEpoch ? new Date(Number(legacyEpoch)).toISOString() : null);
+    const day = item.waterDayVersion === 1 ? item.d : at ? getCurrentWaterDateKey(new Date(at)) : item.d;
+    await addFromWidget(item?.ml, day, item?.id, at);
+    accepted.add(item.id);
   }
-  return pending.length;
+  // Acknowledge only after the store has durably saved the entry and its ID.
+  const latest = await currentEntryProps();
+  return (latest?.pending || []).filter((item) => !accepted.has(item.id));
 };
 
 // Widget'lar Premium'a özel: PremiumProvider durumu buraya bildirir
@@ -61,14 +65,25 @@ export const setWidgetPremium = (on) => {
   syncWidget();
 };
 
-const pushState = () => {
+const pushState = (pending = []) => {
   const s = useHydrationStore.getState();
+  const dayStartMinutes = Array.from({ length: 7 }, (_, weekday) => {
+    const day = new Date();
+    day.setDate(day.getDate() - day.getDay() + weekday);
+    if (s.shiftSchedule?.enabled) {
+      const start = getEffectiveShiftStart(s.shiftSchedule, day);
+      return start.getHours() * 60 + start.getMinutes();
+    }
+    const [hour, minute] = (s.profile?.wakeAt || '08:00').split(':').map(Number);
+    return hour * 60 + minute;
+  });
   WaterWidget.updateSnapshot({
     premium,
     date: s.lastDate,
-    totalMl: s.totalMl || 0,
+    totalMl: (s.totalMl || 0) + pending.filter((item) => item.d === s.lastDate).reduce((sum, item) => sum + (Number(item.ml) || 0), 0),
+    dayStartMinutes,
     goalMl: s.goalMl || 2500,
-    pending: [],
+    pending,
     amounts: getQuickAdds().map((q) => q.ml),
     quick: getQuickAdds().map((q) => ({ id: q.id, ml: q.ml })),
     sleepAt: s.profile?.sleepAt || '23:00',
@@ -117,8 +132,8 @@ const pushConfigurationOptions = () => {
 export const syncWidget = () => {
   if (!WaterWidget) return Promise.resolve();
   return enqueue(async () => {
-    await pullPending();
-    pushState();
+    const pending = await pullPending();
+    pushState(pending);
     pushConfigurationOptions();
     await syncLiveActivity();
   });
@@ -141,7 +156,7 @@ export function startWidgetSync() {
 
   // Store değişince (ekleme, hedef, gün devri) widget'ı güncelle; ilgisiz değişikliklerde yazma
   subscribe((s) => {
-    const signature = `${s.lastDate}|${s.totalMl}|${s.goalMl}|${s.profile?.sleepAt}`;
+    const signature = JSON.stringify([s.lastDate, s.totalMl, s.goalMl, s.profile, s.shiftSchedule]);
     if (signature === lastSignature) return;
     lastSignature = signature;
     syncWidget();

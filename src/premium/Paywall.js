@@ -24,7 +24,7 @@ function PaywallSheet({ visible, onClose }) {
   const insets = useSafeAreaInsets();
   const { t, locale } = useContext(LanguageContext);
   const { c, type } = useTheme();
-  const { plans, purchase, restore, ready } = usePremium();
+  const { plans, purchase, restore, ready, refresh, loading } = usePremium();
   const [selected, setSelected] = useState('annual');
   const [busy, setBusy] = useState(false);
 
@@ -41,9 +41,6 @@ function PaywallSheet({ visible, onClose }) {
   const benefits = [
     { icon: 'apps-outline', text: t('premium.benefits.widgets') },
     { icon: 'eye-off-outline', text: t('premium.benefits.noAds') },
-    { icon: 'medkit-outline', text: t('premium.benefits.meds') },
-    { icon: 'notifications-outline', text: t('premium.benefits.taken') },
-    { icon: 'calendar-outline', text: t('premium.benefits.week') },
   ];
 
   const onBuy = async () => {
@@ -106,10 +103,10 @@ function PaywallSheet({ visible, onClose }) {
             ))}
           </View>
 
-          {!ready ? (
+          {loading ? (
             <ActivityIndicator color={c.accent} style={{ marginVertical: 20 }} />
           ) : plans.length === 0 ? (
-            <Text style={[type.label, { color: c.ink2, textAlign: 'center', marginVertical: 20 }]}>{t('premium.unavailable')}</Text>
+            <View style={{ gap: 12, alignItems: 'center', marginVertical: 20 }}><Text style={[type.label, { color: c.ink2 }]}>{t('premium.unavailable')}</Text><TouchableOpacity onPress={refresh} accessibilityRole="button"><Text style={[type.bodyStrong, { color: c.accentInk }]}>{t('release.retry')}</Text></TouchableOpacity></View>
           ) : (
             <View style={{ gap: 12, marginTop: 26 }}>
               {[annual, monthly].filter(Boolean).map((p) => {

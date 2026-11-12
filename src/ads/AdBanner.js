@@ -12,7 +12,7 @@ export default function AdBanner({ style }) {
 
   useEffect(() => subscribeAds(() => setAllowed(adsAllowed())), []);
   useEffect(() => {
-    if (!allowed) return;
+    if (!allowed) { setReady(false); return; }
     let alive = true;
     ensureAds().then((ok) => alive && setReady(ok));
     return () => {

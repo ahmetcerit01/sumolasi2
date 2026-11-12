@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, Pressable, StatusBar, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { Alert, Platform, Pressable, StatusBar, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import Animated, {
   Easing,
   withDelay,
@@ -28,6 +28,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { useHydrationStore } from '../storage/useHydrationStore';
 import { DEFAULT_GOAL, computeGoalMl } from '../utils/goal';
 import { computeReminderTimes, disableReminders, scheduleReminders } from '../utils/reminders';
+import { DEFAULT_SHIFT_SCHEDULE, saveShiftSchedule } from '../utils/shiftSchedule';
 import { fonts, useTheme } from '../theme/theme';
 import { fmtNumber, upper } from '../utils/format';
 import ParticleMorph from '../animation/ParticleMorph';
@@ -69,6 +70,14 @@ const INTERVAL_CHIPS = [
   { min: 120, key: 'h2' },
 ];
 
+// Çalışma düzeni: uygulamanın ana fikri. Su günü ve hatırlatmalar bu düzene göre kurulur.
+const WORK_STYLES = [
+  { key: 'office', icon: 'briefcase-outline', wake: [7, 0], sleep: [23, 0] },
+  { key: 'day', icon: 'sunny-outline', wake: [5, 30], sleep: [22, 0] },
+  { key: 'night', icon: 'moon-outline', wake: [15, 0], sleep: [8, 0] },
+  { key: 'rotating', icon: 'repeat-outline', wake: [6, 0], sleep: [22, 30] },
+];
+
 const toHHMM = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 const atTime = (h, m) => {
   const d = new Date();
@@ -91,9 +100,10 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
   const [heightUnit, setHeightUnit] = useState('cm');
   const [weightKg, setWeightKg] = useState(70);
   const [heightCm, setHeightCm] = useState(170);
-  const [wakeAt, setWakeAt] = useState(atTime(8, 0));
+  const [wakeAt, setWakeAt] = useState(atTime(7, 0));
   const [sleepAt, setSleepAt] = useState(atTime(23, 0));
   const [editing, setEditing] = useState(null); // 'wake' | 'sleep'
+  const [workStyle, setWorkStyle] = useState('office');
   const [goalMl, setGoalMl] = useState(DEFAULT_GOAL);
   const [intervalMin, setIntervalMin] = useState(120);
   const [busy, setBusy] = useState(false);
@@ -126,6 +136,7 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
       heightCm,
       wakeAt: toHHMM(wakeAt),
       sleepAt: toHHMM(sleepAt),
+      workStyle,
     };
     try {
       await AsyncStorage.multiSet([
@@ -133,10 +144,12 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
         ['DAILY_GOAL_ML', String(goal)],
       ]);
       const store = useHydrationStore.getState();
-      await store.updateProfile({ weight, height: heightCm, wakeAt: profileData.wakeAt, sleepAt: profileData.sleepAt });
+      await store.updateProfile({ weight, height: heightCm, wakeAt: profileData.wakeAt, sleepAt: profileData.sleepAt, workStyle });
+      const schedule = await saveShiftSchedule(buildWorkSchedule());
+      await store.setShiftSchedule(schedule);
       await store.setGoalMl(goal);
     } catch (e) {
-      console.warn('Save failed', e);
+      throw e;
     }
   };
 
@@ -151,7 +164,7 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
     if (changed) {
       const goal = computeGoalMl(weightKg, heightCm);
       setGoalMl(goal);
-      persistProfile(goal);
+
     }
     if (!changed || reduceMotion) {
       setPhase('final');
@@ -177,10 +190,7 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
     if (next === goalMl) return;
     Haptics.selectionAsync().catch(() => {});
     setGoalMl(next);
-    if (!preview) {
-      AsyncStorage.setItem('DAILY_GOAL_ML', String(next)).catch(() => {});
-      useHydrationStore.getState().setGoalMl(next).catch(() => {});
-    }
+
   };
 
   // Karşılama: damla yukarıdan düşer; dokununca dağılır ve demo açılır
@@ -216,6 +226,32 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
   const toMin = (d) => d.getHours() * 60 + d.getMinutes();
   const skyMinutes = toMin(editing === 'sleep' ? sleepAt : wakeAt);
 
+  // Seçilen çalışma düzeninden haftalık vardiya planı: gece ve dönüşümlü vardiyada su günü
+  // gece yarısında değil, vardiya bitiminde/uyanınca başlar.
+  const buildWorkSchedule = () => {
+    const window = { wakeAt: toHHMM(wakeAt), sleepAt: toHHMM(sleepAt) };
+    const shifts = { ...DEFAULT_SHIFT_SCHEDULE.shifts };
+    if (workStyle === 'night') {
+      shifts.night = window;
+      return { ...DEFAULT_SHIFT_SCHEDULE, enabled: true, active: 'night', shifts, week: ['off', 'night', 'night', 'night', 'night', 'night', 'off'] };
+    }
+    shifts.day = window;
+    if (workStyle === 'rotating') {
+      return { ...DEFAULT_SHIFT_SCHEDULE, enabled: true, active: 'day', shifts, week: ['off', 'day', 'day', 'night', 'night', 'off', 'off'] };
+    }
+    return { ...DEFAULT_SHIFT_SCHEDULE, enabled: false, active: 'day', shifts };
+  };
+  const pickWorkStyle = (key) => {
+    const preset = WORK_STYLES.find((w) => w.key === key);
+    setWorkStyle(key);
+    setEditing(null);
+    if (preset) {
+      setWakeAt(atTime(...preset.wake));
+      setSleepAt(atTime(...preset.sleep));
+    }
+    Haptics.selectionAsync().catch(() => {});
+  };
+
   // ---- Gezinme -------------------------------------------------------------------------
   const back = () => {
     if (index > 0) go(STEPS[index - 1]);
@@ -228,24 +264,29 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
     if (step === 'remind') return noReminders();
   };
 
-  const noReminders = () => {
-    if (!preview) disableReminders().catch(() => {});
-    finish();
-  };
-
-  const allowNotifications = async () => {
+  const completeOnboarding = async (withReminders) => {
     if (busy) return;
     setBusy(true);
-    if (!preview) {
-      try {
-        await scheduleReminders({ wakeAt: toHHMM(wakeAt), sleepAt: toHHMM(sleepAt), intervalHours: intervalMin / 60 });
-      } catch (e) {
-        console.warn('Reminder scheduling failed', e);
+    try {
+      if (!preview) {
+        await persistProfile(goalMl);
+        if (withReminders) {
+          const plan = buildWorkSchedule();
+          const count = await scheduleReminders({ wakeAt: toHHMM(wakeAt), sleepAt: toHHMM(sleepAt), intervalHours: intervalMin / 60, weeklySchedule: plan.enabled ? plan : null });
+          if (count < 0) { Alert.alert(t('alert.error'), t('release.notificationsBlocked')); return; }
+        } else {
+          await disableReminders();
+        }
+        await useHydrationStore.getState().setNotifications(withReminders);
+        await AsyncStorage.setItem('HAS_ONBOARDED', '1');
       }
-    }
-    setBusy(false);
-    finish();
+      await finish();
+    } catch (error) {
+      Alert.alert(t('alert.error'), t(error?.code === 'notification_capacity' ? 'release.reminderCapacity' : 'profile.saveError'));
+    } finally { setBusy(false); }
   };
+  const noReminders = () => completeOnboarding(false);
+  const allowNotifications = () => completeOnboarding(true);
 
   // Çıkış geçişi: yazılar söner, damla küçülüp ana ekrandaki bardağın içine iner,
   // ardından bütün ekran yumuşakça ana sayfaya karışır (ana sayfa bu sırada arkada hazırdır).
@@ -257,7 +298,6 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
     if (leaving) return;
     setLeaving(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    if (!preview) await AsyncStorage.setItem('HAS_ONBOARDED', '1').catch(() => {});
     onLeaveStart?.();
     const done = () => onDone?.();
     if (reduceMotion) {
@@ -470,6 +510,24 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
           <>
             <Header styles={styles} tag={t('onboard.flow.goalStep', { n: 2 })} title={t('onboard.flow.rhythm.title')} body={t('onboard.flow.rhythm.body')} />
             <Rise i={3} style={styles.formArea}>
+              <View style={styles.workGrid} accessibilityRole="radiogroup">
+                {WORK_STYLES.map((w) => {
+                  const on = workStyle === w.key;
+                  return (
+                    <TouchableOpacity
+                      key={w.key}
+                      onPress={() => pickWorkStyle(w.key)}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: on }}
+                      style={[styles.workChip, { borderColor: on ? c.accent : 'transparent', backgroundColor: c.card }]}
+                    >
+                      <Ionicons name={w.icon} size={18} color={on ? c.accent : c.ink2} />
+                      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={[type.label, { color: on ? c.accent : c.ink, fontSize: 14, flexShrink: 1 }]}>{t(`onboard.flow.rhythm.work.${w.key}`)}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              {workStyle === 'rotating' ? <Text style={[type.caption, { color: c.ink2, marginBottom: 6 }]}>{t('onboard.flow.rhythm.rotatingHint')}</Text> : null}
               <TimeRow styles={styles} c={c} title={t('onboard.flow.rhythm.wake')} sub={t('onboard.flow.rhythm.wakeSub')} value={toHHMM(wakeAt)} on={editing === 'wake'} onPress={() => setEditing(editing === 'wake' ? null : 'wake')} />
               <TimeRow styles={styles} c={c} title={t('onboard.flow.rhythm.sleep')} sub={t('onboard.flow.rhythm.sleepSub')} value={toHHMM(sleepAt)} on={editing === 'sleep'} onPress={() => setEditing(editing === 'sleep' ? null : 'sleep')} />
               {editing ? (
@@ -509,6 +567,7 @@ export default function OnboardWizard({ onDone, onLeaveStart, introActive = true
           <Animated.View entering={FadeIn.duration(300)}>
             <Rise i={2}><Text style={styles.overline}>{upper(t('onboard.flow.goal.tag'))}</Text></Rise>
             <Rise i={3}><Text style={styles.title}>{t('onboard.flow.goal.title')}</Text></Rise>
+            <Rise i={4}><Text style={[type.label, { color: c.ink2, marginTop: 8 }]}>{t('release.goalHint')}</Text></Rise>
             <Rise i={5} style={[styles.adjustRow, { backgroundColor: c.card, borderColor: c.divider }]}>
               <RoundBtn c={c} icon="remove" onPress={() => adjustGoal(-250)} label="-250 ml" />
               <Text style={[type.bodyStrong, { color: c.ink2, fontSize: 15 }]}>{t('onboard.flow.goal.adjust')}</Text>
@@ -753,6 +812,8 @@ const makeStyles = (c, type) =>
     hint: { ...type.body, fontFamily: fonts.medium, fontSize: 15, lineHeight: 22, color: c.ink2 },
 
     formArea: { marginTop: 30 },
+    workGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+    workChip: { flexBasis: '48%', flexGrow: 1, minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, borderRadius: 14, borderWidth: 2 },
     groupLabel: { ...type.body, fontSize: 15, color: c.ink2, marginBottom: 14 },
     bodyArea: { flex: 1, justifyContent: 'space-evenly' },
     measureHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

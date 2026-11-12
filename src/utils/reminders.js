@@ -2,6 +2,8 @@ import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { i18n } from '../i18n';
+import { replaceNotificationGroup } from '../notifications/scheduler';
+import { getShiftSchedule } from './shiftSchedule';
 
 // Onboarding, Hatırlatıcılar ve Profil ekranı aynı planlama mantığını kullanır.
 export const REMINDER_IDS_KEY = 'SUMOLASI_REMINDER_IDS_V1';
@@ -9,6 +11,7 @@ export const REMINDER_ENABLED_KEY = 'REMINDER_ENABLED';
 export const REMINDER_INTERVAL_HOURS_KEY = 'REMINDER_INTERVAL_HOURS';
 export const DEFAULT_INTERVAL_HOURS = 2;
 const ANDROID_CHANNEL_ID = 'hydration-daily';
+
 
 export const parseHHMM = (str, fallback) => {
   const match = /^(\d{1,2}):(\d{2})$/.exec(String(str || '').trim());
@@ -24,7 +27,7 @@ export const parseHHMM = (str, fallback) => {
 export function computeReminderTimes(wakeAt, sleepAt, intervalHours) {
   const wake = parseHHMM(wakeAt, { h: 8, m: 0 });
   const sleep = parseHHMM(sleepAt, { h: 23, m: 0 });
-  const intervalMin = Math.max(30, Math.round(intervalHours * 60));
+  const intervalMin = Math.max(30, Math.round((Number.isFinite(Number(intervalHours)) && Number(intervalHours) > 0 ? Number(intervalHours) : DEFAULT_INTERVAL_HOURS) * 60));
 
   const start = wake.h * 60 + wake.m;
   let end = sleep.h * 60 + sleep.m;
@@ -33,7 +36,7 @@ export function computeReminderTimes(wakeAt, sleepAt, intervalHours) {
   const times = [];
   for (let t = start + intervalMin; t <= end; t += intervalMin) {
     const minOfDay = t % (24 * 60);
-    times.push({ hour: Math.floor(minOfDay / 60), minute: minOfDay % 60 });
+    times.push({ hour: Math.floor(minOfDay / 60), minute: minOfDay % 60, dayOffset: Math.floor(t / (24 * 60)) });
   }
   return times;
 }
@@ -60,22 +63,34 @@ export async function ensureNotificationPermission() {
 }
 
 export async function cancelReminders() {
-  try {
-    const raw = await AsyncStorage.getItem(REMINDER_IDS_KEY);
-    const ids = raw ? JSON.parse(raw) : [];
-    await Promise.all(ids.map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => {})));
-    await AsyncStorage.setItem(REMINDER_IDS_KEY, JSON.stringify([]));
-  } catch {}
+  const raw = await AsyncStorage.getItem(REMINDER_IDS_KEY);
+  await replaceNotificationGroup('water', [], raw ? JSON.parse(raw) : []);
+  await AsyncStorage.setItem(REMINDER_IDS_KEY, '[]');
 }
 
-// Her saat için günlük tekrar eden bildirim kurar. Geçmiş saatler yarından itibaren çalışır.
-// Dönen değer: planlanan bildirim sayısı; izin yoksa -1.
-export async function scheduleReminders({ wakeAt, sleepAt, intervalHours = DEFAULT_INTERVAL_HOURS }) {
+export function computeScheduledReminderTimes(wakeAt, sleepAt, intervalHours) {
+  return computeReminderTimes(wakeAt, sleepAt, intervalHours);
+}
+
+// Identical times on every weekday need only one repeating native request.
+export function compactWeeklyTimes(times) {
+  const groups = new Map();
+  for (const time of times) {
+    const key = `${time.hour}:${time.minute}`;
+    if (!groups.has(key)) groups.set(key, new Set());
+    groups.get(key).add(time.weekday);
+  }
+  return [...groups].flatMap(([key, weekdays]) => {
+    const [hour, minute] = key.split(':').map(Number);
+    return weekdays.size === 7 ? [{ hour, minute }] : [...weekdays].map((weekday) => ({ hour, minute, weekday }));
+  });
+}
+
+export async function scheduleReminders({ wakeAt, sleepAt, intervalHours = DEFAULT_INTERVAL_HOURS, weeklySchedule }) {
   const granted = await ensureNotificationPermission();
   if (!granted) return -1;
 
   await ensureAndroidChannel();
-  await cancelReminders();
 
   const content = {
     title: i18n.t('notifications.title'),
@@ -84,19 +99,32 @@ export async function scheduleReminders({ wakeAt, sleepAt, intervalHours = DEFAU
     data: { type: 'WATER_REMINDER' },
   };
 
-  const ids = [];
-  for (const { hour, minute } of computeReminderTimes(wakeAt, sleepAt, intervalHours)) {
-    const id = await Notifications.scheduleNotificationAsync({
-      content,
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DAILY,
-        hour,
-        minute,
-        ...(Platform.OS === 'android' ? { channelId: ANDROID_CHANNEL_ID } : {}),
-      },
-    });
-    ids.push(id);
+  const planned = [];
+  if (weeklySchedule?.enabled && Array.isArray(weeklySchedule.week) && weeklySchedule.week.length === 7) {
+    for (let day = 0; day < 7; day += 1) {
+      const mode = weeklySchedule.week[day];
+      const shift = weeklySchedule.shifts?.[mode];
+      if (!shift) continue;
+      const dayTimes = computeScheduledReminderTimes(shift.wakeAt, shift.sleepAt, intervalHours, day);
+      for (const time of dayTimes) {
+        planned.push({ ...time, weekday: ((day + (time.dayOffset || 0)) % 7) + 1, mode });
+      }
+    }
+  } else {
+    planned.push(...computeReminderTimes(wakeAt, sleepAt, intervalHours));
   }
+
+  const slots = weeklySchedule?.enabled ? compactWeeklyTimes(planned) : planned;
+  const requests = slots.map(({ hour, minute, weekday }) => ({
+    content,
+    trigger: {
+      type: weekday ? Notifications.SchedulableTriggerInputTypes.WEEKLY : Notifications.SchedulableTriggerInputTypes.DAILY,
+      hour, minute, ...(weekday ? { weekday } : {}),
+      ...(Platform.OS === 'android' ? { channelId: ANDROID_CHANNEL_ID } : {}),
+    },
+  }));
+  const raw = await AsyncStorage.getItem(REMINDER_IDS_KEY);
+  const ids = await replaceNotificationGroup('water', requests, raw ? JSON.parse(raw) : []);
 
   await AsyncStorage.multiSet([
     [REMINDER_IDS_KEY, JSON.stringify(ids)],
@@ -128,5 +156,6 @@ export async function rescheduleIfEnabled({ wakeAt, sleepAt }) {
   if (!enabled) return 0;
   const perm = await Notifications.getPermissionsAsync();
   if (perm.status !== 'granted') return 0;
-  return scheduleReminders({ wakeAt, sleepAt, intervalHours });
+  const weeklySchedule = await getShiftSchedule();
+  return scheduleReminders({ wakeAt, sleepAt, intervalHours, weeklySchedule });
 }
